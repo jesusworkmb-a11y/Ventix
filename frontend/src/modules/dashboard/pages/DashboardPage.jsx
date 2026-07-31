@@ -13,9 +13,11 @@ function DashboardPage() {
       </p>
       <p>Permisos activos: {permisos?.length ?? 0}</p>
 
-      <nav style={{ display: 'flex', gap: '1rem', margin: '1.5rem 0' }}>
+      <nav style={{ display: 'flex', gap: '1rem', margin: '1.5rem 0', flexWrap: 'wrap' }}>
         <Link to="/catalogo/articulos">Artículos</Link>
         <Link to="/catalogo/configuracion">Configuración de catálogo</Link>
+        <Link to="/clientes">Clientes</Link>
+        <Link to="/proveedores">Proveedores</Link>
       </nav>
 
       <button onClick={logout}>Cerrar sesión</button>

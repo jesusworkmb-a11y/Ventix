@@ -6,6 +6,8 @@ import LoginPage from './modules/core/pages/LoginPage';
 import DashboardPage from './modules/dashboard/pages/DashboardPage';
 import ArticulosPage from './modules/catalogo/pages/ArticulosPage';
 import ConfiguracionCatalogoPage from './modules/catalogo/pages/ConfiguracionCatalogoPage';
+import ClientesPage from './modules/clientes/pages/ClientesPage';
+import ProveedoresPage from './modules/proveedores/pages/ProveedoresPage';
 
 // A partir de Fase 1 el enrutamiento real reemplaza el check de conectividad de Fase 0.
 function App() {
@@ -35,6 +37,22 @@ function App() {
           element={(
             <ProtectedRoute>
               <ConfiguracionCatalogoPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/clientes"
+          element={(
+            <ProtectedRoute>
+              <ClientesPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/proveedores"
+          element={(
+            <ProtectedRoute>
+              <ProveedoresPage />
             </ProtectedRoute>
           )}
         />

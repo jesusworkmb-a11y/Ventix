@@ -34,6 +34,10 @@ const PERMISOS_DEFAULT = [
     grupo: 'Catálogo',
     nombre: 'Gestionar categorías, marcas, unidades e impuestos',
   },
+  { clave: 'clientes.ver', grupo: 'Clientes', nombre: 'Ver clientes' },
+  { clave: 'clientes.gestionar', grupo: 'Clientes', nombre: 'Crear/editar clientes' },
+  { clave: 'proveedores.ver', grupo: 'Proveedores', nombre: 'Ver proveedores' },
+  { clave: 'proveedores.gestionar', grupo: 'Proveedores', nombre: 'Crear/editar proveedores' },
 ];
 
 const TODAS_LAS_CLAVES = PERMISOS_DEFAULT.map((p) => p.clave);
@@ -62,8 +66,20 @@ const ROL_PERMISOS_DEFAULT = {
     'catalogo.articulos.gestionar',
     'catalogo.precios.gestionar',
     'catalogo.configuracion.gestionar',
+    'clientes.ver',
+    'clientes.gestionar',
+    'proveedores.ver',
+    'proveedores.gestionar',
   ],
-  Cajero: ['venta.crear', 'caja.abrir', 'caja.cerrar', 'caja.ingreso', 'catalogo.articulos.ver'],
+  Cajero: [
+    'venta.crear',
+    'caja.abrir',
+    'caja.cerrar',
+    'caja.ingreso',
+    'catalogo.articulos.ver',
+    'clientes.ver',
+    'clientes.gestionar',
+  ],
   Almacenista: [
     'inventario.ajustar',
     'inventario.transferir',
@@ -71,6 +87,7 @@ const ROL_PERMISOS_DEFAULT = {
     'compra.crear',
     'administracion.sucursales.ver',
     'catalogo.articulos.ver',
+    'proveedores.ver',
   ],
 };
 
