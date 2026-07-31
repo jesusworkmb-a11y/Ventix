@@ -1,24 +1,28 @@
-import { useEffect, useState } from 'react';
-import api from './shared/api';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './shared/context/AuthContext';
+import ProtectedRoute from './shared/components/ProtectedRoute';
+import RegistroPage from './modules/core/pages/RegistroPage';
+import LoginPage from './modules/core/pages/LoginPage';
+import DashboardPage from './modules/dashboard/pages/DashboardPage';
 
-// Este componente valida el criterio de salida de la Fase 0: React -> Express -> PostgreSQL
-// funcionando end-to-end. Se reemplaza por el enrutamiento real (login, dashboard, módulos)
-// a partir de la Fase 1.
+// A partir de Fase 1 el enrutamiento real reemplaza el check de conectividad de Fase 0.
 function App() {
-  const [estado, setEstado] = useState('verificando...');
-
-  useEffect(() => {
-    api
-      .get('/health')
-      .then((res) => setEstado(`conectado — DB: ${res.data.db}`))
-      .catch(() => setEstado('sin conexión al backend'));
-  }, []);
-
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-      <h1>Ventix</h1>
-      <p>Estado del backend: {estado}</p>
-    </div>
+    <AuthProvider>
+      <Routes>
+        <Route path="/registro" element={<RegistroPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path="/dashboard"
+          element={(
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Routes>
+    </AuthProvider>
   );
 }
 
