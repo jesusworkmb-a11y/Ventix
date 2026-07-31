@@ -4,6 +4,7 @@ const { aplicarMovimiento } = require('../../shared/services/inventario.service'
 const { obtenerSiguienteFolio } = require('../../shared/services/secuencia.service');
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
 const toJson = require('../../shared/toJson');
+const redondear = require('../../shared/redondear');
 
 async function listar({ empresaId, filtros }) {
   const where = { empresaId };
@@ -89,7 +90,7 @@ async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }
     lineas.push({ ...detalle, factor, cantidadBase: detalle.cantidad * factor });
   }
 
-  const total = lineas.reduce((acc, l) => acc + l.cantidad * l.costo, 0);
+  const total = redondear(lineas.reduce((acc, l) => acc + l.cantidad * l.costo, 0));
 
   return prisma.$transaction(async (tx) => {
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId, tipoDocumento: 'COM' });

@@ -21,6 +21,7 @@ function DashboardPage() {
         <Link to="/inventario/existencias">Existencias</Link>
         <Link to="/compras">Compras</Link>
         <Link to="/caja">Caja</Link>
+        <Link to="/ventas">Ventas</Link>
       </nav>
 
       <button onClick={logout}>Cerrar sesión</button>

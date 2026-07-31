@@ -1,6 +1,7 @@
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
+const { registrarMovimientoCaja } = require('../../../shared/services/caja.service');
 const toJson = require('../../../shared/toJson');
 
 // SesionCaja no tiene empresaId propio — se valida pertenencia yendo a través de su Caja.
@@ -58,8 +59,7 @@ async function abrir({ empresaId, usuarioId, cajaId, fondoInicial }) {
 }
 
 async function registrarMovimiento({ empresaId, usuarioId, sesionId, tipo, monto, motivo, autorizadoPorId }) {
-  const { sesion, caja } = await obtenerSesionValidada({ empresaId, sesionId });
-  if (sesion.cerradaEn) throw new AppError(400, 'La sesión ya está cerrada.');
+  const { caja } = await obtenerSesionValidada({ empresaId, sesionId });
 
   if (autorizadoPorId) {
     const autorizador = await prisma.usuarioEmpresa.findUnique({
@@ -69,8 +69,14 @@ async function registrarMovimiento({ empresaId, usuarioId, sesionId, tipo, monto
   }
 
   return prisma.$transaction(async (tx) => {
-    const movimiento = await tx.movimientoCaja.create({
-      data: { sesionCajaId: sesionId, tipo, monto, motivo, usuarioId, autorizadoPorId },
+    const { movimiento } = await registrarMovimientoCaja(tx, {
+      empresaId,
+      sesionCajaId: sesionId,
+      tipo,
+      monto,
+      motivo,
+      usuarioId,
+      autorizadoPorId,
     });
     await registrarAuditoria(tx, {
       empresaId,

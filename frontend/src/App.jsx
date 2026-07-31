@@ -11,6 +11,7 @@ import ProveedoresPage from './modules/proveedores/pages/ProveedoresPage';
 import ExistenciasPage from './modules/inventario/pages/ExistenciasPage';
 import ComprasPage from './modules/compras/pages/ComprasPage';
 import CajaPage from './modules/caja/pages/CajaPage';
+import VentasPage from './modules/ventas/pages/VentasPage';
 
 // A partir de Fase 1 el enrutamiento real reemplaza el check de conectividad de Fase 0.
 function App() {
@@ -80,6 +81,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <CajaPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/ventas"
+          element={(
+            <ProtectedRoute>
+              <VentasPage />
             </ProtectedRoute>
           )}
         />
