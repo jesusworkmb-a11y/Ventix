@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../../shared/context/AuthContext';
 
 function DashboardPage() {
@@ -11,6 +12,12 @@ function DashboardPage() {
         Usuario: {usuario?.nombre} ({usuario?.correo}) — Rol: {rol?.nombre}
       </p>
       <p>Permisos activos: {permisos?.length ?? 0}</p>
+
+      <nav style={{ display: 'flex', gap: '1rem', margin: '1.5rem 0' }}>
+        <Link to="/catalogo/articulos">Artículos</Link>
+        <Link to="/catalogo/configuracion">Configuración de catálogo</Link>
+      </nav>
+
       <button onClick={logout}>Cerrar sesión</button>
     </div>
   );

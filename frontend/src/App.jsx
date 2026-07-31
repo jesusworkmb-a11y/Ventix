@@ -4,6 +4,8 @@ import ProtectedRoute from './shared/components/ProtectedRoute';
 import RegistroPage from './modules/core/pages/RegistroPage';
 import LoginPage from './modules/core/pages/LoginPage';
 import DashboardPage from './modules/dashboard/pages/DashboardPage';
+import ArticulosPage from './modules/catalogo/pages/ArticulosPage';
+import ConfiguracionCatalogoPage from './modules/catalogo/pages/ConfiguracionCatalogoPage';
 
 // A partir de Fase 1 el enrutamiento real reemplaza el check de conectividad de Fase 0.
 function App() {
@@ -17,6 +19,22 @@ function App() {
           element={(
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/catalogo/articulos"
+          element={(
+            <ProtectedRoute>
+              <ArticulosPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/catalogo/configuracion"
+          element={(
+            <ProtectedRoute>
+              <ConfiguracionCatalogoPage />
             </ProtectedRoute>
           )}
         />

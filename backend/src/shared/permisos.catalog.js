@@ -26,6 +26,14 @@ const PERMISOS_DEFAULT = [
   { clave: 'inventario.conteo_fisico', grupo: 'Inventario', nombre: 'Conteo físico' },
   { clave: 'compra.crear', grupo: 'Compras', nombre: 'Registrar compras' },
   { clave: 'compra.cancelar', grupo: 'Compras', nombre: 'Cancelar compras' },
+  { clave: 'catalogo.articulos.ver', grupo: 'Catálogo', nombre: 'Ver artículos y servicios' },
+  { clave: 'catalogo.articulos.gestionar', grupo: 'Catálogo', nombre: 'Crear/editar artículos y servicios' },
+  { clave: 'catalogo.precios.gestionar', grupo: 'Catálogo', nombre: 'Gestionar listas de precio' },
+  {
+    clave: 'catalogo.configuracion.gestionar',
+    grupo: 'Catálogo',
+    nombre: 'Gestionar categorías, marcas, unidades e impuestos',
+  },
 ];
 
 const TODAS_LAS_CLAVES = PERMISOS_DEFAULT.map((p) => p.clave);
@@ -50,14 +58,19 @@ const ROL_PERMISOS_DEFAULT = {
     'inventario.conteo_fisico',
     'compra.crear',
     'compra.cancelar',
+    'catalogo.articulos.ver',
+    'catalogo.articulos.gestionar',
+    'catalogo.precios.gestionar',
+    'catalogo.configuracion.gestionar',
   ],
-  Cajero: ['venta.crear', 'caja.abrir', 'caja.cerrar', 'caja.ingreso'],
+  Cajero: ['venta.crear', 'caja.abrir', 'caja.cerrar', 'caja.ingreso', 'catalogo.articulos.ver'],
   Almacenista: [
     'inventario.ajustar',
     'inventario.transferir',
     'inventario.conteo_fisico',
     'compra.crear',
     'administracion.sucursales.ver',
+    'catalogo.articulos.ver',
   ],
 };
 
