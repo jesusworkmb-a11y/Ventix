@@ -1,9 +1,46 @@
-# Ventix — Fase 0: Cimentación técnica
+# Ventix — POS multi-tenant
 
-Este es el andamiaje inicial de Ventix generado a partir de:
+Generado a partir de:
 - `VENTIX_ESPECIFICACION_MAESTRA_INTEGRAL_V1.md`
 - `VENTIX_BASE_TECNICA_CONSOLIDADA_V1.md`
 - `VENTIX_PLAN_DE_TRABAJO_V1.md`
+
+## Estado actual (2026-07-31)
+
+Las 10 fases del plan original están completas, commiteadas y en GitHub
+(`https://github.com/jesusworkmb-a11y/Ventix`, rama `main`):
+
+| Fase | Módulo |
+|---|---|
+| 0 | Cimentación técnica (Express + React + Prisma + PostgreSQL) |
+| 1 | MOD-001 Core (auth, empresas, sucursales, usuarios, roles, permisos, folios, auditoría) |
+| 2 | MOD-002 Catálogo (artículos, categorías, marcas, unidades, impuestos) |
+| 3 | MOD-003 Clientes / Proveedores |
+| 4 | MOD-004 Inventario (existencias, kardex, ajustes, transferencias) |
+| 5 | MOD-005 Compras |
+| 6 | MOD-006 Caja (sesiones, movimientos) |
+| 7 | MOD-007 Ventas (ventas, devoluciones, cotizaciones) |
+| 9 | MOD-009 Reportes |
+| 10 | MOD-010 Herramientas (importar/exportar CSV) |
+
+(No existe Fase 8 en la numeración original del plan.)
+
+Base de datos: Supabase (Postgres gestionado). Repo: GitHub, un commit detallado por fase.
+
+**Para retomar el proyecto** (incluida una conversación nueva de Claude Code):
+1. Abre Claude Code en `C:\Users\DELL\Documents\Quique\Ventix\ventix-fase0\ventix`.
+2. Pide que lea este README y, si hace falta más detalle, `git log --oneline` (los mensajes de
+   commit documentan qué se hizo y por qué en cada fase).
+3. Levanta los servidores (no persisten entre sesiones/reinicios de máquina):
+   ```bash
+   cd backend && npm run dev   # http://localhost:4000
+   cd frontend && npm run dev  # http://localhost:5173
+   ```
+   Los `.env` de ambos ya están configurados (Supabase + JWT secret) — no hace falta tocarlos.
+4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
+5. Dile qué sigue: como los 10 módulos del plan original ya están completos, lo siguiente es a
+   elección — desplegar a producción (Render, backend ya decidido en Fase 0), pulir/QA de algún
+   módulo, o nuevas funcionalidades fuera del plan original.
 
 ## Qué contiene
 
