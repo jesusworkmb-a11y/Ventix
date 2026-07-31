@@ -1,0 +1,795 @@
+// =============================================================================
+// VENTIX — schema.prisma (borrador inicial, Fase 0)
+// Fuente: VENTIX_ESPECIFICACION_MAESTRA_INTEGRAL_V1.md + VENTIX_BASE_TECNICA_CONSOLIDADA_V1.md
+//
+// Estado: PENDIENTE-011 (modelo físico) — este archivo es el entregable que lo resuelve.
+// No introduce funcionalidad nueva; traduce a físico el modelo lógico ya aprobado (§3.10-3.14).
+// Todo lo marcado "// REVISAR" es una decisión técnica tomada para poder avanzar,
+// documentada aquí para tu validación (no altera comportamiento de negocio).
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// MOD-001 CORE
+// =============================================================================
+
+enum EstadoGeneral {
+  ACTIVA
+  SUSPENDIDA
+  ARCHIVADA
+}
+
+enum EstadoUsuario {
+  ACTIVO
+  INACTIVO
+  BLOQUEADO
+}
+
+model Empresa {
+  id            String        @id @default(uuid())
+  nombreComercial String      @map("nombre_comercial")
+  razonSocial   String?       @map("razon_social")
+  rfc           String?
+  pais          String
+  moneda        String
+  zonaHoraria   String        @map("zona_horaria")
+  correo        String?
+  telefono      String?
+  sitioWeb      String?       @map("sitio_web")
+  logoUrl       String?       @map("logo_url")
+  estado        EstadoGeneral @default(ACTIVA)
+  creadoEn      DateTime      @default(now()) @map("creado_en")
+  actualizadoEn DateTime      @updatedAt @map("actualizado_en")
+
+  sucursales       Sucursal[]
+  usuariosEmpresa  UsuarioEmpresa[]
+  roles            Rol[]
+  configuraciones  Configuracion[]
+  secuencias       Secuencia[]
+  auditorias       Auditoria[]
+  notificaciones   NotificacionInterna[]
+  articulos        Articulo[]
+  categorias       Categoria[]
+  marcas           Marca[]
+  unidades         Unidad[]
+  impuestos        Impuesto[]
+  listasPrecio     ListaPrecio[]
+  clientes         Cliente[]
+  proveedores      Proveedor[]
+  compras          Compra[]
+  existencias      Existencia[]
+  ventas           Venta[]
+
+  @@map("empresas")
+}
+
+model Sucursal {
+  id           String        @id @default(uuid())
+  empresaId    String        @map("empresa_id")
+  nombre       String
+  clave        String
+  telefono     String?
+  correo       String?
+  direccion    String?
+  responsable  String?
+  estado       EstadoGeneral @default(ACTIVA)
+  creadoEn     DateTime      @default(now()) @map("creado_en")
+
+  empresa      Empresa       @relation(fields: [empresaId], references: [id])
+  cajas        Caja[]
+  existencias  Existencia[]
+  ventas       Venta[]
+  compras      Compra[]
+  usuariosSucursal UsuarioSucursal[]
+
+  @@unique([empresaId, clave])
+  @@map("sucursales")
+}
+
+model Usuario {
+  id            String        @id @default(uuid())
+  nombre        String
+  correo        String
+  passwordHash  String        @map("password_hash")
+  telefono      String?
+  estado        EstadoUsuario @default(ACTIVO)
+  ultimoAcceso  DateTime?     @map("ultimo_acceso")
+  intentosFallidos Int        @default(0) @map("intentos_fallidos")
+  bloqueadoHasta DateTime?    @map("bloqueado_hasta")
+  creadoEn      DateTime      @default(now()) @map("creado_en")
+
+  empresas      UsuarioEmpresa[]
+  sucursales    UsuarioSucursal[]
+  permisosExcepcion PermisoUsuarioExcepcion[]
+
+  @@unique([correo]) // REVISAR: un mismo correo puede pertenecer a varias empresas vía UsuarioEmpresa; la cuenta Usuario es única globalmente.
+  @@map("usuarios")
+}
+
+model UsuarioEmpresa {
+  id         String   @id @default(uuid())
+  usuarioId  String   @map("usuario_id")
+  empresaId  String   @map("empresa_id")
+  rolId      String   @map("rol_id")
+  activo     Boolean  @default(true)
+
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
+  empresa    Empresa  @relation(fields: [empresaId], references: [id])
+  rol        Rol      @relation(fields: [rolId], references: [id])
+
+  @@unique([usuarioId, empresaId])
+  @@map("usuarios_empresas")
+}
+
+model UsuarioSucursal {
+  id          String   @id @default(uuid())
+  usuarioId   String   @map("usuario_id")
+  sucursalId  String   @map("sucursal_id")
+
+  usuario     Usuario  @relation(fields: [usuarioId], references: [id])
+  sucursal    Sucursal @relation(fields: [sucursalId], references: [id])
+
+  @@unique([usuarioId, sucursalId])
+  @@map("usuarios_sucursales")
+}
+
+model Rol {
+  id         String   @id @default(uuid())
+  empresaId  String   @map("empresa_id")
+  nombre     String   // Administrador, Supervisor, Cajero, Almacenista, o personalizado
+
+  empresa    Empresa  @relation(fields: [empresaId], references: [id])
+  usuarios   UsuarioEmpresa[]
+  permisos   RolPermiso[]
+
+  @@unique([empresaId, nombre])
+  @@map("roles")
+}
+
+model Permiso {
+  id     String @id @default(uuid())
+  clave  String @unique // ej. venta.modificar_precio, caja.retiro, inventario.ajustar
+  grupo  String // agrupación visual: Ventas, Caja, Inventario, Compras, Administración...
+  nombre String
+
+  roles         RolPermiso[]
+  excepciones   PermisoUsuarioExcepcion[]
+
+  @@map("permisos")
+}
+
+model RolPermiso {
+  id        String  @id @default(uuid())
+  rolId     String  @map("rol_id")
+  permisoId String  @map("permiso_id")
+
+  rol       Rol     @relation(fields: [rolId], references: [id])
+  permiso   Permiso @relation(fields: [permisoId], references: [id])
+
+  @@unique([rolId, permisoId])
+  @@map("roles_permisos")
+}
+
+// Permiso individual que puede prevalecer sobre el rol (§7.4)
+model PermisoUsuarioExcepcion {
+  id         String   @id @default(uuid())
+  usuarioId  String   @map("usuario_id")
+  permisoId  String   @map("permiso_id")
+  concedido  Boolean  // true = otorga aunque el rol no lo tenga; false = revoca aunque el rol lo tenga
+
+  usuario    Usuario  @relation(fields: [usuarioId], references: [id])
+  permiso    Permiso  @relation(fields: [permisoId], references: [id])
+
+  @@unique([usuarioId, permisoId])
+  @@map("permisos_usuario_excepciones")
+}
+
+model Configuracion {
+  id         String  @id @default(uuid())
+  empresaId  String  @map("empresa_id")
+  clave      String
+  valor      String  // REVISAR: JSON serializado como texto; simple para V1
+
+  empresa    Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, clave])
+  @@map("configuraciones")
+}
+
+// Folios (§9): un tipo de documento por sucursal tiene su propia secuencia
+model Secuencia {
+  id           String   @id @default(uuid())
+  empresaId    String   @map("empresa_id")
+  sucursalId   String?  @map("sucursal_id") // null si la secuencia es a nivel empresa
+  tipoDocumento String  @map("tipo_documento") // VTA, COM, TRA, DEV, COT, AJU...
+  prefijo      String
+  siguienteNumero Int   @default(1) @map("siguiente_numero")
+
+  empresa      Empresa  @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, sucursalId, tipoDocumento])
+  @@map("secuencias")
+}
+
+model Auditoria {
+  id             String   @id @default(uuid())
+  empresaId      String   @map("empresa_id")
+  sucursalId     String?  @map("sucursal_id")
+  usuarioEjecutorId String @map("usuario_ejecutor_id")
+  usuarioAutorizadorId String? @map("usuario_autorizador_id")
+  accion         String
+  entidad        String
+  entidadId      String?  @map("entidad_id")
+  folio          String?
+  motivo         String?
+  valoresAntes   Json?    @map("valores_antes")
+  valoresDespues Json?    @map("valores_despues")
+  creadoEn       DateTime @default(now()) @map("creado_en")
+
+  empresa        Empresa  @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, entidad, entidadId])
+  @@map("auditorias")
+}
+
+model NotificacionInterna {
+  id         String   @id @default(uuid())
+  empresaId  String   @map("empresa_id")
+  tipo       String   // STOCK_MINIMO, SIN_EXISTENCIA, STOCK_MAXIMO, etc.
+  mensaje    String
+  leida      Boolean  @default(false)
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  empresa    Empresa  @relation(fields: [empresaId], references: [id])
+
+  @@map("notificaciones_internas")
+}
+
+// =============================================================================
+// MOD-002 CATÁLOGO
+// =============================================================================
+
+enum TipoArticulo {
+  PRODUCTO
+  SERVICIO
+}
+
+model Categoria {
+  id           String     @id @default(uuid())
+  empresaId    String     @map("empresa_id")
+  nombre       String
+  categoriaPadreId String? @map("categoria_padre_id") // hasta 2 niveles (§10.6)
+
+  empresa      Empresa    @relation(fields: [empresaId], references: [id])
+  categoriaPadre Categoria? @relation("SubCategorias", fields: [categoriaPadreId], references: [id])
+  subcategorias Categoria[] @relation("SubCategorias")
+  articulos    Articulo[]
+
+  @@map("categorias")
+}
+
+model Marca {
+  id        String    @id @default(uuid())
+  empresaId String    @map("empresa_id")
+  nombre    String
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id])
+  articulos Articulo[]
+
+  @@map("marcas")
+}
+
+model Unidad {
+  id        String   @id @default(uuid())
+  empresaId String   @map("empresa_id")
+  nombre    String   // Pieza, Caja, Kilogramo...
+  abreviatura String?
+
+  empresa   Empresa  @relation(fields: [empresaId], references: [id])
+  articulosBase   Articulo[]        @relation("UnidadBase")
+  unidadesAlternas UnidadAlterna[]
+
+  @@map("unidades")
+}
+
+// Unidad alterna + factor de conversión hacia la unidad base del artículo (§11)
+model UnidadAlterna {
+  id          String  @id @default(uuid())
+  articuloId  String  @map("articulo_id")
+  unidadId    String  @map("unidad_id")
+  factor      Decimal // cuántas unidades base equivalen a 1 de esta unidad alterna
+
+  articulo    Articulo @relation(fields: [articuloId], references: [id])
+  unidad      Unidad   @relation(fields: [unidadId], references: [id])
+
+  @@unique([articuloId, unidadId])
+  @@map("unidades_alternas")
+}
+
+model Impuesto {
+  id        String   @id @default(uuid())
+  empresaId String   @map("empresa_id")
+  nombre    String   // IVA 16%, IVA 8%, Exento
+  tasa      Decimal  // 0.16, 0.08, 0.00
+
+  empresa   Empresa  @relation(fields: [empresaId], references: [id])
+  articulos Articulo[]
+
+  @@map("impuestos")
+}
+
+model Articulo {
+  id           String       @id @default(uuid())
+  empresaId    String       @map("empresa_id")
+  tipo         TipoArticulo
+  clave        String?      // clave/código interno
+  sku          String?
+  codigoBarras String?      @map("codigo_barras")
+  nombre       String
+  descripcion  String?
+  categoriaId  String?      @map("categoria_id")
+  marcaId      String?      @map("marca_id")
+  unidadBaseId String       @map("unidad_base_id")
+  impuestoId   String?      @map("impuesto_id")
+  costo        Decimal      @default(0) // último costo (§16.3)
+  precio       Decimal      @default(0)
+  stockMinimo  Decimal?     @map("stock_minimo")
+  stockMaximo  Decimal?     @map("stock_maximo")
+  imagenUrl    String?      @map("imagen_url")
+  activo       Boolean      @default(true)
+  creadoEn     DateTime     @default(now()) @map("creado_en")
+
+  empresa      Empresa      @relation(fields: [empresaId], references: [id])
+  categoria    Categoria?   @relation(fields: [categoriaId], references: [id])
+  marca        Marca?       @relation(fields: [marcaId], references: [id])
+  unidadBase   Unidad       @relation("UnidadBase", fields: [unidadBaseId], references: [id])
+  impuesto     Impuesto?    @relation(fields: [impuestoId], references: [id])
+
+  unidadesAlternas UnidadAlterna[]
+  precios      PrecioArticulo[]
+  existencias  Existencia[]
+  proveedores  ArticuloProveedor[]
+
+  @@unique([empresaId, sku])
+  @@unique([empresaId, codigoBarras])
+  @@map("articulos")
+}
+
+model ListaPrecio {
+  id         String   @id @default(uuid())
+  empresaId  String   @map("empresa_id")
+  nombre     String   // ej. Menudeo (base), Mayoreo
+  esBase     Boolean  @default(false) @map("es_base")
+
+  empresa    Empresa  @relation(fields: [empresaId], references: [id])
+  precios    PrecioArticulo[]
+  clientes   Cliente[]
+
+  @@map("listas_precio")
+}
+
+model PrecioArticulo {
+  id            String      @id @default(uuid())
+  articuloId    String      @map("articulo_id")
+  listaPrecioId String      @map("lista_precio_id")
+  precio        Decimal
+
+  articulo      Articulo    @relation(fields: [articuloId], references: [id])
+  listaPrecio   ListaPrecio @relation(fields: [listaPrecioId], references: [id])
+
+  @@unique([articuloId, listaPrecioId])
+  @@map("precios_articulo")
+}
+
+// Relación secundaria proveedor-artículo (§15.5) — preparada, no bloqueante
+model ArticuloProveedor {
+  id          String    @id @default(uuid())
+  articuloId  String    @map("articulo_id")
+  proveedorId String    @map("proveedor_id")
+  esPrincipal Boolean   @default(false) @map("es_principal")
+
+  articulo    Articulo  @relation(fields: [articuloId], references: [id])
+  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
+
+  @@unique([articuloId, proveedorId])
+  @@map("articulos_proveedores")
+}
+
+// =============================================================================
+// MOD-003 CLIENTES / MOD-004 PROVEEDORES
+// =============================================================================
+
+model Cliente {
+  id            String   @id @default(uuid())
+  empresaId     String   @map("empresa_id")
+  esGeneral     Boolean  @default(false) @map("es_general") // Cliente General (§14.1)
+  nombre        String
+  telefono      String?
+  correo        String?
+  rfc           String?
+  direccion     String?
+  listaPrecioId String?  @map("lista_precio_id")
+  activo        Boolean  @default(true)
+  creadoEn      DateTime @default(now()) @map("creado_en")
+
+  empresa       Empresa      @relation(fields: [empresaId], references: [id])
+  listaPrecio   ListaPrecio? @relation(fields: [listaPrecioId], references: [id])
+  ventas        Venta[]
+
+  @@map("clientes")
+}
+
+model Proveedor {
+  id        String   @id @default(uuid())
+  empresaId String   @map("empresa_id")
+  nombre    String
+  telefono  String?
+  correo    String?
+  rfc       String?
+  direccion String?
+  activo    Boolean  @default(true)
+  creadoEn  DateTime @default(now()) @map("creado_en")
+
+  empresa   Empresa  @relation(fields: [empresaId], references: [id])
+  compras   Compra[]
+  articulos ArticuloProveedor[]
+
+  @@map("proveedores")
+}
+
+// =============================================================================
+// MOD-006 INVENTARIO (se define antes que Compras/Ventas porque ambas dependen de él)
+// =============================================================================
+
+enum TipoMovimientoInventario {
+  ENTRADA_COMPRA
+  SALIDA_VENTA
+  ENTRADA_DEVOLUCION
+  AJUSTE_ENTRADA
+  AJUSTE_SALIDA
+  INVENTARIO_INICIAL
+  TRANSFERENCIA_SALIDA
+  TRANSFERENCIA_ENTRADA
+  CANCELACION_COMPRA
+  CANCELACION_VENTA
+}
+
+model Existencia {
+  id          String   @id @default(uuid())
+  empresaId   String   @map("empresa_id")
+  sucursalId  String   @map("sucursal_id")
+  articuloId  String   @map("articulo_id")
+  cantidad    Decimal  @default(0) // siempre expresada en unidad base (§11.1)
+
+  empresa     Empresa  @relation(fields: [empresaId], references: [id])
+  sucursal    Sucursal @relation(fields: [sucursalId], references: [id])
+  articulo    Articulo @relation(fields: [articuloId], references: [id])
+
+  @@unique([sucursalId, articuloId])
+  @@map("existencias")
+}
+
+// Kardex — inmutable (§17.3, §3.14)
+model MovimientoInventario {
+  id            String                   @id @default(uuid())
+  empresaId     String                   @map("empresa_id")
+  sucursalId    String                   @map("sucursal_id")
+  articuloId    String                   @map("articulo_id")
+  tipo          TipoMovimientoInventario
+  cantidad      Decimal                  // positivo en unidad base
+  referenciaTipo String                  @map("referencia_tipo") // Compra, Venta, Ajuste, Transferencia...
+  referenciaId  String                   @map("referencia_id")
+  usuarioId     String                   @map("usuario_id")
+  creadoEn      DateTime                 @default(now()) @map("creado_en")
+
+  @@index([empresaId, sucursalId, articuloId])
+  @@map("movimientos_inventario")
+}
+
+model Ajuste {
+  id         String   @id @default(uuid())
+  empresaId  String   @map("empresa_id")
+  sucursalId String   @map("sucursal_id")
+  folio      String?
+  motivo     String   // caducidad, daño, robo, extravío, otro (§17.7)
+  usuarioId  String   @map("usuario_id")
+  autorizadoPorId String? @map("autorizado_por_id")
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  detalles   AjusteDetalle[]
+
+  @@map("ajustes")
+}
+
+model AjusteDetalle {
+  id         String  @id @default(uuid())
+  ajusteId   String  @map("ajuste_id")
+  articuloId String  @map("articulo_id")
+  cantidad   Decimal // positivo = entrada, negativo = salida
+
+  ajuste     Ajuste  @relation(fields: [ajusteId], references: [id])
+
+  @@map("ajustes_detalle")
+}
+
+model ConteoFisico {
+  id         String   @id @default(uuid())
+  empresaId  String   @map("empresa_id")
+  sucursalId String   @map("sucursal_id")
+  usuarioId  String   @map("usuario_id")
+  estado     String   @default("CAPTURA") // CAPTURA, REVISION, AUTORIZADO (§17.8)
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  detalles   ConteoDetalle[]
+
+  @@map("conteos_fisicos")
+}
+
+model ConteoDetalle {
+  id             String       @id @default(uuid())
+  conteoId       String       @map("conteo_id")
+  articuloId     String       @map("articulo_id")
+  cantidadSistema Decimal     @map("cantidad_sistema")
+  cantidadFisica Decimal      @map("cantidad_fisica")
+
+  conteo         ConteoFisico @relation(fields: [conteoId], references: [id])
+
+  @@map("conteos_detalle")
+}
+
+model Transferencia {
+  id                String   @id @default(uuid())
+  empresaId         String   @map("empresa_id")
+  sucursalOrigenId  String   @map("sucursal_origen_id")
+  sucursalDestinoId String   @map("sucursal_destino_id")
+  folio             String?
+  estado            String   @default("EN_TRANSITO") // EN_TRANSITO, RECIBIDA (§17.9)
+  usuarioId         String   @map("usuario_id")
+  creadoEn          DateTime @default(now()) @map("creado_en")
+
+  detalles          TransferenciaDetalle[]
+
+  @@map("transferencias")
+}
+
+model TransferenciaDetalle {
+  id              String        @id @default(uuid())
+  transferenciaId String        @map("transferencia_id")
+  articuloId      String        @map("articulo_id")
+  cantidad        Decimal
+
+  transferencia   Transferencia @relation(fields: [transferenciaId], references: [id])
+
+  @@map("transferencias_detalle")
+}
+
+// =============================================================================
+// MOD-005 COMPRAS
+// =============================================================================
+
+enum EstadoCompra {
+  CONFIRMADA
+  CANCELADA
+}
+
+model Compra {
+  id           String       @id @default(uuid())
+  empresaId    String       @map("empresa_id")
+  sucursalId   String       @map("sucursal_id")
+  proveedorId  String       @map("proveedor_id")
+  usuarioId    String       @map("usuario_id")
+  folio        String?
+  estado       EstadoCompra @default(CONFIRMADA)
+  total        Decimal
+  creadoEn     DateTime     @default(now()) @map("creado_en")
+
+  empresa      Empresa      @relation(fields: [empresaId], references: [id])
+  sucursal     Sucursal     @relation(fields: [sucursalId], references: [id])
+  proveedor    Proveedor    @relation(fields: [proveedorId], references: [id])
+  detalles     CompraDetalle[]
+
+  @@map("compras")
+}
+
+model CompraDetalle {
+  id          String  @id @default(uuid())
+  compraId    String  @map("compra_id")
+  articuloId  String  @map("articulo_id")
+  unidadId    String  @map("unidad_id") // unidad capturada (puede ser alterna)
+  cantidad    Decimal
+  costo       Decimal // costo congelado en el detalle (§3.14)
+
+  compra      Compra  @relation(fields: [compraId], references: [id])
+
+  @@map("compras_detalle")
+}
+
+// =============================================================================
+// MOD-007 CAJA
+// =============================================================================
+
+enum TipoMovimientoCaja {
+  INGRESO
+  RETIRO
+  VENTA
+  DEVOLUCION
+}
+
+model Caja {
+  id         String   @id @default(uuid())
+  empresaId  String   @map("empresa_id")
+  sucursalId String   @map("sucursal_id")
+  nombre     String   // Caja Principal, Caja 2...
+  activa     Boolean  @default(true)
+
+  sucursal   Sucursal @relation(fields: [sucursalId], references: [id])
+  sesiones   SesionCaja[]
+
+  @@map("cajas")
+}
+
+model SesionCaja {
+  id                 String    @id @default(uuid())
+  cajaId             String    @map("caja_id")
+  usuarioResponsableId String  @map("usuario_responsable_id")
+  fondoInicial       Decimal   @map("fondo_inicial")
+  saldoEsperado      Decimal?  @map("saldo_esperado")
+  saldoReal          Decimal?  @map("saldo_real")
+  diferencia         Decimal?
+  abiertaEn          DateTime  @default(now()) @map("abierta_en")
+  cerradaEn          DateTime? @map("cerrada_en")
+
+  caja               Caja      @relation(fields: [cajaId], references: [id])
+  movimientos        MovimientoCaja[]
+  ventas             Venta[]
+
+  @@map("sesiones_caja")
+}
+
+model MovimientoCaja {
+  id              String             @id @default(uuid())
+  sesionCajaId    String             @map("sesion_caja_id")
+  tipo            TipoMovimientoCaja
+  monto           Decimal
+  motivo          String?
+  referenciaTipo  String?            @map("referencia_tipo")
+  referenciaId    String?            @map("referencia_id")
+  usuarioId       String             @map("usuario_id")
+  autorizadoPorId String?            @map("autorizado_por_id")
+  creadoEn        DateTime           @default(now()) @map("creado_en")
+
+  sesionCaja      SesionCaja         @relation(fields: [sesionCajaId], references: [id])
+
+  @@map("movimientos_caja")
+}
+
+// =============================================================================
+// MOD-008 VENTAS
+// =============================================================================
+
+enum EstadoVenta {
+  CONFIRMADA
+  CANCELADA
+}
+
+enum MetodoPago {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  MIXTO
+}
+
+model Venta {
+  id            String      @id @default(uuid())
+  empresaId     String      @map("empresa_id")
+  sucursalId    String      @map("sucursal_id")
+  clienteId     String      @map("cliente_id")
+  usuarioId     String      @map("usuario_id")
+  sesionCajaId  String      @map("sesion_caja_id")
+  folio         String?
+  estado        EstadoVenta @default(CONFIRMADA)
+  subtotal      Decimal
+  impuestos     Decimal
+  total         Decimal
+  creadoEn      DateTime    @default(now()) @map("creado_en")
+
+  empresa       Empresa     @relation(fields: [empresaId], references: [id])
+  sucursal      Sucursal    @relation(fields: [sucursalId], references: [id])
+  cliente       Cliente     @relation(fields: [clienteId], references: [id])
+  sesionCaja    SesionCaja  @relation(fields: [sesionCajaId], references: [id])
+
+  detalles      VentaDetalle[]
+  pagos         Pago[]
+  devoluciones  Devolucion[]
+
+  @@map("ventas")
+}
+
+model VentaDetalle {
+  id           String  @id @default(uuid())
+  ventaId      String  @map("venta_id")
+  articuloId   String  @map("articulo_id")
+  cantidad     Decimal
+  precio       Decimal // precio congelado (§20.9, §3.14)
+  impuestoTasa Decimal @map("impuesto_tasa") // tasa congelada al momento de la venta
+  cantidadDevuelta Decimal @default(0) @map("cantidad_devuelta")
+
+  venta        Venta   @relation(fields: [ventaId], references: [id])
+
+  @@map("ventas_detalle")
+}
+
+model Pago {
+  id       String     @id @default(uuid())
+  ventaId  String     @map("venta_id")
+  metodo   MetodoPago
+  monto    Decimal
+
+  venta    Venta      @relation(fields: [ventaId], references: [id])
+
+  @@map("pagos")
+}
+
+model Devolucion {
+  id         String   @id @default(uuid())
+  ventaId    String   @map("venta_id")
+  folio      String?
+  motivo     String   // producto defectuoso, error de venta, cliente cambió de opinión, garantía, otro
+  usuarioId  String   @map("usuario_id")
+  autorizadoPorId String @map("autorizado_por_id")
+  reembolso  Decimal  @default(0)
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  venta      Venta    @relation(fields: [ventaId], references: [id])
+  detalles   DevolucionDetalle[]
+
+  @@map("devoluciones")
+}
+
+model DevolucionDetalle {
+  id           String     @id @default(uuid())
+  devolucionId String     @map("devolucion_id")
+  articuloId   String     @map("articulo_id")
+  cantidad     Decimal
+  vuelveAStock Boolean    @default(true) @map("vuelve_a_stock") // false si es defectuoso (§26.6, PENDIENTE-005)
+
+  devolucion   Devolucion @relation(fields: [devolucionId], references: [id])
+
+  @@map("devoluciones_detalle")
+}
+
+model Cotizacion {
+  id         String   @id @default(uuid())
+  empresaId  String   @map("empresa_id")
+  sucursalId String   @map("sucursal_id")
+  clienteId  String   @map("cliente_id")
+  usuarioId  String   @map("usuario_id")
+  folio      String?
+  total      Decimal
+  convertidaEnVentaId String? @map("convertida_en_venta_id")
+  creadoEn   DateTime @default(now()) @map("creado_en")
+
+  detalles   CotizacionDetalle[]
+
+  @@map("cotizaciones")
+}
+
+model CotizacionDetalle {
+  id           String     @id @default(uuid())
+  cotizacionId String     @map("cotizacion_id")
+  articuloId   String     @map("articulo_id")
+  cantidad     Decimal
+  precio       Decimal
+
+  cotizacion   Cotizacion @relation(fields: [cotizacionId], references: [id])
+
+  @@map("cotizaciones_detalle")
+}
