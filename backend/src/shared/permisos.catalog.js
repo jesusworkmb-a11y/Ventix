@@ -48,6 +48,7 @@ const PERMISOS_DEFAULT = [
   { clave: 'clientes.gestionar', grupo: 'Clientes', nombre: 'Crear/editar clientes' },
   { clave: 'proveedores.ver', grupo: 'Proveedores', nombre: 'Ver proveedores' },
   { clave: 'proveedores.gestionar', grupo: 'Proveedores', nombre: 'Crear/editar proveedores' },
+  { clave: 'reportes.ver', grupo: 'Reportes', nombre: 'Ver reportes' },
 ];
 
 const TODAS_LAS_CLAVES = PERMISOS_DEFAULT.map((p) => p.clave);
@@ -86,6 +87,7 @@ const ROL_PERMISOS_DEFAULT = {
     'clientes.gestionar',
     'proveedores.ver',
     'proveedores.gestionar',
+    'reportes.ver',
   ],
   Cajero: [
     'venta.crear',

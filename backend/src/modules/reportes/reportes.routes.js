@@ -1,12 +1,20 @@
 const express = require('express');
 
 // MOD-009 Reportes -- Fase 9
-// Placeholder: este router se implementa en su fase correspondiente del plan de trabajo.
 // No agregar endpoints de otros módulos aquí (regla de límites de módulo, §3.1).
-const router = express.Router();
+const asyncHandler = require('../../shared/asyncHandler');
+const auth = require('../../middlewares/auth.middleware');
+const requierePermiso = require('../../middlewares/permisos.middleware');
+const controller = require('./reportes.controller');
 
-router.get('/', (req, res) => {
-  res.json({ modulo: 'reportes', estado: 'pendiente de implementacion' });
-});
+const router = express.Router();
+router.use(auth);
+router.use(requierePermiso('reportes.ver'));
+
+router.get('/ventas', asyncHandler(controller.ventas));
+router.get('/articulos-mas-vendidos', asyncHandler(controller.articulosMasVendidos));
+router.get('/inventario-valorizado', asyncHandler(controller.inventarioValorizado));
+router.get('/compras', asyncHandler(controller.compras));
+router.get('/caja', asyncHandler(controller.caja));
 
 module.exports = router;

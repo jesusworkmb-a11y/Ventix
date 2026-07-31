@@ -22,6 +22,7 @@ function DashboardPage() {
         <Link to="/compras">Compras</Link>
         <Link to="/caja">Caja</Link>
         <Link to="/ventas">Ventas</Link>
+        <Link to="/reportes">Reportes</Link>
       </nav>
 
       <button onClick={logout}>Cerrar sesión</button>
