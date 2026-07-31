@@ -110,7 +110,7 @@ model Usuario {
   sucursales    UsuarioSucursal[]
   permisosExcepcion PermisoUsuarioExcepcion[]
 
-  @@unique([correo]) // REVISAR: un mismo correo puede pertenecer a varias empresas vía UsuarioEmpresa; la cuenta Usuario es única globalmente.
+  @@unique([correo]) // VALIDADO: correo único global (multi-empresa vía UsuarioEmpresa), confirmado por el usuario.
   @@map("usuarios")
 }
 
@@ -196,7 +196,7 @@ model Configuracion {
   id         String  @id @default(uuid())
   empresaId  String  @map("empresa_id")
   clave      String
-  valor      String  // REVISAR: JSON serializado como texto; simple para V1
+  valor      String  // VALIDADO: JSON serializado como texto (no tipo Json nativo), confirmado por el usuario para V1.
 
   empresa    Empresa @relation(fields: [empresaId], references: [id])
 

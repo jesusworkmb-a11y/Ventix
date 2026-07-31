@@ -53,10 +53,10 @@ Si ves "Estado del backend: conectado — DB: connected" en la pantalla, la Fase
 
 ## Qué falta antes de pasar a Fase 1
 
-- [ ] Elegir Render vs. Railway para el backend en producción (queda abierto en la Base Técnica)
-- [ ] Correr `npm run prisma:migrate` contra una base de datos real y revisar que el schema no tenga errores
-- [ ] Configurar el repositorio Git (`git init`, primer commit, remoto en GitHub)
-- [ ] Revisar las notas "// REVISAR" dentro de `schema.prisma` — son decisiones técnicas tomadas para poder avanzar, no cambian ninguna regla de negocio, pero conviene que las valides
+- [x] Elegir Render vs. Railway para el backend en producción — decidido: **Render** (tier gratuito real; el cold start tras inactividad es aceptable para esta etapa)
+- [x] Correr `npm run prisma:migrate` contra una base de datos real y revisar que el schema no tenga errores
+- [x] Configurar el repositorio Git (`git init`, primer commit, remoto en GitHub) — remoto en GitHub pendiente
+- [x] Revisar las notas "// REVISAR" dentro de `schema.prisma` — validadas, marcadas como "VALIDADO" en el schema
 
 ## Siguiente fase
 
