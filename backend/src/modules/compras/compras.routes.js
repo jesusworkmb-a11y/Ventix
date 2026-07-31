@@ -1,12 +1,18 @@
 const express = require('express');
 
 // MOD-005 Compras -- Fase 5
-// Placeholder: este router se implementa en su fase correspondiente del plan de trabajo.
 // No agregar endpoints de otros módulos aquí (regla de límites de módulo, §3.1).
-const router = express.Router();
+const asyncHandler = require('../../shared/asyncHandler');
+const auth = require('../../middlewares/auth.middleware');
+const requierePermiso = require('../../middlewares/permisos.middleware');
+const controller = require('./compras.controller');
 
-router.get('/', (req, res) => {
-  res.json({ modulo: 'compras', estado: 'pendiente de implementacion' });
-});
+const router = express.Router();
+router.use(auth);
+
+router.get('/', requierePermiso('compra.ver'), asyncHandler(controller.listar));
+router.get('/:id', requierePermiso('compra.ver'), asyncHandler(controller.obtener));
+router.post('/', requierePermiso('compra.crear'), asyncHandler(controller.crear));
+router.patch('/:id/cancelar', requierePermiso('compra.cancelar'), asyncHandler(controller.cancelar));
 
 module.exports = router;
