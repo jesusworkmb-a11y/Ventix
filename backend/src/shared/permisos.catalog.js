@@ -49,6 +49,8 @@ const PERMISOS_DEFAULT = [
   { clave: 'proveedores.ver', grupo: 'Proveedores', nombre: 'Ver proveedores' },
   { clave: 'proveedores.gestionar', grupo: 'Proveedores', nombre: 'Crear/editar proveedores' },
   { clave: 'reportes.ver', grupo: 'Reportes', nombre: 'Ver reportes' },
+  { clave: 'herramientas.exportar', grupo: 'Herramientas', nombre: 'Exportar datos a CSV' },
+  { clave: 'herramientas.importar', grupo: 'Herramientas', nombre: 'Importar artículos desde CSV' },
 ];
 
 const TODAS_LAS_CLAVES = PERMISOS_DEFAULT.map((p) => p.clave);
@@ -88,6 +90,8 @@ const ROL_PERMISOS_DEFAULT = {
     'proveedores.ver',
     'proveedores.gestionar',
     'reportes.ver',
+    'herramientas.exportar',
+    'herramientas.importar',
   ],
   Cajero: [
     'venta.crear',
