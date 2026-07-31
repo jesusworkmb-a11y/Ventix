@@ -1,0 +1,39 @@
+const AppError = require('../errors/AppError');
+
+const DIRECCION_POR_TIPO = {
+  ENTRADA_COMPRA: 1,
+  SALIDA_VENTA: -1,
+  ENTRADA_DEVOLUCION: 1,
+  AJUSTE_ENTRADA: 1,
+  AJUSTE_SALIDA: -1,
+  INVENTARIO_INICIAL: 1,
+  TRANSFERENCIA_SALIDA: -1,
+  TRANSFERENCIA_ENTRADA: 1,
+  CANCELACION_COMPRA: -1,
+  CANCELACION_VENTA: 1,
+};
+
+// Único punto de escritura de stock en todo el proyecto. SIEMPRE se llama con el tx de la
+// transacción del documento que origina el movimiento (Ajuste, Transferencia, y más adelante
+// Compra/Venta) — Existencia y el Kardex se confirman o fallan juntos.
+async function aplicarMovimiento(tx, { empresaId, sucursalId, articuloId, tipo, cantidad, referenciaTipo, referenciaId, usuarioId }) {
+  const delta = cantidad * DIRECCION_POR_TIPO[tipo];
+
+  const existencia = await tx.existencia.upsert({
+    where: { sucursalId_articuloId: { sucursalId, articuloId } },
+    create: { empresaId, sucursalId, articuloId, cantidad: delta },
+    update: { cantidad: { increment: delta } },
+  });
+
+  if (Number(existencia.cantidad) < 0) {
+    throw new AppError(409, 'No hay existencia suficiente para esta operación.');
+  }
+
+  const movimiento = await tx.movimientoInventario.create({
+    data: { empresaId, sucursalId, articuloId, tipo, cantidad, referenciaTipo, referenciaId, usuarioId },
+  });
+
+  return { existencia, movimiento };
+}
+
+module.exports = { aplicarMovimiento };

@@ -11,3 +11,7 @@ export function login(datos) {
 export function me() {
   return api.get('/core/me').then((res) => res.data);
 }
+
+export function listarSucursales() {
+  return api.get('/core/sucursales').then((res) => res.data);
+}

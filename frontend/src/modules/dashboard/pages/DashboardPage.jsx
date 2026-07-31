@@ -18,6 +18,7 @@ function DashboardPage() {
         <Link to="/catalogo/configuracion">Configuración de catálogo</Link>
         <Link to="/clientes">Clientes</Link>
         <Link to="/proveedores">Proveedores</Link>
+        <Link to="/inventario/existencias">Existencias</Link>
       </nav>
 
       <button onClick={logout}>Cerrar sesión</button>
