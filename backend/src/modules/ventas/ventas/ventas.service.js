@@ -64,6 +64,9 @@ async function crear({ empresaId, usuarioId, rolId, sucursalId, clienteId, sesio
   if (articulos.length !== new Set(articuloIds).size) {
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
+  if (articulos.some((a) => !a.activo)) {
+    throw new AppError(400, 'Algún artículo indicado está descontinuado y no se puede vender.');
+  }
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
 
   const lineas = [];

@@ -1,7 +1,21 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+
+// Traduce el constraint único de la DB (última línea de defensa cuando validarUnicidad no
+// alcanza a atrapar dos altas/ediciones simultáneas con el mismo SKU/código) al mismo error de
+// negocio 409 que ya lanza validarUnicidad — mismo patrón que el correo duplicado en Core.
+function relanzarConflictoUnicidad(error) {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+    if (error.meta?.target?.includes('sku')) throw new AppError(409, 'Ya existe un artículo con ese SKU.');
+    if (error.meta?.target?.includes('codigoBarras')) {
+      throw new AppError(409, 'Ya existe un artículo con ese código de barras.');
+    }
+  }
+  throw error;
+}
 
 async function listar({ empresaId, filtros }) {
   const where = { empresaId };
@@ -76,18 +90,22 @@ async function crear({ empresaId, usuarioEjecutorId, datos }) {
   await validarReferencias({ empresaId, datos });
   await validarUnicidad({ empresaId, articuloId: null, sku: datos.sku, codigoBarras: datos.codigoBarras });
 
-  return prisma.$transaction(async (tx) => {
-    const articulo = await tx.articulo.create({ data: { empresaId, ...datos } });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'CREAR',
-      entidad: 'Articulo',
-      entidadId: articulo.id,
-      valoresDespues: toJson(articulo),
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const articulo = await tx.articulo.create({ data: { empresaId, ...datos } });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'CREAR',
+        entidad: 'Articulo',
+        entidadId: articulo.id,
+        valoresDespues: toJson(articulo),
+      });
+      return articulo;
     });
-    return articulo;
-  });
+  } catch (error) {
+    relanzarConflictoUnicidad(error);
+  }
 }
 
 async function actualizar({ empresaId, usuarioEjecutorId, articuloId, datos }) {
@@ -97,19 +115,23 @@ async function actualizar({ empresaId, usuarioEjecutorId, articuloId, datos }) {
   await validarReferencias({ empresaId, datos });
   await validarUnicidad({ empresaId, articuloId, sku: datos.sku, codigoBarras: datos.codigoBarras });
 
-  return prisma.$transaction(async (tx) => {
-    const actualizado = await tx.articulo.update({ where: { id: articuloId }, data: datos });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'ACTUALIZAR',
-      entidad: 'Articulo',
-      entidadId: articuloId,
-      valoresAntes: toJson(articulo),
-      valoresDespues: toJson(actualizado),
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const actualizado = await tx.articulo.update({ where: { id: articuloId }, data: datos });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'ACTUALIZAR',
+        entidad: 'Articulo',
+        entidadId: articuloId,
+        valoresAntes: toJson(articulo),
+        valoresDespues: toJson(actualizado),
+      });
+      return actualizado;
     });
-    return actualizado;
-  });
+  } catch (error) {
+    relanzarConflictoUnicidad(error);
+  }
 }
 
 // Reemplaza el set completo de unidades alternas del artículo (mismo patrón que
