@@ -22,9 +22,10 @@ async function registrarMovimientoCaja(tx, {
   usuarioId,
   autorizadoPorId = null,
 }) {
+  // id es TEXT, no uuid nativo (uuid() de Prisma es un default generado en cliente) — sin cast.
   const [sesion] = await tx.$queryRaw`
     SELECT id, caja_id AS "cajaId", fondo_inicial AS "fondoInicial", cerrada_en AS "cerradaEn"
-    FROM sesiones_caja WHERE id = ${sesionCajaId}::uuid FOR UPDATE
+    FROM sesiones_caja WHERE id = ${sesionCajaId} FOR UPDATE
   `;
   if (!sesion) throw new AppError(404, 'Sesión de caja no encontrada.');
 

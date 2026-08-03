@@ -40,9 +40,12 @@ async function abrir({ empresaId, usuarioId, cajaId, fondoInicial }) {
     // concurrentes de la misma caja quedan serializadas en vez de correr en paralelo
     // (sin el lock, ambas podían pasar el check de "sin sesión abierta" y crear dos
     // sesiones simultáneas — verificado en vivo en QA de Caja).
+    // id/empresa_id son TEXT (uuid() de Prisma es un default generado en cliente, no el tipo
+    // nativo uuid de Postgres) — sin cast, comparar contra un parámetro ::uuid revienta con
+    // "operator does not exist: text = uuid".
     const [caja] = await tx.$queryRaw`
       SELECT id, sucursal_id AS "sucursalId", activa
-      FROM cajas WHERE id = ${cajaId}::uuid AND empresa_id = ${empresaId}::uuid FOR UPDATE
+      FROM cajas WHERE id = ${cajaId} AND empresa_id = ${empresaId} FOR UPDATE
     `;
     if (!caja) throw new AppError(400, 'La caja indicada no pertenece a esta empresa.');
     // El flag activa no se validaba en ningún punto (solo se podía set/leer vía CRUD de
@@ -118,9 +121,10 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
     // pasaban ambos el check de "no cerrada" y devolvían 200 con saldoEsperado/diferencia
     // distintos (último UPDATE gana) — verificado en vivo en QA de Caja: 4 de 5 cierres
     // concurrentes devolvieron 200 con diferencia distinta cada uno.
+    // id es TEXT, no uuid nativo (ver nota en abrir()) — sin cast.
     const [sesion] = await tx.$queryRaw`
       SELECT id, caja_id AS "cajaId", fondo_inicial AS "fondoInicial", cerrada_en AS "cerradaEn"
-      FROM sesiones_caja WHERE id = ${sesionId}::uuid FOR UPDATE
+      FROM sesiones_caja WHERE id = ${sesionId} FOR UPDATE
     `;
     if (!sesion) throw new AppError(404, 'Sesión de caja no encontrada.');
     const caja = await tx.caja.findFirst({ where: { id: sesion.cajaId, empresaId } });
