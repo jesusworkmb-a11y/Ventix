@@ -41,6 +41,9 @@ async function obtener({ empresaId, devolucionId }) {
 async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, sesionCajaId, detalles }) {
   const venta = await prisma.venta.findFirst({ where: { id: ventaId, empresaId }, include: { detalles: true } });
   if (!venta) throw new AppError(400, 'La venta indicada no pertenece a esta empresa.');
+  if (venta.estado !== 'CONFIRMADA') {
+    throw new AppError(400, 'Solo se pueden procesar devoluciones sobre ventas confirmadas.');
+  }
 
   const autorizador = await prisma.usuarioEmpresa.findUnique({
     where: { usuarioId_empresaId: { usuarioId: autorizadoPorId, empresaId } },
