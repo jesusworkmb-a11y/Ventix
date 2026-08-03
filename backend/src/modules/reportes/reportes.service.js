@@ -1,4 +1,5 @@
 const prisma = require('../../config/db');
+const redondear = require('../../shared/redondear');
 
 async function reporteVentas({ empresaId, sucursalId, desde, hasta }) {
   const where = { empresaId, estado: 'CONFIRMADA' };
@@ -20,15 +21,29 @@ async function reporteVentas({ empresaId, sucursalId, desde, hasta }) {
   ]);
 
   const ventaIds = ventas.map((v) => v.id);
-  const pagosPorMetodo = ventaIds.length
-    ? await prisma.pago.groupBy({ by: ['metodo'], where: { ventaId: { in: ventaIds } }, _sum: { monto: true } })
-    : [];
+  // Una devolución no cambia venta.estado ni sus totales guardados (queda CONFIRMADA con el
+  // monto original) -- sin esto, "total" sobreestima el ingreso neto en cuanto hay una
+  // devolución. Se suman los reembolsos de las devoluciones de estas mismas ventas (sin
+  // importar cuándo se procesó la devolución) para exponer también la cifra neta.
+  const [pagosPorMetodo, devolucionesAgg] = await Promise.all([
+    ventaIds.length
+      ? prisma.pago.groupBy({ by: ['metodo'], where: { ventaId: { in: ventaIds } }, _sum: { monto: true } })
+      : [],
+    ventaIds.length
+      ? prisma.devolucion.aggregate({ where: { ventaId: { in: ventaIds } }, _sum: { reembolso: true } })
+      : { _sum: { reembolso: null } },
+  ]);
+
+  const total = Number(resumen._sum.total || 0);
+  const totalDevoluciones = Number(devolucionesAgg._sum.reembolso || 0);
 
   return {
     numeroVentas: resumen._count._all,
     subtotal: resumen._sum.subtotal || 0,
     impuestos: resumen._sum.impuestos || 0,
     total: resumen._sum.total || 0,
+    totalDevoluciones,
+    totalNeto: redondear(total - totalDevoluciones),
     ticketPromedio: resumen._avg.total || 0,
     porMetodoPago: pagosPorMetodo.map((p) => ({ metodo: p.metodo, monto: p._sum.monto })),
   };
@@ -51,14 +66,17 @@ async function reporteArticulosMasVendidos({ empresaId, sucursalId, desde, hasta
 
   const detalles = await prisma.ventaDetalle.findMany({
     where: { ventaId: { in: ventaIds } },
-    select: { articuloId: true, cantidad: true, precio: true },
+    select: { articuloId: true, cantidad: true, precio: true, cantidadDevuelta: true },
   });
 
+  // Se descuenta lo devuelto de cada línea -- si no, un artículo devuelto por completo seguiría
+  // apareciendo como "vendido" aquí (mismo hueco que en reporteVentas#total).
   const acumulado = new Map();
   for (const d of detalles) {
+    const cantidadNeta = Number(d.cantidad) - Number(d.cantidadDevuelta);
     const actual = acumulado.get(d.articuloId) || { cantidad: 0, monto: 0 };
-    actual.cantidad += Number(d.cantidad);
-    actual.monto += Number(d.cantidad) * Number(d.precio);
+    actual.cantidad += cantidadNeta;
+    actual.monto += cantidadNeta * Number(d.precio);
     acumulado.set(d.articuloId, actual);
   }
 

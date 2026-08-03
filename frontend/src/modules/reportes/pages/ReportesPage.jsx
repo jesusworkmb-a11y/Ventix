@@ -87,6 +87,7 @@ function ReportesPage() {
         <div>
           <p>Número de ventas: {resultado.numeroVentas}</p>
           <p>Subtotal: {resultado.subtotal} — Impuestos: {resultado.impuestos} — Total: {resultado.total}</p>
+          <p>Devoluciones: {resultado.totalDevoluciones} — <strong>Neto: {resultado.totalNeto}</strong></p>
           <p>Ticket promedio: {Number(resultado.ticketPromedio).toFixed(2)}</p>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><th style={{ textAlign: 'left' }}>Método</th><th style={{ textAlign: 'left' }}>Monto</th></tr></thead>
