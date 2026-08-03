@@ -72,11 +72,9 @@ Notas del despliegue:
    `FRONTEND_URL` (el frontend ya desplegado), no desde `localhost:5173` — para verificar cambios
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core, MOD-008
-   Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras, MOD-003
-   Clientes/Proveedores y MOD-009 Reportes ya con su primera pasada de QA (ver secciones abajo)
-   — lo siguiente es a elección: QA de MOD-010 Herramientas (el único módulo que falta), o
-   nuevas funcionalidades fuera del plan original.
+5. Dile qué sigue: con los 10 módulos completos y ya en producción, y los 10 ya con su primera
+   pasada de QA (ver secciones abajo) — lo siguiente es a elección: una segunda ronda de QA más
+   profunda sobre algún módulo, o nuevas funcionalidades fuera del plan original.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -430,6 +428,38 @@ Encontrado y corregido:
 
 Sin pendientes abiertos de esta pasada.
 
+## QA de MOD-010 Herramientas (2026-08-03)
+
+Primera pasada de QA sobre importar/exportar CSV — cierra el ciclo de QA de los 10 módulos
+originales. Sin máquina de estados (create-only, fila por fila), así que el foco fue manejo de
+errores y validación de datos de entrada en vez de condiciones de carrera. Encontrado y
+corregido en [herramientas.service.js](backend/src/modules/herramientas/herramientas.service.js):
+
+- **Errores técnicos crudos de Prisma filtrados directo al usuario**, en dos casos distintos:
+  - Condición de carrera de baja frecuencia: la verificación de SKU/código de barras duplicado
+    usa un `Set` en memoria cargado una sola vez al inicio de la importación, sin atrapar el
+    constraint único de la DB después — mismo hueco que el SKU duplicado ya corregido en
+    `articulos.service.js#crear`, pero sin heredarlo porque esta ruta usa su propio
+    `tx.articulo.create` inline. Verificado en vivo: 5 importaciones concurrentes del mismo CSV
+    con un SKU nuevo, 4 de 5 mostraban `"Invalid \`prisma.articulo.create()\` invocation..."` en
+    vez de un mensaje de negocio.
+  - Una columna numérica inválida (ej. `costo` con texto) dejaba pasar `NaN` hasta Prisma, que lo
+    rechazaba con un volcado técnico multilínea del validador completo. Verificado en vivo.
+  
+  Ambos corregidos: el primero traduciendo el `P2002` al mismo mensaje 409 que usa Catálogo; el
+  segundo validando `costo`/`precio`/`stockMinimo`/`stockMaximo` antes de tocar la DB.
+- **`exportarArticulos` incluye la columna `activo` en el CSV, pero `importarArticulos` nunca la
+  leía** — todo artículo importado quedaba `activo:true` sin importar lo que dijera el CSV.
+  Verificado en vivo: fila con `activo=false`, el artículo creado quedó `activo:true`. Corregido
+  leyendo la columna (`"false"`/`"0"` = inactivo).
+
+Investigado y descartado (no es un bug): un CSV con BOM de UTF-8 al inicio (típico al guardar
+desde Excel) se maneja bien porque `String.trim()` de JS quita el carácter BOM del encabezado de
+la primera columna.
+
+Sin pendientes abiertos de esta pasada. Con esto, los 10 módulos del plan original ya tuvieron su
+primera ronda de QA.
+
 ## Qué contiene
 
 ```text
@@ -493,9 +523,9 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 
 ## Qué sigue
 
-Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
-Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras, MOD-003
-Clientes/Proveedores y MOD-009 Reportes ya pasaron su primera ronda de QA (ver secciones arriba).
-Todos los vacíos detectados en esas pasadas ya están resueltos (con una excepción documentada de
-severidad muy baja en Clientes). A elección: QA de MOD-010 Herramientas (el único módulo que
-falta), o nuevas funcionalidades fuera del plan original.
+Los 10 módulos del plan original están completos y en producción, y los 10 ya tuvieron su
+primera ronda de QA (ver secciones arriba: Core, Ventas, Caja, Inventario, Catálogo, Compras,
+Clientes/Proveedores, Reportes, Herramientas). Todos los vacíos detectados en esas pasadas ya
+están resueltos (con una excepción documentada de severidad muy baja en Clientes). A elección:
+una segunda ronda de QA más profunda sobre algún módulo, o nuevas funcionalidades fuera del plan
+original.
