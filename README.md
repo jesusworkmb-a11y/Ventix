@@ -73,10 +73,10 @@ Notas del despliegue:
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core, MOD-008
-   Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras y MOD-003
-   Clientes/Proveedores ya con su primera pasada de QA (ver secciones abajo) — lo siguiente es a
-   elección: QA de otro módulo (Reportes, Herramientas), o nuevas funcionalidades fuera del plan
-   original.
+   Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras, MOD-003
+   Clientes/Proveedores y MOD-009 Reportes ya con su primera pasada de QA (ver secciones abajo)
+   — lo siguiente es a elección: QA de MOD-010 Herramientas (el único módulo que falta), o
+   nuevas funcionalidades fuera del plan original.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -407,6 +407,29 @@ Cerrados dos vacíos de UI encontrados al verificar los fixes en el navegador:
 Todo verificado en vivo contra producción, incluidos clics reales en el navegador (edición de
 Proveedores y Clientes, protección del Cliente General).
 
+## QA de MOD-009 Reportes (2026-08-03)
+
+Primera pasada de QA sobre reportes de ventas/artículos/inventario/compras/caja — este módulo es
+de solo lectura (no tiene alta/confirmar/cancelar), así que no aplica el patrón de condición de
+carrera de los módulos anteriores; el foco fue corrección de cálculos y alcance multi-tenant.
+Encontrado y corregido:
+
+- **El reporte de ventas no descontaba las devoluciones.** Una devolución no cambia
+  `venta.estado` (queda `CONFIRMADA`) ni los totales guardados en la venta — `reporteVentas`
+  sumaba el total original de cada venta confirmada sin restar lo ya reembolsado en
+  devoluciones posteriores, sobreestimando el ingreso neto. Verificado en vivo: el reporte
+  mostraba `total: 265.64` con `38.20` ya reembolsados en devoluciones sobre esas mismas ventas
+  (neto real: `227.44`). Mismo hueco en `reporteArticulosMasVendidos`, que sumaba
+  `VentaDetalle.cantidad` sin restar `cantidadDevuelta` — un artículo devuelto por completo
+  seguía apareciendo como "vendido". Corregido en
+  [reportes.service.js](backend/src/modules/reportes/reportes.service.js): `reporteVentas` ahora
+  expone `totalDevoluciones` y `totalNeto` (conserva `total` como cifra bruta), y
+  `reporteArticulosMasVendidos` usa cantidad neta (`cantidad - cantidadDevuelta`) por línea.
+  [ReportesPage.jsx](frontend/src/modules/reportes/pages/ReportesPage.jsx) ahora muestra
+  Devoluciones/Neto. Verificado en vivo contra producción, incluida la UI real en el navegador.
+
+Sin pendientes abiertos de esta pasada.
+
 ## Qué contiene
 
 ```text
@@ -471,8 +494,8 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
-Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras y MOD-003
-Clientes/Proveedores ya pasaron su primera ronda de QA (ver secciones arriba). Todos los vacíos
-detectados en esas pasadas ya están resueltos (con una excepción documentada de severidad muy
-baja en Clientes). A elección: QA de algún otro módulo (Reportes, Herramientas), o nuevas
-funcionalidades fuera del plan original.
+Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras, MOD-003
+Clientes/Proveedores y MOD-009 Reportes ya pasaron su primera ronda de QA (ver secciones arriba).
+Todos los vacíos detectados en esas pasadas ya están resueltos (con una excepción documentada de
+severidad muy baja en Clientes). A elección: QA de MOD-010 Herramientas (el único módulo que
+falta), o nuevas funcionalidades fuera del plan original.
