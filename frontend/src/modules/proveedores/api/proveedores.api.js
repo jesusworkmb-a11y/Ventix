@@ -6,3 +6,6 @@ export function listarProveedores(params) {
 export function crearProveedor(datos) {
   return api.post('/proveedores', datos).then((res) => res.data);
 }
+export function actualizarProveedor(id, datos) {
+  return api.patch(`/proveedores/${id}`, datos).then((res) => res.data);
+}

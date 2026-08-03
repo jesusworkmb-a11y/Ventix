@@ -173,7 +173,7 @@ function CotizacionesPage() {
       <label>
         Cliente
         <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-          {clientes.map((c) => (
+          {clientes.filter((c) => c.activo).map((c) => (
             <option key={c.id} value={c.id}>{c.nombre}{c.esGeneral ? ' (general)' : ''}</option>
           ))}
         </select>

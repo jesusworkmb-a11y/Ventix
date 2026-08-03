@@ -70,6 +70,7 @@ async function crear({ empresaId, usuarioId, rolId, sucursalId, clienteId, sesio
 
   const cliente = await prisma.cliente.findFirst({ where: { id: clienteId, empresaId } });
   if (!cliente) throw new AppError(400, 'El cliente indicado no pertenece a esta empresa.');
+  if (!cliente.activo) throw new AppError(400, 'El cliente está inactivo y no se le pueden registrar ventas.');
 
   const articuloIds = detalles.map((d) => d.articuloId);
   const articulos = await prisma.articulo.findMany({
