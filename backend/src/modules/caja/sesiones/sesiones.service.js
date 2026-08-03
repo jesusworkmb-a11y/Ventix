@@ -134,9 +134,12 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
 
     const movimientos = await tx.movimientoCaja.findMany({ where: { sesionCajaId: sesionId } });
     // Sin redondear, la suma de muchos movimientos en punto flotante de JS arrastra artefactos
-    // (mismo problema documentado en shared/redondear.js) que terminaban persistidos tal cual en
-    // saldoEsperado/diferencia -- verificado en vivo: "Esperado: 843.4400000000002" mostrado (y
-    // guardado) sin redondear al cerrar una sesión real.
+    // (mismo problema documentado en shared/redondear.js). Pero redondear() sola no alcanza:
+    // pasarle a un campo Decimal de Prisma un `number` de JS (en vez de un string) puede volver
+    // a introducir el mismo artefacto en la conversión interna a Decimal -- verificado en vivo
+    // con un debug marker: la variable local ya redondeada daba 9.7 limpio, pero el valor que
+    // Prisma efectivamente persistía y devolvía era "9.699999999999999". Se pasa como string
+    // (toFixed(2)) para que decimal.js lo parsee de forma exacta, sin pasar por un `number`.
     const saldoEsperado = redondear(
       movimientos.reduce((acc, m) => acc + Number(m.monto) * (SIGNO_POR_TIPO[m.tipo] || 0), Number(sesion.fondoInicial)),
     );
@@ -144,17 +147,13 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
 
     const actualizada = await tx.sesionCaja.update({
       where: { id: sesionId },
-      data: { cerradaEn: new Date(), saldoEsperado, saldoReal, diferencia },
+      data: {
+        cerradaEn: new Date(),
+        saldoEsperado: saldoEsperado.toFixed(2),
+        saldoReal: Number(saldoReal).toFixed(2),
+        diferencia: diferencia.toFixed(2),
+      },
     });
-    actualizada.__debugMarker = 'CERRAR_V3_' + diferencia;
-    actualizada.__debugInfo = {
-      localDiferencia: diferencia,
-      localDiferenciaType: typeof diferencia,
-      returnedDiferencia: actualizada.diferencia,
-      returnedDiferenciaType: typeof actualizada.diferencia,
-      returnedDiferenciaCtor: actualizada.diferencia?.constructor?.name,
-      returnedDiferenciaToString: String(actualizada.diferencia),
-    };
     await registrarAuditoria(tx, {
       empresaId,
       sucursalId: caja.sucursalId,
