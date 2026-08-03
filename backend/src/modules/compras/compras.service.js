@@ -75,6 +75,7 @@ async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }
 
   const proveedor = await prisma.proveedor.findFirst({ where: { id: proveedorId, empresaId } });
   if (!proveedor) throw new AppError(400, 'El proveedor indicado no pertenece a esta empresa.');
+  if (!proveedor.activo) throw new AppError(400, 'El proveedor está inactivo y no se le pueden registrar compras.');
 
   const articuloIds = detalles.map((d) => d.articuloId);
   const articulos = await prisma.articulo.findMany({ where: { id: { in: articuloIds }, empresaId } });
@@ -170,6 +171,19 @@ async function cancelar({ empresaId, usuarioId, compraId }) {
   }
 
   return prisma.$transaction(async (tx) => {
+    // El check de arriba no es atómico con el resto: dos cancelar() casi simultáneos pasaban
+    // ambos el check y aplicaban la reversión de stock dos veces (mismo patrón que
+    // transferencias.recibir en Inventario y el resto de las condiciones de carrera encontradas
+    // en cada módulo de este QA). Se reclama la compra con un UPDATE...WHERE estado='CONFIRMADA'
+    // antes de aplicar los movimientos.
+    const reclamada = await tx.compra.updateMany({
+      where: { id: compraId, estado: 'CONFIRMADA' },
+      data: { estado: 'CANCELADA' },
+    });
+    if (reclamada.count === 0) {
+      throw new AppError(400, 'Solo se pueden cancelar compras confirmadas.');
+    }
+
     for (const reversion of reversiones) {
       await aplicarMovimiento(tx, {
         empresaId,
@@ -183,7 +197,7 @@ async function cancelar({ empresaId, usuarioId, compraId }) {
       });
     }
 
-    const actualizada = await tx.compra.update({ where: { id: compraId }, data: { estado: 'CANCELADA' } });
+    const actualizada = await tx.compra.findUnique({ where: { id: compraId } });
 
     await registrarAuditoria(tx, {
       empresaId,

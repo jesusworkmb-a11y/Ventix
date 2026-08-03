@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { listarCompras, crearCompra } from '../api/compras.api';
+import { listarCompras, crearCompra, cancelarCompra } from '../api/compras.api';
 import { listarProveedores } from '../../proveedores/api/proveedores.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos, listarUnidades } from '../../catalogo/api/catalogo.api';
@@ -39,6 +39,16 @@ function ComprasPage() {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
+  async function handleCancelar(compraId) {
+    setError('');
+    try {
+      await cancelarCompra(compraId);
+      cargarCompras();
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo cancelar la compra.');
+    }
+  }
+
   async function agregar(e) {
     e.preventDefault();
     setError('');
@@ -75,6 +85,7 @@ function ComprasPage() {
             <th style={{ textAlign: 'left' }}>Sucursal</th>
             <th style={{ textAlign: 'left' }}>Total</th>
             <th style={{ textAlign: 'left' }}>Estado</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -85,6 +96,11 @@ function ComprasPage() {
               <td>{c.sucursal?.nombre}</td>
               <td>{c.total}</td>
               <td>{c.estado}</td>
+              <td>
+                {c.estado === 'CONFIRMADA' && (
+                  <button type="button" onClick={() => handleCancelar(c.id)}>Cancelar</button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -97,7 +113,7 @@ function ComprasPage() {
           Proveedor
           <select value={form.proveedorId} onChange={(e) => actualizarCampo('proveedorId', e.target.value)} required>
             <option value="">Selecciona...</option>
-            {proveedores.map((p) => (
+            {proveedores.filter((p) => p.activo).map((p) => (
               <option key={p.id} value={p.id}>{p.nombre}</option>
             ))}
           </select>

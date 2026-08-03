@@ -6,3 +6,6 @@ export function listarCompras(params) {
 export function crearCompra(datos) {
   return api.post('/compras', datos).then((res) => res.data);
 }
+export function cancelarCompra(id) {
+  return api.patch(`/compras/${id}/cancelar`).then((res) => res.data);
+}
