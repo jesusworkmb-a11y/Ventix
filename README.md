@@ -73,9 +73,9 @@ Notas del despliegue:
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core, MOD-008
-   Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo y MOD-005 Compras ya con su primera
-   pasada de QA (ver secciones abajo) — lo siguiente es a elección: QA de otro módulo
-   (Clientes/Proveedores, Reportes, Herramientas), o nuevas funcionalidades fuera del plan
+   Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras y MOD-003
+   Clientes/Proveedores ya con su primera pasada de QA (ver secciones abajo) — lo siguiente es a
+   elección: QA de otro módulo (Reportes, Herramientas), o nuevas funcionalidades fuera del plan
    original.
 
 ## QA de MOD-001 Core (2026-08-02)
@@ -365,6 +365,48 @@ alta, nunca cancelación, pese a que el backend ya soportaba `PATCH /:id/cancela
 
 Sin pendientes abiertos de esta pasada.
 
+## QA de MOD-003 Clientes/Proveedores (2026-08-03)
+
+Primera pasada de QA sobre clientes/proveedores — revisión de código + pruebas en vivo contra
+producción. A diferencia de los módulos anteriores, Clientes/Proveedores es CRUD simple sin
+máquina de estados (crear/cancelar), así que no tiene el patrón de condición de carrera visto en
+Ventas/Caja/Inventario/Compras. Encontrado y corregido:
+
+- **El flag `activo` de un cliente no se validaba en ningún lado.** Se podía desactivar un
+  cliente y seguir vendiéndole con total normalidad — mismo tipo de vacío que `BLOQUEADO` en
+  Core, `activa` en Caja, `articulo.activo` en Catálogo y `proveedor.activo` en Compras.
+  Verificado en vivo: cliente con `activo:false`, `POST /ventas/ventas` devolvía `201`.
+  Corregido en [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js)
+  (`crear`), que ahora rechaza la venta si el cliente está inactivo; cubre también la conversión
+  de cotización en venta, que reusa esta misma función.
+
+Investigado pero no corregido (severidad muy baja): `asegurarClienteGeneral()` en
+[clientes.service.js](backend/src/modules/clientes/clientes.service.js) crea el "Cliente
+General" de forma perezosa la primera vez que alguien lista clientes, con un check-then-act no
+atómico (mismo tipo de patrón que las demás condiciones de carrera de este QA). En teoría dos
+`listar()` concurrentes en una empresa recién registrada podrían crear dos "Cliente General".
+Se intentó reproducir en vivo con una empresa nueva y 8 requests concurrentes sin éxito — la
+ventana es demasiado angosta en la práctica, el impacto es solo cosmético (un nombre duplicado
+en el selector) y la ventana de riesgo real dura solo hasta el primer `listar()` exitoso de la
+vida de la empresa. Queda documentado por si se decide reforzar más adelante.
+
+Cerrados dos vacíos de UI encontrados al verificar los fixes en el navegador:
+- **Proveedores no tenía ninguna edición en el frontend**, ni siquiera para reactivar/desactivar,
+  pese a que el backend ya soportaba `PATCH /proveedores/:id`. Agregada edición inline por fila
+  en [ProveedoresPage.jsx](frontend/src/modules/proveedores/pages/ProveedoresPage.jsx) (mismo
+  patrón que ArticulosPage).
+- **Clientes solo permitía cambiar la lista de precio**, no el resto de los campos ni `activo`.
+  Agregada edición inline completa en
+  [ClientesPage.jsx](frontend/src/modules/clientes/pages/ClientesPage.jsx), protegiendo al
+  Cliente General de ser desactivado desde la UI (el checkbox de activo no se muestra para él,
+  igual que ya lo protege el backend). Los selectores de cliente en
+  [VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx) y
+  [CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx) ahora excluyen
+  clientes inactivos, mismo criterio que el selector de proveedor en ComprasPage.
+
+Todo verificado en vivo contra producción, incluidos clics reales en el navegador (edición de
+Proveedores y Clientes, protección del Cliente General).
+
 ## Qué contiene
 
 ```text
@@ -429,7 +471,8 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
-Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo y MOD-005 Compras ya pasaron su
-primera ronda de QA (ver secciones arriba). Todos los vacíos detectados en esas pasadas ya están
-resueltos. A elección: QA de algún otro módulo (Clientes/Proveedores, Reportes, Herramientas), o
-nuevas funcionalidades fuera del plan original.
+Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo, MOD-005 Compras y MOD-003
+Clientes/Proveedores ya pasaron su primera ronda de QA (ver secciones arriba). Todos los vacíos
+detectados en esas pasadas ya están resueltos (con una excepción documentada de severidad muy
+baja en Clientes). A elección: QA de algún otro módulo (Reportes, Herramientas), o nuevas
+funcionalidades fuera del plan original.
