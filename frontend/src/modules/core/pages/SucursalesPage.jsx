@@ -67,10 +67,13 @@ function SucursalesPage() {
     try {
       await actualizarSucursal(id, {
         nombre: editForm.nombre,
-        telefono: editForm.telefono || undefined,
+        // telefono/direccion/responsable son texto libre: un valor vacío es válido y debe
+        // poder borrar lo que ya había. correo sí necesita omitirse si está vacío porque el
+        // backend lo valida como email y "" no pasa esa validación.
+        telefono: editForm.telefono,
         correo: editForm.correo || undefined,
-        direccion: editForm.direccion || undefined,
-        responsable: editForm.responsable || undefined,
+        direccion: editForm.direccion,
+        responsable: editForm.responsable,
         estado: editForm.estado,
       });
       setEditandoId(null);
