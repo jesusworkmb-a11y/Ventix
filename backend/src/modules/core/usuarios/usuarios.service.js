@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
@@ -26,24 +27,38 @@ async function crear({ empresaId, usuarioEjecutorId, datos }) {
   const correoExistente = await prisma.usuario.findUnique({ where: { correo: datos.correo } });
   if (correoExistente) throw new AppError(409, 'Ya existe una cuenta con ese correo.');
 
-  return prisma.$transaction(async (tx) => {
-    const passwordHash = await bcrypt.hash(datos.password, 10);
-    const usuario = await tx.usuario.create({
-      data: { nombre: datos.nombre, correo: datos.correo, passwordHash },
-    });
-    await tx.usuarioEmpresa.create({ data: { usuarioId: usuario.id, empresaId, rolId: datos.rolId } });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const passwordHash = await bcrypt.hash(datos.password, 10);
+      const usuario = await tx.usuario.create({
+        data: { nombre: datos.nombre, correo: datos.correo, passwordHash },
+      });
+      await tx.usuarioEmpresa.create({ data: { usuarioId: usuario.id, empresaId, rolId: datos.rolId } });
 
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'CREAR',
-      entidad: 'Usuario',
-      entidadId: usuario.id,
-      valoresDespues: toJson({ nombre: usuario.nombre, correo: usuario.correo, rolId: datos.rolId }),
-    });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'CREAR',
+        entidad: 'Usuario',
+        entidadId: usuario.id,
+        valoresDespues: toJson({ nombre: usuario.nombre, correo: usuario.correo, rolId: datos.rolId }),
+      });
 
-    return { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol };
-  });
+      return { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol };
+    });
+  } catch (error) {
+    // Mismo saneo de condición de carrera que en auth.service.registrarEmpresa: el check
+    // previo no es atómico, así que el constraint único de la DB es la última línea de
+    // defensa contra dos altas simultáneas con el mismo correo.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      error.meta?.target?.includes('correo')
+    ) {
+      throw new AppError(409, 'Ya existe una cuenta con ese correo.');
+    }
+    throw error;
+  }
 }
 
 async function actualizar({ empresaId, usuarioEjecutorId, usuarioId, datos }) {

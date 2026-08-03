@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { ROL_PERMISOS_DEFAULT } = require('../../../shared/permisos.catalog');
@@ -28,56 +29,70 @@ async function registrarEmpresa({ empresa, admin }) {
     throw new AppError(409, 'Ya existe una cuenta con ese correo. Inicia sesión en su lugar.');
   }
 
-  return prisma.$transaction(async (tx) => {
-    const nuevaEmpresa = await tx.empresa.create({ data: empresa });
-    const sucursal = await tx.sucursal.create({
-      data: { empresaId: nuevaEmpresa.id, nombre: 'Matriz', clave: 'MAT' },
-    });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const nuevaEmpresa = await tx.empresa.create({ data: empresa });
+      const sucursal = await tx.sucursal.create({
+        data: { empresaId: nuevaEmpresa.id, nombre: 'Matriz', clave: 'MAT' },
+      });
 
-    const roles = {};
-    for (const nombre of ROLES_BASE) {
-      roles[nombre] = await tx.rol.create({ data: { empresaId: nuevaEmpresa.id, nombre } });
-    }
-
-    const permisos = await tx.permiso.findMany();
-    const permisoIdPorClave = new Map(permisos.map((p) => [p.clave, p.id]));
-
-    const filasRolPermiso = [];
-    for (const [nombreRol, claves] of Object.entries(ROL_PERMISOS_DEFAULT)) {
-      for (const clave of claves) {
-        const permisoId = permisoIdPorClave.get(clave);
-        if (permisoId) filasRolPermiso.push({ rolId: roles[nombreRol].id, permisoId });
+      const roles = {};
+      for (const nombre of ROLES_BASE) {
+        roles[nombre] = await tx.rol.create({ data: { empresaId: nuevaEmpresa.id, nombre } });
       }
+
+      const permisos = await tx.permiso.findMany();
+      const permisoIdPorClave = new Map(permisos.map((p) => [p.clave, p.id]));
+
+      const filasRolPermiso = [];
+      for (const [nombreRol, claves] of Object.entries(ROL_PERMISOS_DEFAULT)) {
+        for (const clave of claves) {
+          const permisoId = permisoIdPorClave.get(clave);
+          if (permisoId) filasRolPermiso.push({ rolId: roles[nombreRol].id, permisoId });
+        }
+      }
+      await tx.rolPermiso.createMany({ data: filasRolPermiso });
+      await tx.secuencia.createMany({ data: buildSecuenciasIniciales(nuevaEmpresa.id, sucursal) });
+
+      const passwordHash = await bcrypt.hash(admin.password, 10);
+      const usuario = await tx.usuario.create({
+        data: { nombre: admin.nombre, correo: admin.correo, passwordHash },
+      });
+      await tx.usuarioEmpresa.create({
+        data: { usuarioId: usuario.id, empresaId: nuevaEmpresa.id, rolId: roles.Administrador.id },
+      });
+      await tx.usuarioSucursal.create({ data: { usuarioId: usuario.id, sucursalId: sucursal.id } });
+
+      await registrarAuditoria(tx, {
+        empresaId: nuevaEmpresa.id,
+        usuarioEjecutorId: usuario.id,
+        accion: 'CREAR',
+        entidad: 'Empresa',
+        entidadId: nuevaEmpresa.id,
+      });
+
+      const token = generarToken({ usuarioId: usuario.id, empresaId: nuevaEmpresa.id, rolId: roles.Administrador.id });
+      return {
+        token,
+        empresa: nuevaEmpresa,
+        usuario: { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo },
+        sucursal,
+        rol: roles.Administrador,
+      };
+    });
+  } catch (error) {
+    // Cierra la condición de carrera del check previo: si dos registros con el mismo correo
+    // llegan casi simultáneos, ambos pueden pasar el check y solo el constraint de la DB
+    // detiene al segundo. Sin esto, ese segundo request revienta como 500 crudo en vez de 409.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      error.meta?.target?.includes('correo')
+    ) {
+      throw new AppError(409, 'Ya existe una cuenta con ese correo. Inicia sesión en su lugar.');
     }
-    await tx.rolPermiso.createMany({ data: filasRolPermiso });
-    await tx.secuencia.createMany({ data: buildSecuenciasIniciales(nuevaEmpresa.id, sucursal) });
-
-    const passwordHash = await bcrypt.hash(admin.password, 10);
-    const usuario = await tx.usuario.create({
-      data: { nombre: admin.nombre, correo: admin.correo, passwordHash },
-    });
-    await tx.usuarioEmpresa.create({
-      data: { usuarioId: usuario.id, empresaId: nuevaEmpresa.id, rolId: roles.Administrador.id },
-    });
-    await tx.usuarioSucursal.create({ data: { usuarioId: usuario.id, sucursalId: sucursal.id } });
-
-    await registrarAuditoria(tx, {
-      empresaId: nuevaEmpresa.id,
-      usuarioEjecutorId: usuario.id,
-      accion: 'CREAR',
-      entidad: 'Empresa',
-      entidadId: nuevaEmpresa.id,
-    });
-
-    const token = generarToken({ usuarioId: usuario.id, empresaId: nuevaEmpresa.id, rolId: roles.Administrador.id });
-    return {
-      token,
-      empresa: nuevaEmpresa,
-      usuario: { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo },
-      sucursal,
-      rol: roles.Administrador,
-    };
-  });
+    throw error;
+  }
 }
 
 async function login({ correo, password }) {
