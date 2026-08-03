@@ -35,6 +35,13 @@ async function actualizar({ empresaId, usuarioEjecutorId, sucursalId, datos }) {
 
   return prisma.$transaction(async (tx) => {
     const actualizada = await tx.sucursal.update({ where: { id: sucursalId }, data: datos });
+    // Autorreparación: sucursales creadas antes del fix de secuencias (2026-08-03) se quedaron
+    // sin sus filas VTA/COM/COT/DEV/AJU — skipDuplicates hace este createMany un no-op inofensivo
+    // para las sucursales que ya las tienen, y las siembra para las que no.
+    await tx.secuencia.createMany({
+      data: buildSecuenciasPorSucursal(empresaId, actualizada),
+      skipDuplicates: true,
+    });
     await registrarAuditoria(tx, {
       empresaId,
       usuarioEjecutorId,
