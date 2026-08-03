@@ -88,9 +88,17 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, detalles }) 
   });
 }
 
+const RESERVADO = 'RESERVADO';
+
 // La venta y el marcado de convertidaEnVentaId no comparten transacción: en el caso raro de
 // que la venta se cree pero este segundo paso falle, la cotización queda sin marcar pero la
 // venta sigue siendo válida — no hay pérdida de datos financieros, solo de la referencia cruzada.
+//
+// El check-then-act de "no convertida todavía" sí necesita ser atómico: dos conversiones casi
+// simultáneas de la misma cotización podían pasar ambas la lectura y generar dos ventas (stock
+// y caja duplicados). Se reclama la cotización con un UPDATE...WHERE convertidaEnVentaId IS NULL
+// (Postgres serializa esa fila) antes de crear la venta; si el conteo da 0, alguien más ya la
+// reclamó. Si la creación de la venta falla, se libera el candado.
 async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCajaId, pagos }) {
   const cotizacion = await prisma.cotizacion.findFirst({
     where: { id: cotizacionId, empresaId },
@@ -99,20 +107,32 @@ async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCaja
   if (!cotizacion) throw new AppError(404, 'Cotización no encontrada.');
   if (cotizacion.convertidaEnVentaId) throw new AppError(400, 'Esta cotización ya fue convertida en venta.');
 
-  const venta = await ventasService.crear({
-    empresaId,
-    usuarioId,
-    rolId,
-    sucursalId: cotizacion.sucursalId,
-    clienteId: cotizacion.clienteId,
-    sesionCajaId,
-    detalles: cotizacion.detalles.map((d) => ({
-      articuloId: d.articuloId,
-      cantidad: Number(d.cantidad),
-      precio: Number(d.precio),
-    })),
-    pagos,
+  const reclamada = await prisma.cotizacion.updateMany({
+    where: { id: cotizacionId, convertidaEnVentaId: null },
+    data: { convertidaEnVentaId: RESERVADO },
   });
+  if (reclamada.count === 0) throw new AppError(400, 'Esta cotización ya fue convertida en venta.');
+
+  let venta;
+  try {
+    venta = await ventasService.crear({
+      empresaId,
+      usuarioId,
+      rolId,
+      sucursalId: cotizacion.sucursalId,
+      clienteId: cotizacion.clienteId,
+      sesionCajaId,
+      detalles: cotizacion.detalles.map((d) => ({
+        articuloId: d.articuloId,
+        cantidad: Number(d.cantidad),
+        precio: Number(d.precio),
+      })),
+      pagos,
+    });
+  } catch (error) {
+    await prisma.cotizacion.update({ where: { id: cotizacionId }, data: { convertidaEnVentaId: null } });
+    throw error;
+  }
 
   await prisma.cotizacion.update({ where: { id: cotizacionId }, data: { convertidaEnVentaId: venta.id } });
 
