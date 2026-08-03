@@ -146,6 +146,7 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
       where: { id: sesionId },
       data: { cerradaEn: new Date(), saldoEsperado, saldoReal, diferencia },
     });
+    actualizada.__debugMarker = 'CERRAR_V3_' + diferencia;
     await registrarAuditoria(tx, {
       empresaId,
       sucursalId: caja.sucursalId,
