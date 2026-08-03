@@ -278,26 +278,48 @@ convención "(ignorar)"). Encontrado y corregido:
   (`crear`), que ahora rechaza la venta si algún artículo no está activo; cubre también la
   conversión de cotización en venta, que reusa esta misma función.
 
-Encontrado, documentado pero **no corregido** (vacío funcional grande, fuera del alcance de un
-fix puntual — pendiente decisión sobre si implementarlo):
+Encontrado y documentado como vacío funcional grande — **ya implementado el mismo día**, ver
+"Listas de precio en Ventas" más abajo:
 
-- **Las listas de precio (MOD-002) están completamente desconectadas de Ventas.** El backend
-  tiene el modelo completo: `ListaPrecio`, `PrecioArticulo` (precio por artículo y lista) y
-  `Cliente.listaPrecioId` (lista asignada a un cliente), con endpoints CRUD funcionando. Pero
-  [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js) siempre usa
-  `articulo.precio` (el precio base de catálogo) como precio de línea — nunca consulta
-  `Cliente.listaPrecioId` ni `PrecioArticulo`. Un cliente con una lista de precio "Mayoreo"
-  asignada paga exactamente lo mismo que Cliente General. Tampoco existe UI de frontend para
-  crear/gestionar listas de precio, ni para asignar precios por artículo
-  (`setPrecios`/`PUT /articulos/:id/precios`) o unidades alternas
-  (`setUnidadesAlternas`/`PUT /articulos/:id/unidades-alternas`) — esos endpoints del backend
-  no los llama nada en el frontend.
+- ~~Las listas de precio (MOD-002) están completamente desconectadas de Ventas.~~ Resuelto.
+
+Pendiente, vacío de UI menor sin resolver:
+
 - **Vacío de UI menor:** el frontend de Catálogo
   ([ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx),
   [ConfiguracionCatalogoPage.jsx](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx))
   solo tiene alta (crear), no edición, para artículos/categorías/marcas/unidades/impuestos; el
   formulario de artículo tampoco tiene campo de código de barras ni forma de
   desactivar/reactivar desde la UI (solo vía API).
+
+## Listas de precio en Ventas (2026-08-03)
+
+Implementado el vacío funcional detectado en el QA de Catálogo (arriba): las listas de precio
+ahora se usan de verdad al vender, no solo se guardan.
+
+- **Backend:** nuevo `resolverPreciosCatalogo()` en
+  [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js) — resuelve el precio
+  de línea con el `PrecioArticulo` de la lista asignada al cliente (`Cliente.listaPrecioId`) si
+  existe uno para ese artículo; si no, cae al precio base. Se usa en `ventas.crear()` y lo reusa
+  [cotizaciones.service.js](backend/src/modules/ventas/cotizaciones/cotizaciones.service.js)
+  (mismo módulo) para que el total de una cotización coincida con lo que se cobra al
+  convertirla. `articulos.service.js#listar` ahora incluye los precios por lista de cada
+  artículo, y `actualizarClienteSchema` acepta `listaPrecioId: null` para poder desasignar una
+  lista ya asignada.
+- **Frontend:** sección "Listas de precio" en
+  [ConfiguracionCatalogoPage.jsx](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx)
+  (crear lista); fila expandible "Precios" en
+  [ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx) para definir el
+  precio de un artículo por lista; selector de lista por cliente (alta y edición inline) en
+  [ClientesPage.jsx](frontend/src/modules/clientes/pages/ClientesPage.jsx); el precio mostrado
+  y usado al agregar una línea en
+  [VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx) y
+  [CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx) ahora refleja
+  la lista del cliente seleccionado.
+- Verificado en vivo contra producción de punta a punta: artículo con precio base $100 y precio
+  $80 en una lista "Mayoreo" de prueba, cliente asignado a esa lista → venta cobra $80; Cliente
+  General (sin lista) → sigue cobrando $100 (sin regresión). Datos de prueba limpiados después
+  (ventas canceladas, stock y caja compensados, artículo/cliente de prueba desactivados).
 
 ## Qué contiene
 
@@ -364,7 +386,8 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
 Ventas, MOD-006 Caja, MOD-004 Inventario y MOD-002 Catálogo ya pasaron su primera ronda de QA
-(ver secciones arriba). Catálogo dejó dos vacíos identificados pero no resueltos, a elección:
-implementar las listas de precio en Ventas (y su UI), y/o construir la UI de edición faltante
-en Catálogo. Aparte de eso: QA de algún otro módulo (Clientes/Proveedores, Compras, Reportes,
-Herramientas), o nuevas funcionalidades fuera del plan original.
+(ver secciones arriba). De los dos vacíos que dejó el QA de Catálogo, las listas de precio ya
+están implementadas en Ventas (ver "Listas de precio en Ventas" arriba); queda pendiente solo
+la UI de edición faltante en Catálogo (artículos/categorías/marcas/unidades/impuestos solo
+tienen alta, no edición). Aparte de eso: QA de algún otro módulo (Clientes/Proveedores,
+Compras, Reportes, Herramientas), o nuevas funcionalidades fuera del plan original.
