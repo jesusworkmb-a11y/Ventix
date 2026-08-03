@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { listarCotizaciones, crearCotizacion, convertirCotizacion } from '../api/cotizaciones.api';
+import { listarCotizaciones, obtenerCotizacion, crearCotizacion, convertirCotizacion } from '../api/cotizaciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
@@ -20,6 +20,7 @@ function CotizacionesPage() {
   const [cajaId, setCajaId] = useState('');
   const [sesion, setSesion] = useState(null);
   const [convirtiendoId, setConvirtiendoId] = useState(null);
+  const [convTotal, setConvTotal] = useState(null);
   const [convMetodoPago, setConvMetodoPago] = useState('EFECTIVO');
   const [convError, setConvError] = useState('');
 
@@ -104,9 +105,25 @@ function CotizacionesPage() {
     }
   }
 
-  function abrirConversion(cotizacionId) {
+  // La cotización solo guarda el subtotal (sin impuesto — ver Cotizacion.total en el schema);
+  // el impuesto se calcula recién al convertir, con la tasa vigente en ese momento (igual que
+  // ventasService.crear). Hay que recalcularlo aquí con el mismo criterio para saber cuánto
+  // cobrar antes de convertir, o la suma de pagos no coincide con el total real de la venta.
+  async function abrirConversion(cotizacionId) {
     setConvError('');
+    setConvTotal(null);
     setConvirtiendoId(cotizacionId);
+    try {
+      const detalle = await obtenerCotizacion(cotizacionId);
+      const totalConImpuesto = detalle.detalles.reduce((acc, d) => {
+        const articulo = articulos.find((a) => a.id === d.articuloId);
+        const tasa = articulo?.impuesto ? Number(articulo.impuesto.tasa) : 0;
+        return acc + Number(d.cantidad) * Number(d.precio) * (1 + tasa);
+      }, 0);
+      setConvTotal(Math.round(totalConImpuesto * 100) / 100);
+    } catch (err) {
+      setConvError('No se pudo calcular el total a cobrar.');
+    }
   }
 
   async function confirmarConversion(e, cotizacion) {
@@ -116,10 +133,11 @@ function CotizacionesPage() {
       setConvError('No hay una sesión de caja abierta para esta caja.');
       return;
     }
+    if (convTotal === null) return;
     try {
       await convertirCotizacion(cotizacion.id, {
         sesionCajaId: sesion.id,
-        pagos: [{ metodo: convMetodoPago, monto: Number(cotizacion.total) }],
+        pagos: [{ metodo: convMetodoPago, monto: convTotal }],
       });
       setConvirtiendoId(null);
       cargarCotizaciones();
@@ -253,8 +271,8 @@ function CotizacionesPage() {
                         <option value="TRANSFERENCIA">Transferencia</option>
                         <option value="MIXTO">Mixto</option>
                       </select>
-                      <span>Total a cobrar: {c.total}</span>
-                      <button type="submit">Confirmar conversión</button>
+                      <span>Total a cobrar: {convTotal === null ? 'calculando…' : convTotal.toFixed(2)}</span>
+                      <button type="submit" disabled={convTotal === null}>Confirmar conversión</button>
                       <button type="button" onClick={() => setConvirtiendoId(null)}>Cancelar</button>
                     </form>
                   </td>
