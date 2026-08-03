@@ -283,14 +283,8 @@ Encontrado y documentado como vacío funcional grande — **ya implementado el m
 
 - ~~Las listas de precio (MOD-002) están completamente desconectadas de Ventas.~~ Resuelto.
 
-Pendiente, vacío de UI menor sin resolver:
-
-- **Vacío de UI menor:** el frontend de Catálogo
-  ([ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx),
-  [ConfiguracionCatalogoPage.jsx](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx))
-  solo tiene alta (crear), no edición, para artículos/categorías/marcas/unidades/impuestos; el
-  formulario de artículo tampoco tiene campo de código de barras ni forma de
-  desactivar/reactivar desde la UI (solo vía API).
+- ~~Vacío de UI menor: solo alta, no edición, para artículos/categorías/marcas/unidades/
+  impuestos.~~ Resuelto, ver "UI de edición de Catálogo" más abajo.
 
 ## Listas de precio en Ventas (2026-08-03)
 
@@ -320,6 +314,27 @@ ahora se usan de verdad al vender, no solo se guardan.
   $80 en una lista "Mayoreo" de prueba, cliente asignado a esa lista → venta cobra $80; Cliente
   General (sin lista) → sigue cobrando $100 (sin regresión). Datos de prueba limpiados después
   (ventas canceladas, stock y caja compensados, artículo/cliente de prueba desactivados).
+
+## UI de edición de Catálogo (2026-08-03)
+
+Cierra el último vacío del QA de Catálogo: el frontend solo tenía alta para
+artículos/categorías/marcas/unidades/impuestos, nunca edición.
+
+- **Artículos:** botón "Editar" con formulario expandible (mismo patrón que "Precios") en
+  [ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx), con todos los
+  campos del alta más código de barras (que tampoco existía en el alta, agregado ahí también) y
+  un checkbox de activo para descontinuar/reactivar desde la UI.
+- **Categorías/Marcas/Unidades/Impuestos:** edición inline por fila en
+  [ConfiguracionCatalogoPage.jsx](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx) —
+  `SeccionSimple` ahora soporta un prop `actualizar` opcional, reusado por Marcas/Unidades/
+  Impuestos; Categorías mantiene su propio componente por la regla de padre a 2 niveles.
+- **Backend:** `actualizarArticuloSchema` ahora acepta `null` en sku/codigoBarras/categoriaId/
+  marcaId/impuestoId para poder desasignar un valor ya asignado (a diferencia de crear, donde
+  omitir el campo alcanza) — mismo patrón ya usado para `Cliente.listaPrecioId` y
+  `Categoria.categoriaPadreId`.
+- Verificado en vivo contra producción, incluida la UI real en el navegador: editar el nombre de
+  una marca de prueba y reactivar un artículo de prueba marcado como descontinuado, ambos
+  confirmados por API antes y después del cambio.
 
 ## Qué contiene
 
@@ -386,8 +401,7 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
 Ventas, MOD-006 Caja, MOD-004 Inventario y MOD-002 Catálogo ya pasaron su primera ronda de QA
-(ver secciones arriba). De los dos vacíos que dejó el QA de Catálogo, las listas de precio ya
-están implementadas en Ventas (ver "Listas de precio en Ventas" arriba); queda pendiente solo
-la UI de edición faltante en Catálogo (artículos/categorías/marcas/unidades/impuestos solo
-tienen alta, no edición). Aparte de eso: QA de algún otro módulo (Clientes/Proveedores,
-Compras, Reportes, Herramientas), o nuevas funcionalidades fuera del plan original.
+(ver secciones arriba). Los dos vacíos que dejó el QA de Catálogo ya están resueltos: listas de
+precio en Ventas y UI de edición de Catálogo (ver secciones arriba). A elección: QA de algún
+otro módulo (Clientes/Proveedores, Compras, Reportes, Herramientas), o nuevas funcionalidades
+fuera del plan original.
