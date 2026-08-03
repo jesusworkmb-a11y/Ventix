@@ -140,7 +140,7 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
     const saldoEsperado = redondear(
       movimientos.reduce((acc, m) => acc + Number(m.monto) * (SIGNO_POR_TIPO[m.tipo] || 0), Number(sesion.fondoInicial)),
     );
-    const diferencia = redondear(saldoReal - saldoEsperado);
+    const diferencia = redondear(Number(saldoReal) - saldoEsperado);
 
     const actualizada = await tx.sesionCaja.update({
       where: { id: sesionId },
