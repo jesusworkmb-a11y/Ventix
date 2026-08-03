@@ -11,9 +11,15 @@ const AppError = require('../errors/AppError');
 // podía insertarse justo entre la lectura de movimientos y el UPDATE del cierre, quedando
 // fuera del saldoEsperado calculado (verificado en vivo en QA de Caja: 15 movimientos
 // concurrentes con un cierre, saldoEsperado solo contó 12).
+// sucursalId es opcional: Ventas/Devoluciones lo mandan (la sucursal del documento que origina
+// el movimiento) para exigir que la caja sea de esa misma sucursal — antes no se validaba nada
+// más que la empresa, así que se podía vender en una sucursal y cobrar contra la caja de otra
+// (pendiente detectado en QA de Ventas, 2026-08-03). Caja/INGRESO-RETIRO no manda sucursalId:
+// ahí la sucursal de la caja ES la sucursal de la operación, no hay nada que cruzar.
 async function registrarMovimientoCaja(tx, {
   empresaId,
   sesionCajaId,
+  sucursalId = null,
   tipo,
   monto,
   motivo = null,
@@ -31,6 +37,10 @@ async function registrarMovimientoCaja(tx, {
 
   const caja = await tx.caja.findFirst({ where: { id: sesion.cajaId, empresaId } });
   if (!caja) throw new AppError(404, 'Sesión de caja no encontrada.');
+
+  if (sucursalId && caja.sucursalId !== sucursalId) {
+    throw new AppError(400, 'La sesión de caja indicada no pertenece a la sucursal de este documento.');
+  }
 
   if (sesion.cerradaEn) throw new AppError(400, 'La sesión de caja indicada no está abierta.');
 

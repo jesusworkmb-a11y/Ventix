@@ -135,6 +135,7 @@ async function crear({ empresaId, usuarioId, rolId, sucursalId, clienteId, sesio
     await registrarMovimientoCaja(tx, {
       empresaId,
       sesionCajaId,
+      sucursalId,
       tipo: 'VENTA',
       monto: total,
       referenciaTipo: 'Venta',

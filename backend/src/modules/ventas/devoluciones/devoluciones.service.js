@@ -116,6 +116,7 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
       await registrarMovimientoCaja(tx, {
         empresaId,
         sesionCajaId,
+        sucursalId: venta.sucursalId,
         tipo: 'DEVOLUCION',
         monto: reembolso,
         referenciaTipo: 'Devolucion',
