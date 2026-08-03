@@ -64,10 +64,11 @@ Notas del despliegue:
    ```
    Los `.env` de ambos ya están configurados (Supabase + JWT secret) — no hace falta tocarlos.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core y MOD-008
-   Ventas ya con su primera pasada de QA (ver secciones abajo), lo siguiente es a elección —
-   QA de otro módulo (Caja es el candidato más obvio, por ser el otro núcleo del POS), los
-   pendientes que dejó el QA de Ventas, o nuevas funcionalidades fuera del plan original.
+5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core, MOD-008
+   Ventas y MOD-006 Caja ya con su primera pasada de QA (ver secciones abajo), lo siguiente es
+   a elección — QA de otro módulo, los pendientes que dejó el QA de Ventas (validación cruzada
+   sucursal↔caja, UI de cancelar/devoluciones/cotizaciones), o nuevas funcionalidades fuera del
+   plan original.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -143,6 +144,43 @@ Pendiente, sin decidir todavía:
   venta" y "listar" — no hay UI para cancelar, devoluciones ni cotizaciones (mismo tipo de
   vacío que se encontró y cerró en Core). Todo eso solo es alcanzable vía API por ahora.
 
+## QA de MOD-006 Caja (2026-08-03)
+
+Primera pasada de QA sobre cajas/sesiones/movimientos — revisión de código + pruebas en vivo
+contra producción, disparando requests concurrentes con `curl` para reproducir cada condición
+de carrera antes del fix y reverificando después del deploy (con limpieza de datos de prueba
+después de cada una). Encontrado y corregido:
+
+- **Crítico — el flag `activa` de una caja no se validaba en ningún lado.** Se podía
+  desactivar una caja (`PATCH /caja/cajas/:id`) y aun así seguir abriendo sesiones sobre ella
+  con total normalidad — mismo tipo de vacío que el estado `BLOQUEADO` en Core (nadie leía el
+  flag al abrir). Verificado en vivo: caja desactivada, `POST /caja/sesiones` devolvía `201`.
+- **Crítico — condición de carrera al abrir sesión.** El check de "¿ya tiene una sesión
+  abierta?" y la creación de la sesión no eran atómicos: dos aperturas casi simultáneas de la
+  misma caja pasaban ambas el check. Reproducido en vivo disparando 5 aperturas concurrentes
+  contra la misma caja: 2 de 5 tuvieron éxito, dejando dos sesiones abiertas a la vez sobre
+  una única caja física.
+- **Crítico — condición de carrera al cerrar sesión / registrar movimiento.** Dos problemas
+  relacionados, ambos por la misma causa (lectura de movimientos y `UPDATE` del cierre fuera
+  de una transacción compartida con las demás escrituras contra la sesión):
+  - *Doble cierre*: 5 cierres concurrentes sobre la misma sesión, 4 de 5 devolvieron `200`
+    con `saldoEsperado`/`diferencia` distintos cada uno (gana el último `UPDATE` en la fila;
+    los otros 3 cajeros veían en pantalla un resultado que nunca quedó guardado).
+  - *Movimiento perdido*: 15 movimientos + 1 cierre disparados en paralelo sobre una sesión
+    nueva — los 15 se insertaron con éxito (`201`), pero el cierre calculó `saldoEsperado`
+    contando solo 12, dejando 3 fuera del cálculo por haberse insertado entre la lectura de
+    movimientos y el `UPDATE` del cierre — diferencia de caja fantasma sin que nada fallara.
+
+  Corregido en [sesiones.service.js](backend/src/modules/caja/sesiones/sesiones.service.js)
+  (`abrir`, `cerrar`) y en
+  [caja.service.js](backend/src/shared/services/caja.service.js) (`registrarMovimientoCaja`,
+  compartida también por Ventas/Devoluciones) tomando un `SELECT ... FOR UPDATE` sobre la fila
+  de la caja/sesión al principio de cada transacción — serializa aperturas, cierres y
+  movimientos concurrentes en vez de dejarlos correr en paralelo con datos obsoletos.
+
+Sin pendientes abiertos de esta pasada — los tres bugs se corrigieron y reverificaron en vivo
+contra producción tras el deploy.
+
 ## Qué contiene
 
 ```text
@@ -201,8 +239,8 @@ Si ves "Estado del backend: conectado — DB: connected" en la pantalla, la Fase
 
 ## Qué sigue
 
-Los 10 módulos del plan original están completos y en producción, y MOD-001 Core y MOD-008
-Ventas ya pasaron su primera ronda de QA (ver secciones arriba). A elección: QA de Caja
-(el otro núcleo del POS), los dos pendientes que dejó el QA de Ventas (validación cruzada
-sucursal↔caja, UI de cancelar/devoluciones/cotizaciones), QA de algún otro módulo, o nuevas
-funcionalidades fuera del plan original.
+Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
+Ventas y MOD-006 Caja ya pasaron su primera ronda de QA (ver secciones arriba). A elección: los
+dos pendientes que dejó el QA de Ventas (validación cruzada sucursal↔caja, UI de
+cancelar/devoluciones/cotizaciones), QA de algún otro módulo, o nuevas funcionalidades fuera
+del plan original.
