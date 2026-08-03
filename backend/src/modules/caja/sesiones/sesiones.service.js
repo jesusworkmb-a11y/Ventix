@@ -110,17 +110,30 @@ async function registrarMovimiento({ empresaId, usuarioId, sesionId, tipo, monto
 const SIGNO_POR_TIPO = { INGRESO: 1, VENTA: 1, RETIRO: -1, DEVOLUCION: -1 };
 
 async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
-  const { sesion, caja } = await obtenerSesionValidada({ empresaId, sesionId });
-  if (sesion.cerradaEn) throw new AppError(400, 'La sesión ya está cerrada.');
-
-  const movimientos = await prisma.movimientoCaja.findMany({ where: { sesionCajaId: sesionId } });
-  const saldoEsperado = movimientos.reduce(
-    (acc, m) => acc + Number(m.monto) * (SIGNO_POR_TIPO[m.tipo] || 0),
-    Number(sesion.fondoInicial),
-  );
-  const diferencia = saldoReal - saldoEsperado;
-
   return prisma.$transaction(async (tx) => {
+    // Mismo lock (FOR UPDATE) que toma registrarMovimientoCaja sobre esta sesión: serializa
+    // el cierre contra cualquier movimiento concurrente y contra un segundo cierre concurrente.
+    // Antes, la lectura de movimientos y el UPDATE del cierre corrían fuera de una transacción
+    // compartida con el resto de escrituras contra la sesión, así que dos cierres simultáneos
+    // pasaban ambos el check de "no cerrada" y devolvían 200 con saldoEsperado/diferencia
+    // distintos (último UPDATE gana) — verificado en vivo en QA de Caja: 4 de 5 cierres
+    // concurrentes devolvieron 200 con diferencia distinta cada uno.
+    const [sesion] = await tx.$queryRaw`
+      SELECT id, caja_id AS "cajaId", fondo_inicial AS "fondoInicial", cerrada_en AS "cerradaEn"
+      FROM sesiones_caja WHERE id = ${sesionId}::uuid FOR UPDATE
+    `;
+    if (!sesion) throw new AppError(404, 'Sesión de caja no encontrada.');
+    const caja = await tx.caja.findFirst({ where: { id: sesion.cajaId, empresaId } });
+    if (!caja) throw new AppError(404, 'Sesión de caja no encontrada.');
+    if (sesion.cerradaEn) throw new AppError(400, 'La sesión ya está cerrada.');
+
+    const movimientos = await tx.movimientoCaja.findMany({ where: { sesionCajaId: sesionId } });
+    const saldoEsperado = movimientos.reduce(
+      (acc, m) => acc + Number(m.monto) * (SIGNO_POR_TIPO[m.tipo] || 0),
+      Number(sesion.fondoInicial),
+    );
+    const diferencia = saldoReal - saldoEsperado;
+
     const actualizada = await tx.sesionCaja.update({
       where: { id: sesionId },
       data: { cerradaEn: new Date(), saldoEsperado, saldoReal, diferencia },
