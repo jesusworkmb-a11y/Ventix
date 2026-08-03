@@ -1,6 +1,7 @@
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
+const { buildSecuenciasPorSucursal } = require('../../../shared/services/secuencia.service');
 const toJson = require('../../../shared/toJson');
 
 async function listar({ empresaId }) {
@@ -15,6 +16,7 @@ async function crear({ empresaId, usuarioEjecutorId, datos }) {
 
   return prisma.$transaction(async (tx) => {
     const sucursal = await tx.sucursal.create({ data: { empresaId, ...datos } });
+    await tx.secuencia.createMany({ data: buildSecuenciasPorSucursal(empresaId, sucursal) });
     await registrarAuditoria(tx, {
       empresaId,
       usuarioEjecutorId,

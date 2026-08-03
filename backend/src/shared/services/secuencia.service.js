@@ -21,19 +21,28 @@ async function obtenerSiguienteFolio(tx, { empresaId, sucursalId = null, tipoDoc
   return `${secuencia.prefijo}${String(secuencia.siguienteNumero - 1).padStart(6, '0')}`;
 }
 
-// Filas iniciales de Secuencia creadas al dar de alta una empresa. VTA/COM/COT/DEV/AJU quedan
-// a nivel de la sucursal Matriz; TRA queda a nivel empresa (una transferencia no pertenece a
-// una sola sucursal). No existe endpoint público que cree Secuencia, así que la ausencia de
-// unicidad real de Postgres entre múltiples filas con sucursalId=NULL no es un riesgo aquí.
-function buildSecuenciasIniciales(empresaId, sucursal) {
-  const porSucursal = ['VTA', 'COM', 'COT', 'DEV', 'AJU'].map((tipoDocumento) => ({
+// Filas de Secuencia VTA/COM/COT/DEV/AJU que necesita cualquier sucursal para poder generar
+// folios — las usa tanto el alta de empresa (para la sucursal Matriz) como el alta de una
+// sucursal nueva (sucursales.service.js#crear). Antes solo se sembraban al dar de alta la
+// empresa: una sucursal creada después se quedaba sin estas filas y el primer documento
+// (venta/compra/cotización/devolución/ajuste) ahí reventaba con 500 en obtenerSiguienteFolio
+// (el UPDATE no encuentra fila -> excepción sin capturar). Verificado en vivo al crear una
+// venta de prueba en una sucursal nueva.
+function buildSecuenciasPorSucursal(empresaId, sucursal) {
+  return ['VTA', 'COM', 'COT', 'DEV', 'AJU'].map((tipoDocumento) => ({
     empresaId,
     sucursalId: sucursal.id,
     tipoDocumento,
     prefijo: `${tipoDocumento}-${sucursal.clave}-`,
     siguienteNumero: 1,
   }));
+}
 
+// Filas iniciales de Secuencia creadas al dar de alta una empresa. TRA queda a nivel empresa
+// (una transferencia no pertenece a una sola sucursal) y se siembra una única vez aquí —
+// sucursales.service.js#crear NO debe volver a llamar esto para sucursales nuevas, o
+// duplicaría la fila TRA de la empresa (usa buildSecuenciasPorSucursal en su lugar).
+function buildSecuenciasIniciales(empresaId, sucursal) {
   const porEmpresa = [
     {
       empresaId,
@@ -44,7 +53,7 @@ function buildSecuenciasIniciales(empresaId, sucursal) {
     },
   ];
 
-  return [...porSucursal, ...porEmpresa];
+  return [...buildSecuenciasPorSucursal(empresaId, sucursal), ...porEmpresa];
 }
 
-module.exports = { obtenerSiguienteFolio, buildSecuenciasIniciales };
+module.exports = { obtenerSiguienteFolio, buildSecuenciasIniciales, buildSecuenciasPorSucursal };
