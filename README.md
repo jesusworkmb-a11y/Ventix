@@ -253,6 +253,52 @@ revirtiendo el efecto de stock de las pruebas al terminar.
 
 Sin pendientes abiertos de esta pasada.
 
+## QA de MOD-002 Catálogo (2026-08-03)
+
+Primera pasada de QA sobre artículos/categorías/marcas/unidades/impuestos/listas de precio —
+revisión de código + pruebas en vivo contra producción, disparando requests concurrentes con
+`curl` para reproducir la condición de carrera antes del fix y reverificando después del
+deploy (con limpieza de datos de prueba después: venta cancelada, ajuste compensatorio de
+stock, retiro de caja compensatorio y artículos de prueba renombrados/desactivados con la
+convención "(ignorar)"). Encontrado y corregido:
+
+- **Condición de carrera al crear/editar un artículo con SKU o código de barras duplicado.**
+  `validarUnicidad()` en `articulos.service.js` chequeaba fuera de la transacción, sin atrapar
+  después el constraint único de la DB (mismo vacío que el correo duplicado ya corregido en
+  Core). Reproducido en vivo: 5 altas concurrentes con el mismo SKU dieron 2 de 5 con `500`
+  crudo ("Ocurrió un problema...") en vez del `409` limpio ("Ya existe un artículo con ese
+  SKU."). Corregido atrapando el `P2002` de Prisma en
+  [articulos.service.js](backend/src/modules/catalogo/articulos/articulos.service.js)
+  (`crear` y `actualizar`), mismo patrón que auth/usuarios en Core.
+- **El flag `activo` de un artículo no se validaba en ningún lado.** Se podía desactivar un
+  artículo (marcarlo descontinuado) y venderlo con total normalidad — mismo tipo de vacío que
+  `BLOQUEADO` en Core y `activa` en Caja (nadie leía el flag al usarlo). Verificado en vivo:
+  artículo con `activo:false`, `POST /ventas/ventas` devolvía `201` y confirmaba la venta.
+  Corregido en [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js)
+  (`crear`), que ahora rechaza la venta si algún artículo no está activo; cubre también la
+  conversión de cotización en venta, que reusa esta misma función.
+
+Encontrado, documentado pero **no corregido** (vacío funcional grande, fuera del alcance de un
+fix puntual — pendiente decisión sobre si implementarlo):
+
+- **Las listas de precio (MOD-002) están completamente desconectadas de Ventas.** El backend
+  tiene el modelo completo: `ListaPrecio`, `PrecioArticulo` (precio por artículo y lista) y
+  `Cliente.listaPrecioId` (lista asignada a un cliente), con endpoints CRUD funcionando. Pero
+  [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js) siempre usa
+  `articulo.precio` (el precio base de catálogo) como precio de línea — nunca consulta
+  `Cliente.listaPrecioId` ni `PrecioArticulo`. Un cliente con una lista de precio "Mayoreo"
+  asignada paga exactamente lo mismo que Cliente General. Tampoco existe UI de frontend para
+  crear/gestionar listas de precio, ni para asignar precios por artículo
+  (`setPrecios`/`PUT /articulos/:id/precios`) o unidades alternas
+  (`setUnidadesAlternas`/`PUT /articulos/:id/unidades-alternas`) — esos endpoints del backend
+  no los llama nada en el frontend.
+- **Vacío de UI menor:** el frontend de Catálogo
+  ([ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx),
+  [ConfiguracionCatalogoPage.jsx](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx))
+  solo tiene alta (crear), no edición, para artículos/categorías/marcas/unidades/impuestos; el
+  formulario de artículo tampoco tiene campo de código de barras ni forma de
+  desactivar/reactivar desde la UI (solo vía API).
+
 ## Qué contiene
 
 ```text
@@ -317,7 +363,8 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
-Ventas, MOD-006 Caja y MOD-004 Inventario ya pasaron su primera ronda de QA, incluida la UI de
-ajustes/transferencias/conteos físicos que había quedado pendiente (ver secciones arriba). A
-elección: QA de algún otro módulo (Catálogo, Clientes/Proveedores, Compras, Reportes,
+Ventas, MOD-006 Caja, MOD-004 Inventario y MOD-002 Catálogo ya pasaron su primera ronda de QA
+(ver secciones arriba). Catálogo dejó dos vacíos identificados pero no resueltos, a elección:
+implementar las listas de precio en Ventas (y su UI), y/o construir la UI de edición faltante
+en Catálogo. Aparte de eso: QA de algún otro módulo (Clientes/Proveedores, Compras, Reportes,
 Herramientas), o nuevas funcionalidades fuera del plan original.
