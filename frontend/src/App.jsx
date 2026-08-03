@@ -13,6 +13,9 @@ import ConfiguracionCatalogoPage from './modules/catalogo/pages/ConfiguracionCat
 import ClientesPage from './modules/clientes/pages/ClientesPage';
 import ProveedoresPage from './modules/proveedores/pages/ProveedoresPage';
 import ExistenciasPage from './modules/inventario/pages/ExistenciasPage';
+import AjustesPage from './modules/inventario/pages/AjustesPage';
+import TransferenciasPage from './modules/inventario/pages/TransferenciasPage';
+import ConteosPage from './modules/inventario/pages/ConteosPage';
 import ComprasPage from './modules/compras/pages/ComprasPage';
 import CajaPage from './modules/caja/pages/CajaPage';
 import VentasPage from './modules/ventas/pages/VentasPage';
@@ -104,6 +107,30 @@ function App() {
           element={(
             <ProtectedRoute>
               <ExistenciasPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/inventario/ajustes"
+          element={(
+            <ProtectedRoute>
+              <AjustesPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/inventario/transferencias"
+          element={(
+            <ProtectedRoute>
+              <TransferenciasPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/inventario/conteos"
+          element={(
+            <ProtectedRoute>
+              <ConteosPage />
             </ProtectedRoute>
           )}
         />

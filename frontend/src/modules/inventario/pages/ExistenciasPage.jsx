@@ -47,6 +47,11 @@ function ExistenciasPage() {
     <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 700 }}>
       <p><Link to="/dashboard">← Volver al dashboard</Link></p>
       <h1>Existencias</h1>
+      <p>
+        <Link to="/inventario/ajustes">Ver ajustes →</Link>{' '}
+        <Link to="/inventario/transferencias">Ver transferencias →</Link>{' '}
+        <Link to="/inventario/conteos">Ver conteos físicos →</Link>
+      </p>
 
       {articulos.length === 0 && (
         <p>Primero da de alta artículos en el <Link to="/catalogo/articulos">catálogo</Link>.</p>
