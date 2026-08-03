@@ -8,7 +8,7 @@ const router = express.Router();
 router.get('/health', async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', db: 'connected', timestamp: new Date().toISOString(), deployMarker: 'CAJA_FIX_DIAG_93cef31_v2' });
   } catch (error) {
     res.status(500).json({ status: 'error', db: 'disconnected', message: error.message });
   }
