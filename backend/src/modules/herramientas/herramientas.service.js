@@ -1,8 +1,32 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../config/db');
 const AppError = require('../../shared/errors/AppError');
 const { aCsv, parsearCsv } = require('../../shared/csv');
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
 const toJson = require('../../shared/toJson');
+
+// Convierte una columna numérica del CSV, rechazando con un mensaje de negocio limpio en vez de
+// dejar pasar NaN hasta Prisma -- que lo rechaza con un volcado técnico crudo del validador
+// (verificado en vivo: "costo" con texto producía un dump multilínea del shape completo del
+// create, mencionando incluso un campo "empresa" no relacionado al error real).
+function numeroDeColumna(valor, nombreColumna, porDefecto) {
+  if (!valor) return porDefecto;
+  const numero = Number(valor);
+  if (Number.isNaN(numero)) {
+    throw new AppError(400, `La columna "${nombreColumna}" no es un número válido: "${valor}".`);
+  }
+  return numero;
+}
+
+// exportarArticulos incluye "activo" en el CSV, pero importarArticulos nunca la leía -- todo
+// artículo importado quedaba activo:true sin importar lo que dijera el CSV (verificado en vivo:
+// fila con activo=false, el artículo creado quedó activo:true). "false"/"0" (sin distinguir
+// mayúsculas) se interpreta como inactivo; cualquier otro valor no vacío, como activo; vacío
+// deja el default del schema (activo).
+function activoDeColumna(valor) {
+  if (!valor) return undefined;
+  return !['false', '0'].includes(valor.toLowerCase());
+}
 
 const COLUMNAS_ARTICULOS = [
   'tipo',
@@ -160,14 +184,34 @@ async function importarArticulos({ empresaId, usuarioId, csv }) {
         marcaId,
         impuestoId,
         unidadBaseId: unidad.id,
-        costo: fila.costo ? Number(fila.costo) : 0,
-        precio: fila.precio ? Number(fila.precio) : 0,
-        stockMinimo: fila.stockMinimo ? Number(fila.stockMinimo) : undefined,
-        stockMaximo: fila.stockMaximo ? Number(fila.stockMaximo) : undefined,
+        costo: numeroDeColumna(fila.costo, 'costo', 0),
+        precio: numeroDeColumna(fila.precio, 'precio', 0),
+        stockMinimo: numeroDeColumna(fila.stockMinimo, 'stockMinimo', undefined),
+        stockMaximo: numeroDeColumna(fila.stockMaximo, 'stockMaximo', undefined),
+        activo: activoDeColumna(fila.activo),
       };
 
       await prisma.$transaction(async (tx) => {
-        const articulo = await tx.articulo.create({ data: { empresaId, ...datos } });
+        let articulo;
+        try {
+          articulo = await tx.articulo.create({ data: { empresaId, ...datos } });
+        } catch (errorCreacion) {
+          // La verificación de skusExistentes/codigosExistentes de arriba es en memoria, cargada
+          // una sola vez al inicio de la importación -- no atrapa dos importaciones concurrentes
+          // creando el mismo SKU nuevo (verificado en vivo: 5 importaciones a la vez del mismo
+          // CSV, 4 de 5 filtraban el error crudo de Prisma en vez de un mensaje de negocio, mismo
+          // hueco que el SKU duplicado ya corregido en articulos.service.js#crear). Se traduce
+          // aquí el constraint único al mismo mensaje 409 que usa Catálogo.
+          if (errorCreacion instanceof Prisma.PrismaClientKnownRequestError && errorCreacion.code === 'P2002') {
+            if (errorCreacion.meta?.target?.includes('sku')) {
+              throw new AppError(409, `Ya existe un artículo con el SKU "${sku}".`);
+            }
+            if (errorCreacion.meta?.target?.includes('codigoBarras')) {
+              throw new AppError(409, `Ya existe un artículo con el código de barras "${codigoBarras}".`);
+            }
+          }
+          throw errorCreacion;
+        }
         await registrarAuditoria(tx, {
           empresaId,
           usuarioEjecutorId: usuarioId,
