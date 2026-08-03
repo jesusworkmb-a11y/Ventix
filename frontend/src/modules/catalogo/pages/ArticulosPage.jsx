@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   listarArticulos,
   crearArticulo,
+  actualizarArticulo,
   listarCategorias,
   listarMarcas,
   listarUnidades,
@@ -15,6 +16,7 @@ const FORM_VACIO = {
   tipo: 'PRODUCTO',
   nombre: '',
   sku: '',
+  codigoBarras: '',
   unidadBaseId: '',
   categoriaId: '',
   marcaId: '',
@@ -22,6 +24,22 @@ const FORM_VACIO = {
   costo: '',
   precio: '',
 };
+
+function articuloAForm(a) {
+  return {
+    tipo: a.tipo,
+    nombre: a.nombre,
+    sku: a.sku || '',
+    codigoBarras: a.codigoBarras || '',
+    unidadBaseId: a.unidadBaseId,
+    categoriaId: a.categoriaId || '',
+    marcaId: a.marcaId || '',
+    impuestoId: a.impuestoId || '',
+    costo: String(a.costo),
+    precio: String(a.precio),
+    activo: a.activo,
+  };
+}
 
 function ArticulosPage() {
   const [articulos, setArticulos] = useState([]);
@@ -38,6 +56,10 @@ function ArticulosPage() {
   const [preciosForm, setPreciosForm] = useState({});
   const [preciosError, setPreciosError] = useState('');
 
+  const [editandoId, setEditandoId] = useState(null);
+  const [editForm, setEditForm] = useState(FORM_VACIO);
+  const [errorEdit, setErrorEdit] = useState('');
+
   function cargarArticulos(filtro) {
     listarArticulos(filtro ? { buscar: filtro } : {}).then(setArticulos).catch(() => {});
   }
@@ -52,6 +74,7 @@ function ArticulosPage() {
   }, []);
 
   function abrirPrecios(articulo) {
+    cancelarEdicion();
     setPreciosError('');
     setPreciosArticuloId(articulo.id);
     const inicial = {};
@@ -83,6 +106,44 @@ function ArticulosPage() {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
+  function iniciarEdicion(articulo) {
+    cerrarPrecios();
+    setErrorEdit('');
+    setEditandoId(articulo.id);
+    setEditForm(articuloAForm(articulo));
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null);
+    setErrorEdit('');
+  }
+
+  async function guardarEdicion(e) {
+    e.preventDefault();
+    setErrorEdit('');
+    try {
+      await actualizarArticulo(editandoId, {
+        tipo: editForm.tipo,
+        nombre: editForm.nombre,
+        // A diferencia del alta, aquí "" significa "quitar lo que había" -> null explícito,
+        // no "sin cambios" (actualizarArticuloSchema acepta null para estos campos).
+        sku: editForm.sku || null,
+        codigoBarras: editForm.codigoBarras || null,
+        unidadBaseId: editForm.unidadBaseId,
+        categoriaId: editForm.categoriaId || null,
+        marcaId: editForm.marcaId || null,
+        impuestoId: editForm.impuestoId || null,
+        costo: editForm.costo === '' ? undefined : Number(editForm.costo),
+        precio: editForm.precio === '' ? undefined : Number(editForm.precio),
+        activo: editForm.activo,
+      });
+      setEditandoId(null);
+      cargarArticulos(buscar);
+    } catch (err) {
+      setErrorEdit(err.response?.data?.error || 'No se pudo actualizar el artículo.');
+    }
+  }
+
   async function agregar(e) {
     e.preventDefault();
     setError('');
@@ -91,6 +152,7 @@ function ArticulosPage() {
         tipo: form.tipo,
         nombre: form.nombre,
         sku: form.sku || undefined,
+        codigoBarras: form.codigoBarras || undefined,
         unidadBaseId: form.unidadBaseId,
         categoriaId: form.categoriaId || undefined,
         marcaId: form.marcaId || undefined,
@@ -138,6 +200,7 @@ function ArticulosPage() {
             <th style={{ textAlign: 'left' }}>Precio</th>
             <th style={{ textAlign: 'left' }}>Activo</th>
             <th />
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -149,6 +212,11 @@ function ArticulosPage() {
                 <td>{a.precio}</td>
                 <td>{a.activo ? 'Sí' : 'No'}</td>
                 <td>
+                  {editandoId === a.id
+                    ? <button type="button" onClick={cancelarEdicion}>Cerrar</button>
+                    : <button type="button" onClick={() => iniciarEdicion(a)}>Editar</button>}
+                </td>
+                <td>
                   {listasPrecio.length > 0 && (
                     preciosArticuloId === a.id
                       ? <button type="button" onClick={cerrarPrecios}>Cerrar</button>
@@ -156,9 +224,127 @@ function ArticulosPage() {
                   )}
                 </td>
               </tr>
+              {editandoId === a.id && (
+                <tr>
+                  <td colSpan={6} style={{ background: '#f7f7f7', padding: '1rem' }}>
+                    <form
+                      onSubmit={guardarEdicion}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 360 }}
+                    >
+                      <label>
+                        Tipo
+                        <select
+                          value={editForm.tipo}
+                          onChange={(e) => setEditForm((f) => ({ ...f, tipo: e.target.value }))}
+                        >
+                          <option value="PRODUCTO">Producto</option>
+                          <option value="SERVICIO">Servicio</option>
+                        </select>
+                      </label>
+                      <label>
+                        Nombre
+                        <input
+                          value={editForm.nombre}
+                          onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))}
+                          required
+                        />
+                      </label>
+                      <label>
+                        SKU
+                        <input
+                          value={editForm.sku}
+                          onChange={(e) => setEditForm((f) => ({ ...f, sku: e.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        Código de barras
+                        <input
+                          value={editForm.codigoBarras}
+                          onChange={(e) => setEditForm((f) => ({ ...f, codigoBarras: e.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        Unidad base
+                        <select
+                          value={editForm.unidadBaseId}
+                          onChange={(e) => setEditForm((f) => ({ ...f, unidadBaseId: e.target.value }))}
+                          required
+                        >
+                          {unidades.map((u) => (
+                            <option key={u.id} value={u.id}>{u.nombre}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Categoría
+                        <select
+                          value={editForm.categoriaId}
+                          onChange={(e) => setEditForm((f) => ({ ...f, categoriaId: e.target.value }))}
+                        >
+                          <option value="">Sin categoría</option>
+                          {categorias.map((c) => (
+                            <option key={c.id} value={c.id}>{c.nombre}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Marca
+                        <select
+                          value={editForm.marcaId}
+                          onChange={(e) => setEditForm((f) => ({ ...f, marcaId: e.target.value }))}
+                        >
+                          <option value="">Sin marca</option>
+                          {marcas.map((m) => (
+                            <option key={m.id} value={m.id}>{m.nombre}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Impuesto
+                        <select
+                          value={editForm.impuestoId}
+                          onChange={(e) => setEditForm((f) => ({ ...f, impuestoId: e.target.value }))}
+                        >
+                          <option value="">Sin impuesto</option>
+                          {impuestos.map((i) => (
+                            <option key={i.id} value={i.id}>{i.nombre}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Costo
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editForm.costo}
+                          onChange={(e) => setEditForm((f) => ({ ...f, costo: e.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        Precio
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editForm.precio}
+                          onChange={(e) => setEditForm((f) => ({ ...f, precio: e.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={editForm.activo}
+                          onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
+                        /> Activo (desmarca para descontinuarlo — deja de poderse vender)
+                      </label>
+                      {errorEdit && <p style={{ color: 'crimson' }}>{errorEdit}</p>}
+                      <button type="submit">Guardar cambios</button>
+                    </form>
+                  </td>
+                </tr>
+              )}
               {preciosArticuloId === a.id && (
                 <tr>
-                  <td colSpan={5} style={{ background: '#f7f7f7', padding: '1rem' }}>
+                  <td colSpan={6} style={{ background: '#f7f7f7', padding: '1rem' }}>
                     <form
                       onSubmit={guardarPrecios}
                       style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: 320 }}
@@ -204,6 +390,10 @@ function ArticulosPage() {
         <label>
           SKU
           <input value={form.sku} onChange={(e) => actualizarCampo('sku', e.target.value)} />
+        </label>
+        <label>
+          Código de barras
+          <input value={form.codigoBarras} onChange={(e) => actualizarCampo('codigoBarras', e.target.value)} />
         </label>
         <label>
           Unidad base

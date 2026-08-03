@@ -22,6 +22,13 @@ const crearArticuloSchema = z.object({
 
 const actualizarArticuloSchema = crearArticuloSchema.partial().extend({
   activo: z.boolean().optional(),
+  // A diferencia de crear (omitir el campo alcanza para dejarlo sin asignar), actualizar
+  // necesita poder desasignar explícitamente un valor ya asignado -> acepta null.
+  sku: z.string().min(1).nullable().optional(),
+  codigoBarras: z.string().min(1).nullable().optional(),
+  categoriaId: z.string().min(1).nullable().optional(),
+  marcaId: z.string().min(1).nullable().optional(),
+  impuestoId: z.string().min(1).nullable().optional(),
 });
 
 const unidadesAlternasSchema = z.object({
