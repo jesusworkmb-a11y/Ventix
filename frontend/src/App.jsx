@@ -3,6 +3,10 @@ import { AuthProvider } from './shared/context/AuthContext';
 import ProtectedRoute from './shared/components/ProtectedRoute';
 import RegistroPage from './modules/core/pages/RegistroPage';
 import LoginPage from './modules/core/pages/LoginPage';
+import SucursalesPage from './modules/core/pages/SucursalesPage';
+import UsuariosPage from './modules/core/pages/UsuariosPage';
+import RolesPage from './modules/core/pages/RolesPage';
+import AuditoriaPage from './modules/core/pages/AuditoriaPage';
 import DashboardPage from './modules/dashboard/pages/DashboardPage';
 import ArticulosPage from './modules/catalogo/pages/ArticulosPage';
 import ConfiguracionCatalogoPage from './modules/catalogo/pages/ConfiguracionCatalogoPage';
@@ -27,6 +31,38 @@ function App() {
           element={(
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/administracion/sucursales"
+          element={(
+            <ProtectedRoute>
+              <SucursalesPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/administracion/usuarios"
+          element={(
+            <ProtectedRoute>
+              <UsuariosPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/administracion/roles"
+          element={(
+            <ProtectedRoute>
+              <RolesPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/administracion/auditoria"
+          element={(
+            <ProtectedRoute>
+              <AuditoriaPage />
             </ProtectedRoute>
           )}
         />

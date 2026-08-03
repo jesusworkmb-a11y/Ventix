@@ -14,6 +14,10 @@ function DashboardPage() {
       <p>Permisos activos: {permisos?.length ?? 0}</p>
 
       <nav style={{ display: 'flex', gap: '1rem', margin: '1.5rem 0', flexWrap: 'wrap' }}>
+        {permisos?.includes('administracion.sucursales.ver') && <Link to="/administracion/sucursales">Sucursales</Link>}
+        {permisos?.includes('administracion.usuarios.ver') && <Link to="/administracion/usuarios">Usuarios</Link>}
+        {permisos?.includes('administracion.roles.ver') && <Link to="/administracion/roles">Roles y permisos</Link>}
+        {permisos?.includes('administracion.auditoria.ver') && <Link to="/administracion/auditoria">Auditoría</Link>}
         <Link to="/catalogo/articulos">Artículos</Link>
         <Link to="/catalogo/configuracion">Configuración de catálogo</Link>
         <Link to="/clientes">Clientes</Link>
