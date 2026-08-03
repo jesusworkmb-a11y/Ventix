@@ -64,8 +64,45 @@ Notas del despliegue:
    ```
    Los `.env` de ambos ya están configurados (Supabase + JWT secret) — no hace falta tocarlos.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: con los 10 módulos completos y ya en producción, lo siguiente es a elección —
-   pulir/QA de algún módulo, o nuevas funcionalidades fuera del plan original.
+5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core ya con su
+   primera pasada de QA (ver sección abajo), lo siguiente es a elección — QA de otro módulo,
+   o nuevas funcionalidades fuera del plan original.
+
+## QA de MOD-001 Core (2026-08-02)
+
+Primera pasada de QA sobre auth/empresas/sucursales/usuarios/roles/permisos/auditoría —
+revisión de código + pruebas en vivo contra producción (con limpieza de datos de prueba
+después de cada una). Encontrado y corregido:
+
+- **Crítico — el bloqueo de usuario no funcionaba en absoluto.** `login()` solo validaba el
+  bloqueo automático temporal (5 intentos fallidos), nunca el campo `estado` que fija un
+  admin — un usuario puesto en `BLOQUEADO` podía seguir logueando normal. Además, el
+  middleware de auth no revalidaba el estado en cada request, así que ni siquiera las
+  sesiones ya abiertas se cortaban. Corregido en ambos puntos
+  ([auth.service.js](backend/src/modules/core/auth/auth.service.js),
+  [auth.middleware.js](backend/src/middlewares/auth.middleware.js)).
+- **`PUT /roles/:id/permisos` fallaba con claves de permiso duplicadas** aunque todas
+  fueran válidas (comparaba el largo del array crudo contra el deduplicado por la DB).
+  Corregido en [roles.service.js](backend/src/modules/core/roles/roles.service.js).
+- **Condición de carrera en alta de empresa/usuario con correo duplicado**: el chequeo de
+  correo existente corría antes de la transacción, no de forma atómica; dos altas casi
+  simultáneas con el mismo correo podían terminar en un 500 crudo en vez de un 409 limpio.
+  Corregido atrapando el constraint único de Postgres en
+  [auth.service.js](backend/src/modules/core/auth/auth.service.js) y
+  [usuarios.service.js](backend/src/modules/core/usuarios/usuarios.service.js).
+- **Vacío funcional grande: no existía UI de administración.** El backend ya tenía CRUD
+  completo de sucursales/usuarios/roles/permisos y consulta de auditoría, pero el frontend
+  solo implementaba login/registro. Se construyeron las 4 pantallas nuevas (alta + edición
+  inline, sin librería de UI, mismo estilo que el resto del frontend):
+  [SucursalesPage](frontend/src/modules/core/pages/SucursalesPage.jsx),
+  [UsuariosPage](frontend/src/modules/core/pages/UsuariosPage.jsx),
+  [RolesPage](frontend/src/modules/core/pages/RolesPage.jsx) (con matriz de permisos por
+  checkbox) y [AuditoriaPage](frontend/src/modules/core/pages/AuditoriaPage.jsx). El nav del
+  dashboard oculta estos links según los permisos reales del usuario.
+
+Pendiente, baja prioridad: los endpoints `PATCH` de actualización aceptan body vacío `{}` y
+de todos modos escriben una entrada de auditoría sin cambios reales (ruido cosmético, no
+afecta seguridad ni datos).
 
 ## Qué contiene
 
@@ -81,9 +118,11 @@ ventix/
 │       └── modules/              ← MOD-001 a MOD-010, un router placeholder cada uno
 └── frontend/
     └── src/
-        ├── App.jsx               ← valida conexión React → Express → PostgreSQL
+        ├── App.jsx               ← rutas de la app (una por pantalla, todas tras login salvo /login y /registro)
         ├── shared/api.js         ← cliente HTTP único hacia el backend
         └── modules/              ← una carpeta por módulo (core, catalogo, ventas...)
+            └── core/pages/       ← Login, Registro, y las 4 pantallas de administración
+                                     (Sucursales, Usuarios, Roles, Auditoría)
 ```
 
 ## Cómo arrancarlo
@@ -121,6 +160,8 @@ Si ves "Estado del backend: conectado — DB: connected" en la pantalla, la Fase
 - [x] Configurar el repositorio Git (`git init`, primer commit, remoto en GitHub) — remoto en GitHub pendiente
 - [x] Revisar las notas "// REVISAR" dentro de `schema.prisma` — validadas, marcadas como "VALIDADO" en el schema
 
-## Siguiente fase
+## Qué sigue
 
-**Fase 1 — MOD-001 Core**: autenticación, empresas (con inicialización automática), sucursales, usuarios, roles, permisos, folios y auditoría. Es el módulo del que dependen todos los demás.
+Los 10 módulos del plan original están completos y en producción, y MOD-001 Core ya pasó su
+primera ronda de QA (ver sección arriba). A elección: QA de otro módulo (Ventas o Caja son
+los más críticos por ser el núcleo del POS), o nuevas funcionalidades fuera del plan original.
