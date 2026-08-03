@@ -57,8 +57,9 @@ async function reemplazarPermisos({ empresaId, usuarioEjecutorId, rolId, claves 
   const rol = await prisma.rol.findFirst({ where: { id: rolId, empresaId } });
   if (!rol) throw new AppError(404, 'Rol no encontrado.');
 
-  const permisos = await prisma.permiso.findMany({ where: { clave: { in: claves } } });
-  if (permisos.length !== claves.length) throw new AppError(400, 'Alguna clave de permiso no existe.');
+  const clavesUnicas = [...new Set(claves)];
+  const permisos = await prisma.permiso.findMany({ where: { clave: { in: clavesUnicas } } });
+  if (permisos.length !== clavesUnicas.length) throw new AppError(400, 'Alguna clave de permiso no existe.');
 
   return prisma.$transaction(async (tx) => {
     const anteriores = await tx.rolPermiso.findMany({ where: { rolId }, include: { permiso: true } });
@@ -74,10 +75,10 @@ async function reemplazarPermisos({ empresaId, usuarioEjecutorId, rolId, claves 
       entidad: 'RolPermiso',
       entidadId: rolId,
       valoresAntes: toJson(anteriores.map((a) => a.permiso.clave)),
-      valoresDespues: toJson(claves),
+      valoresDespues: toJson(clavesUnicas),
     });
 
-    return claves;
+    return clavesUnicas;
   });
 }
 
