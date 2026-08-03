@@ -73,10 +73,10 @@ Notas del despliegue:
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core, MOD-008
-   Ventas, MOD-006 Caja y MOD-004 Inventario ya con su primera pasada de QA (ver secciones
-   abajo), lo siguiente es a elección: el vacío de UI que dejó el QA de Inventario
-   (ajustes/transferencias/conteos solo por API), QA de otro módulo, o nuevas funcionalidades
-   fuera del plan original.
+   Ventas, MOD-006 Caja y MOD-004 Inventario ya con su primera pasada de QA — incluida la UI de
+   ajustes/transferencias/conteos que había quedado pendiente, ya cerrada (ver secciones abajo)
+   — lo siguiente es a elección: QA de otro módulo, o nuevas funcionalidades fuera del plan
+   original.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -238,12 +238,20 @@ compensatorios cuando el bug alcanzó a escribir stock de más). Encontrado y co
   que se edita una sucursal (no-op para las que ya las tienen). Se usó para reparar Sucursal
   Norte en el momento.
 
-Pendiente, sin decidir todavía:
-- Vacío funcional: el frontend de Inventario
-  ([ExistenciasPage.jsx](frontend/src/modules/inventario/pages/ExistenciasPage.jsx)) solo tiene
-  listar existencias y establecer existencia inicial — no hay UI para ajustes, transferencias
-  (crear/recibir) ni conteos físicos (mismo tipo de vacío que se encontró y cerró en Core y
-  Ventas). Todo eso solo es alcanzable vía API por ahora.
+### Cierre del vacío de UI (2026-08-03)
+
+Construidas [AjustesPage.jsx](frontend/src/modules/inventario/pages/AjustesPage.jsx) (registrar
+ajuste con cantidad +/- por línea y ver detalle de ajustes recientes),
+[TransferenciasPage.jsx](frontend/src/modules/inventario/pages/TransferenciasPage.jsx) (crear
+transferencia y recibirla como acción inline sobre las `EN_TRANSITO`) y
+[ConteosPage.jsx](frontend/src/modules/inventario/pages/ConteosPage.jsx) (iniciar conteo,
+capturar líneas, avanzar CAPTURA→REVISION→AUTORIZADO con vista de sistema/física/diferencia).
+Mismo estilo sin librería de UI, mismo patrón de acciones inline expandibles por fila que
+devoluciones/cotizaciones en Ventas. Los tres flujos completos se probaron en vivo contra
+producción (crear ajuste, crear+recibir transferencia, capturar+revisar+autorizar conteo),
+revirtiendo el efecto de stock de las pruebas al terminar.
+
+Sin pendientes abiertos de esta pasada.
 
 ## Qué contiene
 
@@ -304,7 +312,7 @@ Si ves "Estado del backend: conectado — DB: connected" en la pantalla, la Fase
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
-Ventas, MOD-006 Caja y MOD-004 Inventario ya pasaron su primera ronda de QA (ver secciones
-arriba). A elección: el vacío de UI que dejó el QA de Inventario (ajustes/transferencias/conteos
-físicos solo por API), QA de algún otro módulo (Catálogo, Clientes/Proveedores, Compras,
-Reportes, Herramientas), o nuevas funcionalidades fuera del plan original.
+Ventas, MOD-006 Caja y MOD-004 Inventario ya pasaron su primera ronda de QA, incluida la UI de
+ajustes/transferencias/conteos físicos que había quedado pendiente (ver secciones arriba). A
+elección: QA de algún otro módulo (Catálogo, Clientes/Proveedores, Compras, Reportes,
+Herramientas), o nuevas funcionalidades fuera del plan original.
