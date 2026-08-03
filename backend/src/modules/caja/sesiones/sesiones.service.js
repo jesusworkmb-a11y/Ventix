@@ -35,13 +35,24 @@ async function obtener({ empresaId, sesionId }) {
 }
 
 async function abrir({ empresaId, usuarioId, cajaId, fondoInicial }) {
-  const caja = await prisma.caja.findFirst({ where: { id: cajaId, empresaId } });
-  if (!caja) throw new AppError(400, 'La caja indicada no pertenece a esta empresa.');
-
-  const abierta = await prisma.sesionCaja.findFirst({ where: { cajaId, cerradaEn: null } });
-  if (abierta) throw new AppError(409, 'Esta caja ya tiene una sesión abierta.');
-
   return prisma.$transaction(async (tx) => {
+    // FOR UPDATE bloquea la fila de la caja hasta que el tx termina: dos aperturas
+    // concurrentes de la misma caja quedan serializadas en vez de correr en paralelo
+    // (sin el lock, ambas podían pasar el check de "sin sesión abierta" y crear dos
+    // sesiones simultáneas — verificado en vivo en QA de Caja).
+    const [caja] = await tx.$queryRaw`
+      SELECT id, sucursal_id AS "sucursalId", activa
+      FROM cajas WHERE id = ${cajaId}::uuid AND empresa_id = ${empresaId}::uuid FOR UPDATE
+    `;
+    if (!caja) throw new AppError(400, 'La caja indicada no pertenece a esta empresa.');
+    // El flag activa no se validaba en ningún punto (solo se podía set/leer vía CRUD de
+    // cajas): una caja desactivada por un admin podía seguir abriendo sesiones normalmente,
+    // verificado en vivo en QA de Caja — mismo tipo de vacío que el estado BLOQUEADO en Core.
+    if (!caja.activa) throw new AppError(400, 'La caja está inactiva.');
+
+    const abierta = await tx.sesionCaja.findFirst({ where: { cajaId, cerradaEn: null } });
+    if (abierta) throw new AppError(409, 'Esta caja ya tiene una sesión abierta.');
+
     const sesion = await tx.sesionCaja.create({
       data: { cajaId, usuarioResponsableId: usuarioId, fondoInicial },
     });
