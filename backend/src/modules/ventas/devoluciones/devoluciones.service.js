@@ -5,6 +5,7 @@ const { registrarMovimientoCaja } = require('../../../shared/services/caja.servi
 const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.service');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+const redondear = require('../../../shared/redondear');
 
 // Devolucion no tiene empresaId propio — se valida pertenencia yendo a través de su Venta.
 async function listar({ empresaId, filtros }) {
@@ -66,9 +67,10 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
       );
     }
 
-    reembolso += detalle.cantidad * Number(ventaDetalle.precio);
+    reembolso += detalle.cantidad * Number(ventaDetalle.precio) * (1 + Number(ventaDetalle.impuestoTasa));
     lineas.push({ ...detalle, ventaDetalleId: ventaDetalle.id });
   }
+  reembolso = redondear(reembolso);
 
   if (reembolso > 0 && !sesionCajaId) {
     throw new AppError(400, 'Esta devolución implica un reembolso; indica una sesión de caja abierta para procesarlo.');
