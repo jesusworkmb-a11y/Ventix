@@ -147,6 +147,14 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
       data: { cerradaEn: new Date(), saldoEsperado, saldoReal, diferencia },
     });
     actualizada.__debugMarker = 'CERRAR_V3_' + diferencia;
+    actualizada.__debugInfo = {
+      localDiferencia: diferencia,
+      localDiferenciaType: typeof diferencia,
+      returnedDiferencia: actualizada.diferencia,
+      returnedDiferenciaType: typeof actualizada.diferencia,
+      returnedDiferenciaCtor: actualizada.diferencia?.constructor?.name,
+      returnedDiferenciaToString: String(actualizada.diferencia),
+    };
     await registrarAuditoria(tx, {
       empresaId,
       sucursalId: caja.sucursalId,
