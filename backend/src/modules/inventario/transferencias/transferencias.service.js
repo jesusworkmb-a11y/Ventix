@@ -101,6 +101,19 @@ async function recibir({ empresaId, usuarioId, transferenciaId }) {
   }
 
   return prisma.$transaction(async (tx) => {
+    // El check de "está en tránsito" de arriba no es atómico con el resto: dos recibir()
+    // casi simultáneos pasaban ambos el check y aplicaban el ingreso al destino dos veces
+    // (verificado en vivo en QA de Inventario: 5 recibir() concurrentes, destino +25 en vez
+    // de +5). Se reclama la transferencia con un UPDATE...WHERE estado='EN_TRANSITO' antes de
+    // aplicar los movimientos, mismo patrón que la conversión de cotización en Ventas.
+    const reclamada = await tx.transferencia.updateMany({
+      where: { id: transferenciaId, estado: 'EN_TRANSITO' },
+      data: { estado: 'RECIBIDA' },
+    });
+    if (reclamada.count === 0) {
+      throw new AppError(400, 'Solo se pueden recibir transferencias en tránsito.');
+    }
+
     for (const detalle of transferencia.detalles) {
       await aplicarMovimiento(tx, {
         empresaId,
@@ -114,10 +127,7 @@ async function recibir({ empresaId, usuarioId, transferenciaId }) {
       });
     }
 
-    const actualizada = await tx.transferencia.update({
-      where: { id: transferenciaId },
-      data: { estado: 'RECIBIDA' },
-    });
+    const actualizada = await tx.transferencia.findUnique({ where: { id: transferenciaId } });
 
     await registrarAuditoria(tx, {
       empresaId,
