@@ -5,7 +5,7 @@ Generado a partir de:
 - `VENTIX_BASE_TECNICA_CONSOLIDADA_V1.md`
 - `VENTIX_PLAN_DE_TRABAJO_V1.md`
 
-## Estado actual (2026-08-02)
+## Estado actual (2026-08-03)
 
 Las 10 fases del plan original están completas, commiteadas y en GitHub
 (`https://github.com/jesusworkmb-a11y/Ventix`, rama `main`), **y desplegadas en producción en Render**.
@@ -64,9 +64,10 @@ Notas del despliegue:
    ```
    Los `.env` de ambos ya están configurados (Supabase + JWT secret) — no hace falta tocarlos.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core ya con su
-   primera pasada de QA (ver sección abajo), lo siguiente es a elección — QA de otro módulo,
-   o nuevas funcionalidades fuera del plan original.
+5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core y MOD-008
+   Ventas ya con su primera pasada de QA (ver secciones abajo), lo siguiente es a elección —
+   QA de otro módulo (Caja es el candidato más obvio, por ser el otro núcleo del POS), los
+   pendientes que dejó el QA de Ventas, o nuevas funcionalidades fuera del plan original.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -103,6 +104,44 @@ después de cada una). Encontrado y corregido:
 Pendiente, baja prioridad: los endpoints `PATCH` de actualización aceptan body vacío `{}` y
 de todos modos escriben una entrada de auditoría sin cambios reales (ruido cosmético, no
 afecta seguridad ni datos).
+
+## QA de MOD-008 Ventas (2026-08-03)
+
+Primera pasada de QA sobre ventas/devoluciones/cotizaciones — revisión de código + pruebas
+en vivo contra producción, incluyendo reproducción intencional de cada bug antes del fix y
+reverificación después del deploy (con limpieza de datos de prueba después de cada una).
+Encontrado y corregido:
+
+- **Crítico — se podía procesar una devolución sobre una venta ya cancelada.** `crear()` en
+  devoluciones no validaba `venta.estado`. Cancelar una venta ya restaura el stock
+  (`CANCELACION_VENTA`); una devolución posterior sobre esa misma venta volvía a acreditar
+  stock (unidad fantasma, verificado en vivo: 88 → 89) y generaba un reembolso de caja
+  indebido sobre una venta que nunca se cobró de verdad tras la cancelación. Corregido en
+  [devoluciones.service.js](backend/src/modules/ventas/devoluciones/devoluciones.service.js)
+  exigiendo `estado === 'CONFIRMADA'`.
+- **Crítico — condición de carrera al convertir una cotización en venta.** El check de
+  "¿ya fue convertida?" y el marcado de `convertidaEnVentaId` no eran atómicos; dos
+  conversiones casi simultáneas de la misma cotización pasaban ambas el check y generaban
+  dos ventas (stock y cobro duplicados) — reproducido en vivo disparando dos requests
+  concurrentes, ambos con `201`. Corregido en
+  [cotizaciones.service.js](backend/src/modules/ventas/cotizaciones/cotizaciones.service.js)
+  reclamando la cotización con un `UPDATE...WHERE convertidaEnVentaId IS NULL` antes de crear
+  la venta (misma idea de apoyarse en una garantía atómica de Postgres que el fix del correo
+  duplicado en Core); si la creación de la venta falla, se libera el candado.
+- **El reembolso de una devolución no incluía el impuesto.** Se calculaba como
+  `cantidad × precio`, ignorando `impuestoTasa` — una devolución sobre una venta de $23.20
+  (con 16% de IVA) reembolsaba $20.00. Corregido en el mismo archivo de devoluciones,
+  incluyendo el impuesto y redondeando a 2 decimales (mismo patrón que
+  subtotal/impuestos/total en [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js)).
+
+Pendiente, sin decidir todavía:
+- `ventas.crear` no valida que la caja de `sesionCajaId` pertenezca a la misma sucursal de
+  la venta, solo que sea de la misma empresa — se podría vender en una sucursal y cobrar
+  contra la caja de otra. No está claro si es un bug o flexibilidad intencional.
+- Vacío funcional: el frontend de Ventas
+  ([VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx)) solo tiene "crear
+  venta" y "listar" — no hay UI para cancelar, devoluciones ni cotizaciones (mismo tipo de
+  vacío que se encontró y cerró en Core). Todo eso solo es alcanzable vía API por ahora.
 
 ## Qué contiene
 
@@ -162,6 +201,8 @@ Si ves "Estado del backend: conectado — DB: connected" en la pantalla, la Fase
 
 ## Qué sigue
 
-Los 10 módulos del plan original están completos y en producción, y MOD-001 Core ya pasó su
-primera ronda de QA (ver sección arriba). A elección: QA de otro módulo (Ventas o Caja son
-los más críticos por ser el núcleo del POS), o nuevas funcionalidades fuera del plan original.
+Los 10 módulos del plan original están completos y en producción, y MOD-001 Core y MOD-008
+Ventas ya pasaron su primera ronda de QA (ver secciones arriba). A elección: QA de Caja
+(el otro núcleo del POS), los dos pendientes que dejó el QA de Ventas (validación cruzada
+sucursal↔caja, UI de cancelar/devoluciones/cotizaciones), QA de algún otro módulo, o nuevas
+funcionalidades fuera del plan original.
