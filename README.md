@@ -460,6 +460,42 @@ la primera columna.
 Sin pendientes abiertos de esta pasada. Con esto, los 10 módulos del plan original ya tuvieron su
 primera ronda de QA.
 
+## Bug de precisión Decimal en Caja + gotcha de Prisma para todo el proyecto (2026-08-03)
+
+Encontrado haciendo un recorrido del flujo completo de venta como usuario (abrir caja → vender →
+cerrar caja), fuera de una pasada de QA formal — el mensaje de cierre de sesión mostraba
+`"Esperado: 843.4400000000002"` en vez de un monto limpio.
+
+**Primer intento de fix (insuficiente):** `sesiones.service.js#cerrar` sumaba los movimientos con
+punto flotante de JS sin pasar por `redondear()` — se corrigió envolviendo `saldoEsperado` y
+`diferencia` en `redondear()`, como ya hace el resto del proyecto. El fix no se reflejaba en
+producción ni después de varios redeploys, un clear-cache-and-deploy y un restart manual del
+servicio, lo que parecía (engañosamente) un problema de infraestructura de Render.
+
+**Causa raíz real, encontrada con un marcador de debug temporal:** el problema no era el deploy.
+`redondear()` sí dejaba la variable de JS limpia (`9.7`), pero pasar ese `number` de JS
+directamente a un campo `Decimal` de Prisma podía reintroducir el mismo artefacto de punto
+flotante *en la conversión interna a Decimal* — el valor que Prisma efectivamente persistía y
+devolvía era `"9.699999999999999"`, no `"9.7"`, pese a que la variable de origen ya estaba
+redondeada. Verificado end-to-end con un debug marker temporal que comparó
+`localDiferencia` (9.7, `number`) contra `actualizada.diferencia` (objeto Decimal cuyo
+`.toString()` daba `"9.699999999999999"`) en la misma respuesta.
+
+**Fix real:** pasar el valor como *string* (`valor.toFixed(2)`) en vez de `number` al campo
+Decimal — `decimal.js` (la librería detrás de `Prisma.Decimal`) parsea un string de forma exacta,
+sin pasar por la representación binaria de un `number` de JS. Corregido en
+[sesiones.service.js](backend/src/modules/caja/sesiones/sesiones.service.js) para
+`saldoEsperado`/`saldoReal`/`diferencia`. Verificado en vivo, repetido más de 10 veces sin
+recurrencia.
+
+**Nota para el futuro:** este mismo patrón (`redondear()` en JS pero pasando el resultado como
+`number` crudo a un campo Decimal, en vez de `.toFixed(2)` como string) se usa en varios otros
+puntos del proyecto (ventas/compras/devoluciones/cotizaciones `total`/`subtotal`/`reembolso`,
+etc.) y no mostró el mismo síntoma con los valores probados hasta ahora — pero el riesgo es
+inherente al valor específico convertido (algunos floats sobreviven la conversión a Decimal
+limpios, otros no), no al campo. Si en el futuro aparece un monto con decimales "sucios" en
+cualquier reporte o pantalla, este es el patrón a revisar primero.
+
 ## Qué contiene
 
 ```text
