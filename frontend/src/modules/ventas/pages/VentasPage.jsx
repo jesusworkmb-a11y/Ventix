@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { listarVentas, crearVenta } from '../api/ventas.api';
+import { listarVentas, crearVenta, cancelarVenta, obtenerVenta } from '../api/ventas.api';
+import { crearDevolucion } from '../api/devoluciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
+import { listarUsuarios } from '../../core/api/core.api';
+
+const MOTIVOS_DEVOLUCION = ['Producto defectuoso', 'Error de venta', 'Cliente cambió de opinión', 'Garantía', 'Otro'];
 
 function VentasPage() {
   const [cajas, setCajas] = useState([]);
@@ -19,6 +23,17 @@ function VentasPage() {
   const [error, setError] = useState('');
   const [confirmada, setConfirmada] = useState(null);
   const [ventas, setVentas] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
+
+  const [devolviendoId, setDevolviendoId] = useState(null);
+  const [ventaDevolucion, setVentaDevolucion] = useState(null);
+  const [devArticuloId, setDevArticuloId] = useState('');
+  const [devCantidad, setDevCantidad] = useState('1');
+  const [devVuelveAStock, setDevVuelveAStock] = useState(true);
+  const [devCarrito, setDevCarrito] = useState([]);
+  const [devMotivo, setDevMotivo] = useState(MOTIVOS_DEVOLUCION[0]);
+  const [devAutorizadoPorId, setDevAutorizadoPorId] = useState('');
+  const [devError, setDevError] = useState('');
 
   useEffect(() => {
     listarCajas()
@@ -35,6 +50,7 @@ function VentasPage() {
       })
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
+    listarUsuarios().then(setUsuarios).catch(() => {});
     cargarVentas();
   }, []);
 
@@ -112,10 +128,112 @@ function VentasPage() {
     }
   }
 
+  async function handleCancelar(ventaId) {
+    setError('');
+    try {
+      await cancelarVenta(ventaId);
+      cargarVentas();
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo cancelar la venta.');
+    }
+  }
+
+  async function abrirDevolucion(venta) {
+    setDevError('');
+    setDevCarrito([]);
+    setDevMotivo(MOTIVOS_DEVOLUCION[0]);
+    setDevAutorizadoPorId('');
+    setDevolviendoId(venta.id);
+    try {
+      const detalle = await obtenerVenta(venta.id);
+      setVentaDevolucion(detalle);
+    } catch (err) {
+      setDevError('No se pudo cargar el detalle de la venta.');
+    }
+  }
+
+  function cerrarDevolucion() {
+    setDevolviendoId(null);
+    setVentaDevolucion(null);
+    setDevCarrito([]);
+  }
+
+  function agregarLineaDevolucion(e) {
+    e.preventDefault();
+    const linea = ventaDevolucion?.detalles.find((d) => d.articuloId === devArticuloId);
+    if (!linea) return;
+    const yaEnCarrito = devCarrito
+      .filter((l) => l.articuloId === devArticuloId)
+      .reduce((acc, l) => acc + l.cantidad, 0);
+    const disponible = Number(linea.cantidad) - Number(linea.cantidadDevuelta) - yaEnCarrito;
+    const cant = Number(devCantidad);
+    if (cant <= 0 || cant > disponible) {
+      setDevError(`Cantidad inválida (disponible para devolver: ${disponible}).`);
+      return;
+    }
+    setDevError('');
+    setDevCarrito((c) => [
+      ...c,
+      {
+        articuloId: devArticuloId,
+        nombre: linea.articulo?.nombre || devArticuloId,
+        cantidad: cant,
+        precio: Number(linea.precio),
+        impuestoTasa: Number(linea.impuestoTasa),
+        vuelveAStock: devVuelveAStock,
+      },
+    ]);
+    setDevArticuloId('');
+    setDevCantidad('1');
+  }
+
+  function quitarLineaDevolucion(index) {
+    setDevCarrito((c) => c.filter((_, i) => i !== index));
+  }
+
+  const devReembolso = Math.round(
+    devCarrito.reduce((acc, l) => acc + l.cantidad * l.precio * (1 + l.impuestoTasa), 0) * 100,
+  ) / 100;
+
+  async function confirmarDevolucion(e) {
+    e.preventDefault();
+    setDevError('');
+    if (devCarrito.length === 0) {
+      setDevError('Agrega al menos un artículo a devolver.');
+      return;
+    }
+    if (!devAutorizadoPorId) {
+      setDevError('Selecciona quién autoriza la devolución.');
+      return;
+    }
+    if (devReembolso > 0 && !sesion) {
+      setDevError('Esta devolución implica un reembolso; abre una sesión de caja para esta caja primero.');
+      return;
+    }
+    try {
+      await crearDevolucion({
+        ventaId: ventaDevolucion.id,
+        motivo: devMotivo,
+        autorizadoPorId: devAutorizadoPorId,
+        sesionCajaId: devReembolso > 0 ? sesion.id : undefined,
+        detalles: devCarrito.map((l) => ({
+          articuloId: l.articuloId,
+          cantidad: l.cantidad,
+          vuelveAStock: l.vuelveAStock,
+        })),
+      });
+      cerrarDevolucion();
+      cargarVentas();
+    } catch (err) {
+      setDevError(err.response?.data?.error || 'No se pudo procesar la devolución.');
+    }
+  }
+
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 700 }}>
       <p><Link to="/dashboard">← Volver al dashboard</Link></p>
       <h1>Ventas</h1>
+      <p><Link to="/ventas/cotizaciones">Ver cotizaciones →</Link></p>
 
       {cajas.length === 0 && <p>No hay cajas registradas todavía (créalas vía la API).</p>}
 
@@ -221,16 +339,110 @@ function VentasPage() {
             <th style={{ textAlign: 'left' }}>Cliente</th>
             <th style={{ textAlign: 'left' }}>Total</th>
             <th style={{ textAlign: 'left' }}>Estado</th>
+            <th />
           </tr>
         </thead>
         <tbody>
           {ventas.map((v) => (
-            <tr key={v.id}>
-              <td>{v.folio}</td>
-              <td>{v.cliente?.nombre}</td>
-              <td>{v.total}</td>
-              <td>{v.estado}</td>
-            </tr>
+            <Fragment key={v.id}>
+              <tr>
+                <td>{v.folio}</td>
+                <td>{v.cliente?.nombre}</td>
+                <td>{v.total}</td>
+                <td>{v.estado}</td>
+                <td>
+                  {v.estado === 'CONFIRMADA' && (
+                    <>
+                      <button type="button" onClick={() => handleCancelar(v.id)}>Cancelar</button>{' '}
+                      <button type="button" onClick={() => abrirDevolucion(v)}>Devolver</button>
+                    </>
+                  )}
+                </td>
+              </tr>
+              {devolviendoId === v.id && (
+                <tr>
+                  <td colSpan={5} style={{ background: '#f7f7f7', padding: '1rem' }}>
+                    {devError && <p style={{ color: 'crimson' }}>{devError}</p>}
+                    {!ventaDevolucion && <p>Cargando detalle de la venta…</p>}
+                    {ventaDevolucion && (
+                      <>
+                        <form
+                          onSubmit={agregarLineaDevolucion}
+                          style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}
+                        >
+                          <select value={devArticuloId} onChange={(e) => setDevArticuloId(e.target.value)} required>
+                            <option value="">Artículo vendido...</option>
+                            {ventaDevolucion.detalles.map((d) => (
+                              <option key={d.articuloId} value={d.articuloId}>
+                                {d.articulo?.nombre || d.articuloId} (disponible: {Number(d.cantidad) - Number(d.cantidadDevuelta)})
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0.01"
+                            value={devCantidad}
+                            onChange={(e) => setDevCantidad(e.target.value)}
+                            style={{ width: '80px' }}
+                            required
+                          />
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={devVuelveAStock}
+                              onChange={(e) => setDevVuelveAStock(e.target.checked)}
+                            />{' '}
+                            Vuelve a stock
+                          </label>
+                          <button type="submit">Agregar</button>
+                        </form>
+
+                        {devCarrito.length > 0 && (
+                          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '0.75rem' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: 'left' }}>Artículo</th>
+                                <th style={{ textAlign: 'left' }}>Cantidad</th>
+                                <th style={{ textAlign: 'left' }}>Vuelve a stock</th>
+                                <th />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {devCarrito.map((l, i) => (
+                                <tr key={i}>
+                                  <td>{l.nombre}</td>
+                                  <td>{l.cantidad}</td>
+                                  <td>{l.vuelveAStock ? 'Sí' : 'No'}</td>
+                                  <td><button type="button" onClick={() => quitarLineaDevolucion(i)}>Quitar</button></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+
+                        <form onSubmit={confirmarDevolucion} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select value={devMotivo} onChange={(e) => setDevMotivo(e.target.value)}>
+                            {MOTIVOS_DEVOLUCION.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <select value={devAutorizadoPorId} onChange={(e) => setDevAutorizadoPorId(e.target.value)} required>
+                            <option value="">Autoriza...</option>
+                            {usuarios.map((u) => (
+                              <option key={u.id} value={u.id}>{u.nombre}</option>
+                            ))}
+                          </select>
+                          <span>Reembolso: {devReembolso.toFixed(2)}</span>
+                          <button type="submit">Confirmar devolución</button>
+                          <button type="button" onClick={cerrarDevolucion}>Cancelar</button>
+                        </form>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>
