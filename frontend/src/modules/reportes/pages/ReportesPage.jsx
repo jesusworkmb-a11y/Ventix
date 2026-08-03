@@ -189,10 +189,10 @@ function ReportesPage() {
               {resultado.sesiones.map((s) => (
                 <tr key={s.id}>
                   <td>{s.caja?.nombre}</td>
-                  <td>{s.fondoInicial}</td>
-                  <td>{s.saldoEsperado}</td>
-                  <td>{s.saldoReal}</td>
-                  <td>{s.diferencia}</td>
+                  <td>{Number(s.fondoInicial).toFixed(2)}</td>
+                  <td>{Number(s.saldoEsperado).toFixed(2)}</td>
+                  <td>{Number(s.saldoReal).toFixed(2)}</td>
+                  <td>{Number(s.diferencia).toFixed(2)}</td>
                   <td>{new Date(s.cerradaEn).toLocaleString()}</td>
                 </tr>
               ))}

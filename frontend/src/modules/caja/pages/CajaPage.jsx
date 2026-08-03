@@ -117,8 +117,8 @@ function CajaPage() {
       {cierre && (
         <div style={{ background: '#f0f0f0', padding: '1rem', margin: '1rem 0' }}>
           <p>
-            Sesión cerrada. Esperado: {cierre.saldoEsperado} — Real: {cierre.saldoReal} — Diferencia:{' '}
-            {cierre.diferencia}
+            Sesión cerrada. Esperado: {Number(cierre.saldoEsperado).toFixed(2)} — Real: {Number(cierre.saldoReal).toFixed(2)} — Diferencia:{' '}
+            {Number(cierre.diferencia).toFixed(2)}
           </p>
         </div>
       )}

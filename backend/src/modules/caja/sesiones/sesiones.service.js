@@ -3,6 +3,7 @@ const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const { registrarMovimientoCaja } = require('../../../shared/services/caja.service');
 const toJson = require('../../../shared/toJson');
+const redondear = require('../../../shared/redondear');
 
 // SesionCaja no tiene empresaId propio — se valida pertenencia yendo a través de su Caja.
 async function obtenerSesionValidada({ empresaId, sesionId }) {
@@ -132,11 +133,14 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
     if (sesion.cerradaEn) throw new AppError(400, 'La sesión ya está cerrada.');
 
     const movimientos = await tx.movimientoCaja.findMany({ where: { sesionCajaId: sesionId } });
-    const saldoEsperado = movimientos.reduce(
-      (acc, m) => acc + Number(m.monto) * (SIGNO_POR_TIPO[m.tipo] || 0),
-      Number(sesion.fondoInicial),
+    // Sin redondear, la suma de muchos movimientos en punto flotante de JS arrastra artefactos
+    // (mismo problema documentado en shared/redondear.js) que terminaban persistidos tal cual en
+    // saldoEsperado/diferencia -- verificado en vivo: "Esperado: 843.4400000000002" mostrado (y
+    // guardado) sin redondear al cerrar una sesión real.
+    const saldoEsperado = redondear(
+      movimientos.reduce((acc, m) => acc + Number(m.monto) * (SIGNO_POR_TIPO[m.tipo] || 0), Number(sesion.fondoInicial)),
     );
-    const diferencia = saldoReal - saldoEsperado;
+    const diferencia = redondear(saldoReal - saldoEsperado);
 
     const actualizada = await tx.sesionCaja.update({
       where: { id: sesionId },
