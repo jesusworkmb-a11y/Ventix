@@ -6,3 +6,6 @@ export function listarClientes(params) {
 export function crearCliente(datos) {
   return api.post('/clientes', datos).then((res) => res.data);
 }
+export function actualizarCliente(id, datos) {
+  return api.patch(`/clientes/${id}`, datos).then((res) => res.data);
+}

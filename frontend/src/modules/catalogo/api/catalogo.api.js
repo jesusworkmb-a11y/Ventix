@@ -34,3 +34,14 @@ export function listarImpuestos() {
 export function crearImpuesto(datos) {
   return api.post('/catalogo/impuestos', datos).then((res) => res.data);
 }
+
+export function listarListasPrecio() {
+  return api.get('/catalogo/listas-precio').then((res) => res.data);
+}
+export function crearListaPrecio(datos) {
+  return api.post('/catalogo/listas-precio', datos).then((res) => res.data);
+}
+
+export function actualizarPreciosArticulo(articuloId, precios) {
+  return api.put(`/catalogo/articulos/${articuloId}/precios`, { precios }).then((res) => res.data);
+}

@@ -60,13 +60,24 @@ function CotizacionesPage() {
     }
   }
 
+  // Misma resolución de precio por lista que Ventas (ver VentasPage#precioEfectivo) — así el
+  // total de la cotización coincide con lo que se cobrará al convertirla.
+  function precioEfectivo(articulo) {
+    const cliente = clientes.find((c) => c.id === clienteId);
+    if (cliente?.listaPrecioId) {
+      const porLista = (articulo.precios || []).find((p) => p.listaPrecioId === cliente.listaPrecioId);
+      if (porLista) return Number(porLista.precio);
+    }
+    return Number(articulo.precio);
+  }
+
   function agregarLinea(e) {
     e.preventDefault();
     const articulo = articulos.find((a) => a.id === articuloId);
     if (!articulo) return;
     setCarrito((c) => [
       ...c,
-      { articuloId, nombre: articulo.nombre, cantidad: Number(cantidad), precio: Number(articulo.precio) },
+      { articuloId, nombre: articulo.nombre, cantidad: Number(cantidad), precio: precioEfectivo(articulo) },
     ]);
     setArticuloId('');
     setCantidad('1');
@@ -175,7 +186,7 @@ function CotizacionesPage() {
         <select value={articuloId} onChange={(e) => setArticuloId(e.target.value)} required>
           <option value="">Artículo...</option>
           {articulos.map((a) => (
-            <option key={a.id} value={a.id}>{a.nombre} (${a.precio})</option>
+            <option key={a.id} value={a.id}>{a.nombre} (${precioEfectivo(a)})</option>
           ))}
         </select>
         <input

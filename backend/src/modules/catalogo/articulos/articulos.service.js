@@ -31,7 +31,7 @@ async function listar({ empresaId, filtros }) {
   }
   return prisma.articulo.findMany({
     where,
-    include: { categoria: true, marca: true, unidadBase: true, impuesto: true },
+    include: { categoria: true, marca: true, unidadBase: true, impuesto: true, precios: true },
     orderBy: { nombre: 'asc' },
   });
 }

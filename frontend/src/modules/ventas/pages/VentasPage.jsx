@@ -72,6 +72,18 @@ function VentasPage() {
     }
   }
 
+  // Precio efectivo para el cliente seleccionado: el de su lista de precio si el artículo
+  // tiene uno definido ahí, si no el precio base — misma resolución que ventas.service.js
+  // en el backend (lo que se muestra aquí es lo que realmente se va a cobrar).
+  function precioEfectivo(articulo) {
+    const cliente = clientes.find((c) => c.id === clienteId);
+    if (cliente?.listaPrecioId) {
+      const porLista = (articulo.precios || []).find((p) => p.listaPrecioId === cliente.listaPrecioId);
+      if (porLista) return Number(porLista.precio);
+    }
+    return Number(articulo.precio);
+  }
+
   function agregarLinea(e) {
     e.preventDefault();
     const articulo = articulos.find((a) => a.id === articuloId);
@@ -83,7 +95,7 @@ function VentasPage() {
         articuloId,
         nombre: articulo.nombre,
         cantidad: Number(cantidad),
-        precio: Number(articulo.precio),
+        precio: precioEfectivo(articulo),
         impuestoTasa,
       },
     ]);
@@ -279,7 +291,7 @@ function VentasPage() {
             <select value={articuloId} onChange={(e) => setArticuloId(e.target.value)} required>
               <option value="">Artículo...</option>
               {articulos.map((a) => (
-                <option key={a.id} value={a.id}>{a.nombre} (${a.precio})</option>
+                <option key={a.id} value={a.id}>{a.nombre} (${precioEfectivo(a)})</option>
               ))}
             </select>
             <input

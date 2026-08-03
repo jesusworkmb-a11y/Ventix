@@ -8,6 +8,21 @@ const { usuarioTienePermiso } = require('../../../shared/services/permisos.servi
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
 
+// Precio "de catálogo" efectivo para un cliente: el de su lista de precio asignada
+// (PrecioArticulo) si tiene una y el artículo tiene un precio ahí definido; si no,
+// el precio base del artículo. Reusado por cotizaciones.service.js (mismo módulo, MOD-008)
+// para que una cotización y la venta en la que se convierte partan del mismo precio base.
+async function resolverPreciosCatalogo({ articuloIds, listaPrecioId }) {
+  const precios = new Map();
+  if (listaPrecioId) {
+    const porLista = await prisma.precioArticulo.findMany({
+      where: { articuloId: { in: articuloIds }, listaPrecioId },
+    });
+    for (const p of porLista) precios.set(p.articuloId, Number(p.precio));
+  }
+  return precios;
+}
+
 async function listar({ empresaId, filtros }) {
   const where = { empresaId };
   if (filtros.clienteId) where.clienteId = filtros.clienteId;
@@ -68,11 +83,14 @@ async function crear({ empresaId, usuarioId, rolId, sucursalId, clienteId, sesio
     throw new AppError(400, 'Algún artículo indicado está descontinuado y no se puede vender.');
   }
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
+  const preciosLista = await resolverPreciosCatalogo({ articuloIds, listaPrecioId: cliente.listaPrecioId });
 
   const lineas = [];
   for (const detalle of detalles) {
     const articulo = articuloPorId.get(detalle.articuloId);
-    const precioCatalogo = Number(articulo.precio);
+    const precioCatalogo = preciosLista.has(detalle.articuloId)
+      ? preciosLista.get(detalle.articuloId)
+      : Number(articulo.precio);
     let precio = precioCatalogo;
 
     if (detalle.precio !== undefined && detalle.precio !== precioCatalogo) {
@@ -199,4 +217,4 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
   });
 }
 
-module.exports = { listar, obtener, crear, cancelar };
+module.exports = { listar, obtener, crear, cancelar, resolverPreciosCatalogo };

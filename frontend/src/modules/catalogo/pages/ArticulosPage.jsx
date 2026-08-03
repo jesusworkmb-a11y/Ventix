@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   listarArticulos,
@@ -7,6 +7,8 @@ import {
   listarMarcas,
   listarUnidades,
   listarImpuestos,
+  listarListasPrecio,
+  actualizarPreciosArticulo,
 } from '../api/catalogo.api';
 
 const FORM_VACIO = {
@@ -27,9 +29,14 @@ function ArticulosPage() {
   const [marcas, setMarcas] = useState([]);
   const [unidades, setUnidades] = useState([]);
   const [impuestos, setImpuestos] = useState([]);
+  const [listasPrecio, setListasPrecio] = useState([]);
   const [buscar, setBuscar] = useState('');
   const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
+
+  const [preciosArticuloId, setPreciosArticuloId] = useState(null);
+  const [preciosForm, setPreciosForm] = useState({});
+  const [preciosError, setPreciosError] = useState('');
 
   function cargarArticulos(filtro) {
     listarArticulos(filtro ? { buscar: filtro } : {}).then(setArticulos).catch(() => {});
@@ -41,7 +48,36 @@ function ArticulosPage() {
     listarMarcas().then(setMarcas).catch(() => {});
     listarUnidades().then(setUnidades).catch(() => {});
     listarImpuestos().then(setImpuestos).catch(() => {});
+    listarListasPrecio().then(setListasPrecio).catch(() => {});
   }, []);
+
+  function abrirPrecios(articulo) {
+    setPreciosError('');
+    setPreciosArticuloId(articulo.id);
+    const inicial = {};
+    for (const p of articulo.precios || []) inicial[p.listaPrecioId] = String(p.precio);
+    setPreciosForm(inicial);
+  }
+
+  function cerrarPrecios() {
+    setPreciosArticuloId(null);
+    setPreciosForm({});
+  }
+
+  async function guardarPrecios(e) {
+    e.preventDefault();
+    setPreciosError('');
+    const precios = Object.entries(preciosForm)
+      .filter(([, valor]) => valor !== '')
+      .map(([listaPrecioId, valor]) => ({ listaPrecioId, precio: Number(valor) }));
+    try {
+      await actualizarPreciosArticulo(preciosArticuloId, precios);
+      cerrarPrecios();
+      cargarArticulos(buscar);
+    } catch (err) {
+      setPreciosError(err.response?.data?.error || 'No se pudieron guardar los precios.');
+    }
+  }
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -101,16 +137,53 @@ function ArticulosPage() {
             <th style={{ textAlign: 'left' }}>SKU</th>
             <th style={{ textAlign: 'left' }}>Precio</th>
             <th style={{ textAlign: 'left' }}>Activo</th>
+            <th />
           </tr>
         </thead>
         <tbody>
           {articulos.map((a) => (
-            <tr key={a.id}>
-              <td>{a.nombre}</td>
-              <td>{a.sku || '—'}</td>
-              <td>{a.precio}</td>
-              <td>{a.activo ? 'Sí' : 'No'}</td>
-            </tr>
+            <Fragment key={a.id}>
+              <tr>
+                <td>{a.nombre}</td>
+                <td>{a.sku || '—'}</td>
+                <td>{a.precio}</td>
+                <td>{a.activo ? 'Sí' : 'No'}</td>
+                <td>
+                  {listasPrecio.length > 0 && (
+                    preciosArticuloId === a.id
+                      ? <button type="button" onClick={cerrarPrecios}>Cerrar</button>
+                      : <button type="button" onClick={() => abrirPrecios(a)}>Precios</button>
+                  )}
+                </td>
+              </tr>
+              {preciosArticuloId === a.id && (
+                <tr>
+                  <td colSpan={5} style={{ background: '#f7f7f7', padding: '1rem' }}>
+                    <form
+                      onSubmit={guardarPrecios}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: 320 }}
+                    >
+                      {listasPrecio.map((l) => (
+                        <label key={l.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                          {l.nombre}
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder={`base: ${a.precio}`}
+                            value={preciosForm[l.id] ?? ''}
+                            onChange={(e) => setPreciosForm((f) => ({ ...f, [l.id]: e.target.value }))}
+                            style={{ width: '120px' }}
+                          />
+                        </label>
+                      ))}
+                      {preciosError && <p style={{ color: 'crimson' }}>{preciosError}</p>}
+                      <button type="submit">Guardar precios</button>
+                    </form>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

@@ -8,6 +8,8 @@ import {
   crearUnidad,
   listarImpuestos,
   crearImpuesto,
+  listarListasPrecio,
+  crearListaPrecio,
 } from '../api/catalogo.api';
 
 // Categorías tiene lógica propia (padre + límite de 2 niveles), por eso no usa SeccionSimple.
@@ -120,6 +122,59 @@ function SeccionSimple({ titulo, cargar, crear, campos, renderItem }) {
   );
 }
 
+// Listas de precio tiene su propio checkbox (esBase), por eso no usa SeccionSimple.
+function SeccionListasPrecio() {
+  const [listas, setListas] = useState([]);
+  const [nombre, setNombre] = useState('');
+  const [esBase, setEsBase] = useState(false);
+  const [error, setError] = useState('');
+
+  function cargar() {
+    listarListasPrecio().then(setListas).catch(() => {});
+  }
+
+  useEffect(() => {
+    cargar();
+  }, []);
+
+  async function agregar(e) {
+    e.preventDefault();
+    setError('');
+    try {
+      await crearListaPrecio({ nombre, esBase });
+      setNombre('');
+      setEsBase(false);
+      cargar();
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo crear la lista de precio.');
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <h3>Listas de precio</h3>
+      <p style={{ color: '#666', fontSize: '0.9rem' }}>
+        Asigna precios por artículo a cada lista en <em>Artículos</em>, y una lista a cada cliente en{' '}
+        <em>Clientes</em> — al vender, se cobra el precio de la lista del cliente si existe uno definido
+        ahí para ese artículo; si no, el precio base del catálogo.
+      </p>
+      <ul>
+        {listas.map((l) => (
+          <li key={l.id}>{l.nombre}{l.esBase ? ' (base)' : ''}</li>
+        ))}
+      </ul>
+      <form onSubmit={agregar} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <input placeholder="Nombre (ej. Mayoreo)" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
+        <label>
+          <input type="checkbox" checked={esBase} onChange={(e) => setEsBase(e.target.checked)} /> Es base
+        </label>
+        <button type="submit">Agregar</button>
+      </form>
+      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+    </div>
+  );
+}
+
 function ConfiguracionCatalogoPage() {
   return (
     <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 600 }}>
@@ -152,6 +207,7 @@ function ConfiguracionCatalogoPage() {
         ]}
         renderItem={(i) => `${i.nombre} — ${(Number(i.tasa) * 100).toFixed(0)}%`}
       />
+      <SeccionListasPrecio />
     </div>
   );
 }

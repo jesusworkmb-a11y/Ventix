@@ -49,12 +49,23 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, detalles }) 
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
+  // Misma resolución de precio por lista que Ventas, para que el total de la cotización
+  // coincida con lo que realmente se cobrará al convertirla (§ ventas.service#resolverPreciosCatalogo).
+  const preciosLista = await ventasService.resolverPreciosCatalogo({
+    articuloIds,
+    listaPrecioId: cliente.listaPrecioId,
+  });
 
-  const lineas = detalles.map((d) => ({
-    articuloId: d.articuloId,
-    cantidad: d.cantidad,
-    precio: d.precio !== undefined ? d.precio : Number(articuloPorId.get(d.articuloId).precio),
-  }));
+  const lineas = detalles.map((d) => {
+    const precioCatalogo = preciosLista.has(d.articuloId)
+      ? preciosLista.get(d.articuloId)
+      : Number(articuloPorId.get(d.articuloId).precio);
+    return {
+      articuloId: d.articuloId,
+      cantidad: d.cantidad,
+      precio: d.precio !== undefined ? d.precio : precioCatalogo,
+    };
+  });
   const total = redondear(lineas.reduce((acc, l) => acc + l.cantidad * l.precio, 0));
 
   return prisma.$transaction(async (tx) => {
