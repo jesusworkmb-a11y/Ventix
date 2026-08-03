@@ -112,6 +112,19 @@ async function cambiarEstado({ empresaId, usuarioEjecutorId, conteoId, estado })
   }
 
   return prisma.$transaction(async (tx) => {
+    // El check de transición de arriba no es atómico con el resto: dos cambiarEstado()
+    // casi simultáneos hacia AUTORIZADO pasaban ambos el check (leído antes de que ninguno
+    // commiteara) y aplicaban el ajuste de kardex dos veces sobre el mismo conteo (mismo
+    // patrón que el doble-recibir de Transferencias). Se reclama la transición con un
+    // UPDATE...WHERE estado=<el estado leído> antes de aplicar los movimientos.
+    const reclamado = await tx.conteoFisico.updateMany({
+      where: { id: conteoId, estado: conteo.estado },
+      data: { estado },
+    });
+    if (reclamado.count === 0) {
+      throw new AppError(400, `No se puede pasar de ${conteo.estado} a ${estado}.`);
+    }
+
     if (estado === 'AUTORIZADO') {
       for (const detalle of conteo.detalles) {
         const diferencia = Number(detalle.cantidadFisica) - Number(detalle.cantidadSistema);
@@ -129,7 +142,7 @@ async function cambiarEstado({ empresaId, usuarioEjecutorId, conteoId, estado })
       }
     }
 
-    const actualizado = await tx.conteoFisico.update({ where: { id: conteoId }, data: { estado } });
+    const actualizado = await tx.conteoFisico.findUnique({ where: { id: conteoId } });
 
     await registrarAuditoria(tx, {
       empresaId,
