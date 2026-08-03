@@ -84,6 +84,10 @@ async function login({ correo, password }) {
   const usuario = await prisma.usuario.findUnique({ where: { correo } });
   if (!usuario) throw new AppError(401, 'Correo o contraseña incorrectos.');
 
+  if (usuario.estado !== 'ACTIVO') {
+    throw new AppError(403, 'Tu cuenta está inactiva o bloqueada. Contacta a un administrador.');
+  }
+
   if (usuario.bloqueadoHasta && usuario.bloqueadoHasta > new Date()) {
     throw new AppError(423, 'Cuenta bloqueada temporalmente por demasiados intentos fallidos. Intenta más tarde.');
   }
