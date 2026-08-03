@@ -73,9 +73,9 @@ Notas del despliegue:
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core, MOD-008
-   Ventas, MOD-006 Caja y MOD-004 Inventario ya con su primera pasada de QA — incluida la UI de
-   ajustes/transferencias/conteos que había quedado pendiente, ya cerrada (ver secciones abajo)
-   — lo siguiente es a elección: QA de otro módulo, o nuevas funcionalidades fuera del plan
+   Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo y MOD-005 Compras ya con su primera
+   pasada de QA (ver secciones abajo) — lo siguiente es a elección: QA de otro módulo
+   (Clientes/Proveedores, Reportes, Herramientas), o nuevas funcionalidades fuera del plan
    original.
 
 ## QA de MOD-001 Core (2026-08-02)
@@ -336,6 +336,35 @@ artículos/categorías/marcas/unidades/impuestos, nunca edición.
   una marca de prueba y reactivar un artículo de prueba marcado como descontinuado, ambos
   confirmados por API antes y después del cambio.
 
+## QA de MOD-005 Compras (2026-08-03)
+
+Primera pasada de QA sobre compras/cancelación — revisión de código + pruebas en vivo contra
+producción, disparando requests concurrentes con `curl` para reproducir la condición de carrera
+antes del fix y reverificando después del deploy (con limpieza/corrección de datos de prueba
+después, incluyendo un ajuste compensatorio de stock). Encontrado y corregido:
+
+- **Crítico — condición de carrera al cancelar una compra.** `cancelar()` chequeaba
+  `compra.estado !== 'CONFIRMADA'` fuera de la transacción, sin reclamar el estado atómicamente
+  (mismo patrón exacto que en Ventas/Caja/Inventario). Reproducido en vivo: 6 cancelaciones
+  concurrentes sobre la misma compra de 1 unidad, 5 de 6 con `200` y la reversión de stock
+  aplicada 5 veces en vez de una (stock: 83 → 78 en vez de 83 → 82). Corregido en
+  [compras.service.js](backend/src/modules/compras/compras.service.js) reclamando la compra con
+  un `UPDATE...WHERE estado='CONFIRMADA'` antes de aplicar los movimientos, mismo patrón que
+  `transferencias.recibir` en Inventario. Reverificado: de 6 concurrentes, solo 1 tiene éxito.
+- **El flag `activo` de un proveedor no se validaba en ningún lado.** Se podía desactivar un
+  proveedor y seguir registrándole compras con total normalidad — mismo tipo de vacío que
+  `BLOQUEADO` en Core, `activa` en Caja y `articulo.activo` en Catálogo. Verificado en vivo:
+  proveedor con `activo:false`, `POST /compras` devolvía `201`. Corregido en
+  [compras.service.js](backend/src/modules/compras/compras.service.js) (`crear`), que ahora
+  rechaza la compra si el proveedor está inactivo.
+
+De paso, se cerró el vacío de UI que dejó esto en evidencia: el frontend de Compras solo tenía
+alta, nunca cancelación, pese a que el backend ya soportaba `PATCH /:id/cancelar`. Agregada acción
+"Cancelar" inline por fila en [ComprasPage.jsx](frontend/src/modules/compras/pages/ComprasPage.jsx)
+(mismo patrón que VentasPage) y el selector de proveedor ahora excluye los inactivos.
+
+Sin pendientes abiertos de esta pasada.
+
 ## Qué contiene
 
 ```text
@@ -400,8 +429,7 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
-Ventas, MOD-006 Caja, MOD-004 Inventario y MOD-002 Catálogo ya pasaron su primera ronda de QA
-(ver secciones arriba). Los dos vacíos que dejó el QA de Catálogo ya están resueltos: listas de
-precio en Ventas y UI de edición de Catálogo (ver secciones arriba). A elección: QA de algún
-otro módulo (Clientes/Proveedores, Compras, Reportes, Herramientas), o nuevas funcionalidades
-fuera del plan original.
+Ventas, MOD-006 Caja, MOD-004 Inventario, MOD-002 Catálogo y MOD-005 Compras ya pasaron su
+primera ronda de QA (ver secciones arriba). Todos los vacíos detectados en esas pasadas ya están
+resueltos. A elección: QA de algún otro módulo (Clientes/Proveedores, Reportes, Herramientas), o
+nuevas funcionalidades fuera del plan original.
