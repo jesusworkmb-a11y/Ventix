@@ -63,12 +63,19 @@ Notas del despliegue:
    cd frontend && npm run dev  # http://localhost:5173
    ```
    Los `.env` de ambos ya están configurados (Supabase + JWT secret) — no hace falta tocarlos.
+   `backend/.env` apunta directo a Supabase (no al pooler) con la misma base que producción;
+   si `DATABASE_URL` da "Authentication failed" es que la contraseña quedó desactualizada
+   respecto a Supabase — pídesela al usuario o probá contra producción vía `curl`/`fetch` en el
+   navegador en su lugar (`https://ventix-backend-yjgv.onrender.com`), como se hizo en el QA de
+   Caja y el cierre de pendientes de Ventas. Para probar el frontend contra producción localmente
+   hace falta más que cambiar `VITE_API_URL`: el backend de Render solo permite CORS desde
+   `FRONTEND_URL` (el frontend ya desplegado), no desde `localhost:5173` — para verificar cambios
+   de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: con los 10 módulos completos y ya en producción, y MOD-001 Core, MOD-008
-   Ventas y MOD-006 Caja ya con su primera pasada de QA (ver secciones abajo), lo siguiente es
-   a elección — QA de otro módulo, los pendientes que dejó el QA de Ventas (validación cruzada
-   sucursal↔caja, UI de cancelar/devoluciones/cotizaciones), o nuevas funcionalidades fuera del
-   plan original.
+   Ventas y MOD-006 Caja ya con su primera pasada de QA — incluidos los dos pendientes que había
+   dejado el QA de Ventas, ya cerrados (ver secciones abajo) — lo siguiente es a elección: QA de
+   otro módulo, o nuevas funcionalidades fuera del plan original.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -135,14 +142,30 @@ Encontrado y corregido:
   incluyendo el impuesto y redondeando a 2 decimales (mismo patrón que
   subtotal/impuestos/total en [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js)).
 
-Pendiente, sin decidir todavía:
-- `ventas.crear` no valida que la caja de `sesionCajaId` pertenezca a la misma sucursal de
-  la venta, solo que sea de la misma empresa — se podría vender en una sucursal y cobrar
-  contra la caja de otra. No está claro si es un bug o flexibilidad intencional.
-- Vacío funcional: el frontend de Ventas
-  ([VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx)) solo tiene "crear
-  venta" y "listar" — no hay UI para cancelar, devoluciones ni cotizaciones (mismo tipo de
-  vacío que se encontró y cerró en Core). Todo eso solo es alcanzable vía API por ahora.
+### Cierre de los dos pendientes (2026-08-03)
+
+- **Validación sucursal↔caja.** Se decidió que era un bug: se podía vender/devolver en una
+  sucursal cobrando contra la caja de otra. Corregido en el único punto de escritura de
+  `MovimientoCaja` ([caja.service.js](backend/src/shared/services/caja.service.js)
+  `registrarMovimientoCaja`), que ahora acepta un `sucursalId` opcional y exige que la caja de
+  la sesión sea de esa sucursal cuando se manda (Ventas y Devoluciones lo mandan; Caja/INGRESO-
+  RETIRO no, ahí no hay nada que cruzar). Verificado en vivo: venta/devolución/conversión de
+  cotización con caja de otra sucursal → rechazado; con la caja correcta → aceptado.
+  - De paso, verificando esto en vivo apareció un bug no relacionado: crear una sucursal nueva
+    (`sucursales.crear`) nunca sembraba sus filas de `Secuencia` (folios VTA/COM/COT/DEV/AJU) —
+    el primer documento en una sucursal creada después del alta de la empresa reventaba con 500
+    crudo. Corregido en
+    [secuencia.service.js](backend/src/shared/services/secuencia.service.js) y
+    [sucursales.service.js](backend/src/modules/core/sucursales/sucursales.service.js).
+- **UI de cancelar/devoluciones/cotizaciones.** Construida en
+  [VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx) (cancelar y devolver como
+  acciones inline por fila, sobre ventas `CONFIRMADA`) y
+  [CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx) (nueva, ruta
+  `/ventas/cotizaciones`: crear, listar, convertir). Bug propio encontrado al verificar en vivo:
+  el panel de conversión mandaba `Cotizacion.total` como pago, pero ese campo es solo el
+  subtotal (el impuesto se calcula recién al convertir, con la tasa vigente en ese momento) —
+  la conversión fallaba en cualquier artículo con impuesto. Corregido recalculando el total con
+  impuesto antes de mostrar/enviar el monto a cobrar.
 
 ## QA de MOD-006 Caja (2026-08-03)
 
@@ -240,7 +263,7 @@ Si ves "Estado del backend: conectado — DB: connected" en la pantalla, la Fase
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, y MOD-001 Core, MOD-008
-Ventas y MOD-006 Caja ya pasaron su primera ronda de QA (ver secciones arriba). A elección: los
-dos pendientes que dejó el QA de Ventas (validación cruzada sucursal↔caja, UI de
-cancelar/devoluciones/cotizaciones), QA de algún otro módulo, o nuevas funcionalidades fuera
-del plan original.
+Ventas y MOD-006 Caja ya pasaron su primera ronda de QA, incluidos los dos pendientes que había
+dejado el QA de Ventas (ver secciones arriba). A elección: QA de algún otro módulo (Catálogo,
+Clientes/Proveedores, Inventario, Compras, Reportes, Herramientas), o nuevas funcionalidades
+fuera del plan original.
