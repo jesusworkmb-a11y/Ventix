@@ -258,23 +258,34 @@ Sin pendientes abiertos de esta pasada.
 ```text
 ventix/
 ├── backend/
-│   ├── prisma/schema.prisma      ← modelo físico completo (resuelve PENDIENTE-011)
+│   ├── prisma/schema.prisma      ← modelo físico completo
+│   │   └── migrations/           ← una migración por cambio de schema (npx prisma migrate dev)
 │   └── src/
-│       ├── app.js                ← registro central de rutas por módulo
+│       ├── app.js                ← registro central de rutas por módulo (§3.1: módulos no se
+│       │                            importan entre sí salvo excepción documentada in-line)
 │       ├── server.js
 │       ├── config/db.js          ← cliente Prisma único (fuente de verdad, §3.2)
 │       ├── routes/health.js      ← health check end-to-end
-│       └── modules/              ← MOD-001 a MOD-010, un router placeholder cada uno
+│       ├── shared/services/      ← puntos únicos de escritura compartidos entre módulos:
+│       │                            aplicarMovimiento (stock), registrarMovimientoCaja (caja),
+│       │                            obtenerSiguienteFolio (secuencia.service.js), auditoria
+│       └── modules/              ← MOD-001 a MOD-010, cada uno con sus propios
+│                                    <recurso>/{.controller,.service,.routes,.validators}.js
 └── frontend/
     └── src/
         ├── App.jsx               ← rutas de la app (una por pantalla, todas tras login salvo /login y /registro)
         ├── shared/api.js         ← cliente HTTP único hacia el backend
-        └── modules/              ← una carpeta por módulo (core, catalogo, ventas...)
-            └── core/pages/       ← Login, Registro, y las 4 pantallas de administración
-                                     (Sucursales, Usuarios, Roles, Auditoría)
+        └── modules/              ← una carpeta por módulo (core, catalogo, ventas...), cada
+                                     una con api/ (llamadas HTTP) y pages/ (pantallas) — ver las
+                                     secciones de QA arriba para el detalle de qué pantallas
+                                     tiene cada módulo y qué le falta
 ```
 
-## Cómo arrancarlo
+## Cómo arrancarlo desde cero
+
+Para retomar *este* proyecto (misma base de Supabase que producción) usá la guía "Para retomar
+el proyecto" más arriba — los `.env` ya están listos, no hace falta nada de esto. Esta sección
+es para el caso distinto: máquina nueva, clon del repo, o base de datos nueva.
 
 ### 1. Base de datos
 Necesitas una instancia de PostgreSQL (local, Supabase, Render o Railway). Copia la URL de conexión.
@@ -299,15 +310,9 @@ npm install
 npm run dev               # levanta la app en http://localhost:5173
 ```
 
-Si ves "Estado del backend: conectado — DB: connected" en la pantalla, la Fase 0 está completa: el criterio de salida (React → Express → PostgreSQL funcionando end-to-end) se cumple.
-
-## Qué falta antes de pasar a Fase 1
-
-- [x] Elegir Render vs. Railway para el backend en producción — decidido: **Render** (tier gratuito real; el cold start tras inactividad es aceptable para esta etapa)
-- [x] Desplegar backend y frontend en Render (ver sección "Producción" arriba)
-- [x] Correr `npm run prisma:migrate` contra una base de datos real y revisar que el schema no tenga errores
-- [x] Configurar el repositorio Git (`git init`, primer commit, remoto en GitHub) — remoto en GitHub pendiente
-- [x] Revisar las notas "// REVISAR" dentro de `schema.prisma` — validadas, marcadas como "VALIDADO" en el schema
+Con una base de datos nueva y vacía, el primer paso real es registrar una empresa desde
+`/registro` (crea la empresa, la sucursal Matriz, el usuario administrador y siembra roles,
+permisos y secuencias) — no hay datos de arranque más allá de eso.
 
 ## Qué sigue
 
