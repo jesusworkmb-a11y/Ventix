@@ -2,8 +2,14 @@ const prisma = require('../../config/db');
 const AppError = require('../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
 const toJson = require('../../shared/toJson');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../shared/paginacion');
 
-async function listar({ empresaId, filtros }) {
+const COLUMNAS_ORDENABLES = { nombre: 'nombre', correo: 'correo', telefono: 'telefono', activo: 'activo' };
+
+// `paginacion` opcional, mismo criterio que clientes/articulos: sin `pagina` explícita
+// devuelve el array completo (Compras necesita la lista completa para su selector de
+// proveedor), solo pagina cuando el caller la pide (ProveedoresPage).
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   const where = { empresaId };
   if (filtros.activo !== undefined) where.activo = filtros.activo;
   if (filtros.buscar) {
@@ -14,7 +20,20 @@ async function listar({ empresaId, filtros }) {
       { rfc: { contains: filtros.buscar, mode: 'insensitive' } },
     ];
   }
-  return prisma.proveedor.findMany({ where, orderBy: { nombre: 'asc' } });
+
+  if (!paginacion || paginacion.pagina === undefined) {
+    return prisma.proveedor.findMany({ where, orderBy: { nombre: 'asc' } });
+  }
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { nombre: 'asc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.proveedor.findMany({ where, orderBy, skip: paginado.skip, take: paginado.take }),
+    prisma.proveedor.count({ where }),
+  ]);
+
+  return respuestaPaginada(datos, total, paginado);
 }
 
 async function obtener({ empresaId, proveedorId }) {

@@ -8,7 +8,17 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+
+const COLUMNAS = [
+  { label: 'Nombre', clave: 'nombre', ordenable: true },
+  { label: 'Teléfono', clave: null },
+  { label: 'Correo', clave: null },
+  { label: 'Activo', clave: 'activo', ordenable: true },
+  { label: 'Lista de precio', clave: null },
+  { label: '', clave: null },
+];
 
 const FORM_VACIO = { nombre: '', telefono: '', correo: '', rfc: '', direccion: '', listaPrecioId: '' };
 
@@ -28,6 +38,8 @@ function ClientesPage() {
   const [clientes, setClientes] = useState([]);
   const [listasPrecio, setListasPrecio] = useState([]);
   const [buscar, setBuscar] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
   const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
 
@@ -35,14 +47,36 @@ function ClientesPage() {
   const [editForm, setEditForm] = useState(FORM_VACIO);
   const [errorEdit, setErrorEdit] = useState('');
 
-  function cargar(filtro) {
-    listarClientes(filtro ? { buscar: filtro } : {}).then(setClientes).catch(() => {});
+  function cargar(pagina = 1) {
+    listarClientes({
+      buscar: buscar || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setClientes(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
+  }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
   }
 
   useEffect(() => {
-    cargar();
     listarListasPrecio().then(setListasPrecio).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    cargar(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orden]);
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -61,7 +95,7 @@ function ClientesPage() {
         listaPrecioId: form.listaPrecioId || undefined,
       });
       setForm(FORM_VACIO);
-      cargar(buscar);
+      cargar(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear el cliente.');
     }
@@ -71,7 +105,7 @@ function ClientesPage() {
     setError('');
     try {
       await actualizarCliente(cliente.id, { listaPrecioId: listaPrecioId || null });
-      cargar(buscar);
+      cargar(paginacion.pagina);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo asignar la lista de precio.');
     }
@@ -102,7 +136,7 @@ function ClientesPage() {
         activo: editForm.activo,
       });
       setEditandoId(null);
-      cargar(buscar);
+      cargar(paginacion.pagina);
     } catch (err) {
       setErrorEdit(err.response?.data?.error || 'No se pudo actualizar el cliente.');
     }
@@ -110,7 +144,7 @@ function ClientesPage() {
 
   function buscarSubmit(e) {
     e.preventDefault();
-    cargar(buscar);
+    cargar(1);
   }
 
   const clienteEnEdicion = clientes.find((c) => c.id === editandoId);
@@ -142,7 +176,20 @@ function ClientesPage() {
       </Card>
 
       <Card title="Clientes">
-        <Table columnas={['Nombre', 'Teléfono', 'Correo', 'Activo', 'Lista de precio', '']}>
+        <Table
+          columnas={COLUMNAS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargar}
+            />
+          )}
+        >
           {clientes.length === 0 && <TablaVacia colSpan={6} />}
           {clientes.map((c) => (
             <Fila key={c.id}>

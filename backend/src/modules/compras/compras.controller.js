@@ -3,12 +3,17 @@ const service = require('./compras.service');
 const { crearCompraSchema } = require('./compras.validators');
 
 async function listar(req, res) {
-  const { proveedorId, sucursalId, estado, desde, hasta } = req.query;
-  const compras = await service.listar({
+  const {
+    proveedorId, sucursalId, estado, desde, hasta, buscar,
+    pagina, porPagina, ordenarPor, orden,
+  } = req.query;
+  const resultado = await service.listar({
     empresaId: req.auth.empresaId,
-    filtros: { proveedorId, sucursalId, estado, desde, hasta },
+    filtros: { proveedorId, sucursalId, estado, desde, hasta, buscar },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
   });
-  res.json(compras);
+  res.json(resultado);
 }
 
 async function obtener(req, res) {

@@ -6,7 +6,16 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+
+const COLUMNAS = [
+  { label: 'Nombre', clave: 'nombre', ordenable: true },
+  { label: 'Teléfono', clave: null },
+  { label: 'Correo', clave: null },
+  { label: 'Activo', clave: 'activo', ordenable: true },
+  { label: '', clave: null },
+];
 
 const FORM_VACIO = { nombre: '', telefono: '', correo: '', rfc: '', direccion: '' };
 
@@ -24,6 +33,8 @@ function proveedorAForm(p) {
 function ProveedoresPage() {
   const [proveedores, setProveedores] = useState([]);
   const [buscar, setBuscar] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
   const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
 
@@ -31,13 +42,31 @@ function ProveedoresPage() {
   const [editForm, setEditForm] = useState(FORM_VACIO);
   const [errorEdit, setErrorEdit] = useState('');
 
-  function cargar(filtro) {
-    listarProveedores(filtro ? { buscar: filtro } : {}).then(setProveedores).catch(() => {});
+  function cargar(pagina = 1) {
+    listarProveedores({
+      buscar: buscar || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setProveedores(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
+  }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
   }
 
   useEffect(() => {
-    cargar();
-  }, []);
+    cargar(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orden]);
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -55,7 +84,7 @@ function ProveedoresPage() {
         direccion: form.direccion || undefined,
       });
       setForm(FORM_VACIO);
-      cargar(buscar);
+      cargar(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear el proveedor.');
     }
@@ -85,7 +114,7 @@ function ProveedoresPage() {
         activo: editForm.activo,
       });
       setEditandoId(null);
-      cargar(buscar);
+      cargar(paginacion.pagina);
     } catch (err) {
       setErrorEdit(err.response?.data?.error || 'No se pudo actualizar el proveedor.');
     }
@@ -93,7 +122,7 @@ function ProveedoresPage() {
 
   function buscarSubmit(e) {
     e.preventDefault();
-    cargar(buscar);
+    cargar(1);
   }
 
   return (
@@ -123,7 +152,20 @@ function ProveedoresPage() {
       </Card>
 
       <Card title="Proveedores">
-        <Table columnas={['Nombre', 'Teléfono', 'Correo', 'Activo', '']}>
+        <Table
+          columnas={COLUMNAS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargar}
+            />
+          )}
+        >
           {proveedores.length === 0 && <TablaVacia colSpan={5} />}
           {proveedores.map((p) => (
             <Fila key={p.id}>

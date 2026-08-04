@@ -113,8 +113,8 @@ export function useDashboardData() {
           listarExistencias({}),
           listarClientes({}),
           calcularCajaActual(),
-          listarVentas({}),
-          listarCompras({}),
+          listarVentas({}).then((r) => r.datos),
+          listarCompras({}).then((r) => r.datos),
           listarAjustes({}),
         ]);
 

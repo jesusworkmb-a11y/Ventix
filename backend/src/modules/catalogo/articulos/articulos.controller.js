@@ -8,7 +8,7 @@ const {
 } = require('./articulos.validators');
 
 async function listar(req, res) {
-  const { tipo, activo, categoriaId, buscar } = req.query;
+  const { tipo, activo, categoriaId, buscar, pagina, porPagina, ordenarPor, orden } = req.query;
   const articulos = await service.listar({
     empresaId: req.auth.empresaId,
     filtros: {
@@ -17,6 +17,8 @@ async function listar(req, res) {
       categoriaId,
       buscar,
     },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
   });
   res.json(articulos);
 }

@@ -7,6 +7,15 @@ const { registrarAuditoria } = require('../../../shared/services/auditoria.servi
 const { usuarioTienePermiso } = require('../../../shared/services/permisos.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
+
+const COLUMNAS_ORDENABLES = {
+  folio: 'folio',
+  cliente: 'cliente.nombre',
+  total: 'total',
+  estado: 'estado',
+  creadoEn: 'creadoEn',
+};
 
 // Precio "de catálogo" efectivo para un cliente: el de su lista de precio asignada
 // (PrecioArticulo) si tiene una y el artículo tiene un precio ahí definido; si no,
@@ -23,7 +32,7 @@ async function resolverPreciosCatalogo({ articuloIds, listaPrecioId }) {
   return precios;
 }
 
-async function listar({ empresaId, filtros }) {
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   const where = { empresaId };
   if (filtros.clienteId) where.clienteId = filtros.clienteId;
   if (filtros.sucursalId) where.sucursalId = filtros.sucursalId;
@@ -33,12 +42,28 @@ async function listar({ empresaId, filtros }) {
     if (filtros.desde) where.creadoEn.gte = new Date(filtros.desde);
     if (filtros.hasta) where.creadoEn.lte = new Date(filtros.hasta);
   }
-  return prisma.venta.findMany({
-    where,
-    include: { cliente: true, sucursal: true },
-    orderBy: { creadoEn: 'desc' },
-    take: 200,
-  });
+  if (filtros.buscar) {
+    where.OR = [
+      { folio: { contains: filtros.buscar, mode: 'insensitive' } },
+      { cliente: { nombre: { contains: filtros.buscar, mode: 'insensitive' } } },
+    ];
+  }
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.venta.findMany({
+      where,
+      include: { cliente: true, sucursal: true },
+      orderBy,
+      skip: paginado.skip,
+      take: paginado.take,
+    }),
+    prisma.venta.count({ where }),
+  ]);
+
+  return respuestaPaginada(datos, total, paginado);
 }
 
 async function obtener({ empresaId, ventaId }) {

@@ -5,8 +5,17 @@ const { obtenerSiguienteFolio } = require('../../shared/services/secuencia.servi
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
 const toJson = require('../../shared/toJson');
 const redondear = require('../../shared/redondear');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../shared/paginacion');
 
-async function listar({ empresaId, filtros }) {
+const COLUMNAS_ORDENABLES = {
+  folio: 'folio',
+  proveedor: 'proveedor.nombre',
+  total: 'total',
+  estado: 'estado',
+  creadoEn: 'creadoEn',
+};
+
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   const where = { empresaId };
   if (filtros.proveedorId) where.proveedorId = filtros.proveedorId;
   if (filtros.sucursalId) where.sucursalId = filtros.sucursalId;
@@ -16,12 +25,28 @@ async function listar({ empresaId, filtros }) {
     if (filtros.desde) where.creadoEn.gte = new Date(filtros.desde);
     if (filtros.hasta) where.creadoEn.lte = new Date(filtros.hasta);
   }
-  return prisma.compra.findMany({
-    where,
-    include: { proveedor: true, sucursal: true },
-    orderBy: { creadoEn: 'desc' },
-    take: 200,
-  });
+  if (filtros.buscar) {
+    where.OR = [
+      { folio: { contains: filtros.buscar, mode: 'insensitive' } },
+      { proveedor: { nombre: { contains: filtros.buscar, mode: 'insensitive' } } },
+    ];
+  }
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.compra.findMany({
+      where,
+      include: { proveedor: true, sucursal: true },
+      orderBy,
+      skip: paginado.skip,
+      take: paginado.take,
+    }),
+    prisma.compra.count({ where }),
+  ]);
+
+  return respuestaPaginada(datos, total, paginado);
 }
 
 async function obtener({ empresaId, compraId }) {

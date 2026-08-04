@@ -3,12 +3,17 @@ const service = require('./ventas.service');
 const { crearVentaSchema } = require('./ventas.validators');
 
 async function listar(req, res) {
-  const { clienteId, sucursalId, estado, desde, hasta } = req.query;
-  const ventas = await service.listar({
+  const {
+    clienteId, sucursalId, estado, desde, hasta, buscar,
+    pagina, porPagina, ordenarPor, orden,
+  } = req.query;
+  const resultado = await service.listar({
     empresaId: req.auth.empresaId,
-    filtros: { clienteId, sucursalId, estado, desde, hasta },
+    filtros: { clienteId, sucursalId, estado, desde, hasta, buscar },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
   });
-  res.json(ventas);
+  res.json(resultado);
 }
 
 async function obtener(req, res) {

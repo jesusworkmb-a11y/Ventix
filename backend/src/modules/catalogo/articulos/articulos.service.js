@@ -3,6 +3,15 @@ const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
+
+const COLUMNAS_ORDENABLES = {
+  nombre: 'nombre',
+  sku: 'sku',
+  costo: 'costo',
+  precio: 'precio',
+  activo: 'activo',
+};
 
 // Traduce el constraint único de la DB (última línea de defensa cuando validarUnicidad no
 // alcanza a atrapar dos altas/ediciones simultáneas con el mismo SKU/código) al mismo error de
@@ -17,7 +26,12 @@ function relanzarConflictoUnicidad(error) {
   throw error;
 }
 
-async function listar({ empresaId, filtros }) {
+// `paginacion` es opcional: sin `pagina` explícita devuelve el array completo, como
+// siempre (varias pantallas usan esta lista completa para selects/grillas del lado
+// cliente — Ventas, Cotizaciones, Compras, Ajustes, Conteos, Transferencias — y no deben
+// romperse). Solo entra en modo paginado/envuelto cuando el caller manda `pagina`
+// explícitamente (ArticulosPage).
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   const where = { empresaId };
   if (filtros.tipo) where.tipo = filtros.tipo;
   if (filtros.activo !== undefined) where.activo = filtros.activo;
@@ -29,11 +43,21 @@ async function listar({ empresaId, filtros }) {
       { codigoBarras: { contains: filtros.buscar, mode: 'insensitive' } },
     ];
   }
-  return prisma.articulo.findMany({
-    where,
-    include: { categoria: true, marca: true, unidadBase: true, impuesto: true, precios: true },
-    orderBy: { nombre: 'asc' },
-  });
+  const include = { categoria: true, marca: true, unidadBase: true, impuesto: true, precios: true };
+
+  if (!paginacion || paginacion.pagina === undefined) {
+    return prisma.articulo.findMany({ where, include, orderBy: { nombre: 'asc' } });
+  }
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { nombre: 'asc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.articulo.findMany({ where, include, orderBy, skip: paginado.skip, take: paginado.take }),
+    prisma.articulo.count({ where }),
+  ]);
+
+  return respuestaPaginada(datos, total, paginado);
 }
 
 async function obtener({ empresaId, articuloId }) {

@@ -3,10 +3,12 @@ const service = require('./proveedores.service');
 const { crearProveedorSchema, actualizarProveedorSchema } = require('./proveedores.validators');
 
 async function listar(req, res) {
-  const { activo, buscar } = req.query;
+  const { activo, buscar, pagina, porPagina, ordenarPor, orden } = req.query;
   const proveedores = await service.listar({
     empresaId: req.auth.empresaId,
     filtros: { activo: activo === undefined ? undefined : activo === 'true', buscar },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
   });
   res.json(proveedores);
 }

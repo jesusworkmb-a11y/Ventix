@@ -18,8 +18,17 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
+
+const COLUMNAS = [
+  { label: 'Nombre', clave: 'nombre', ordenable: true },
+  { label: 'SKU', clave: 'sku', ordenable: true },
+  { label: 'Precio', clave: 'precio', ordenable: true },
+  { label: 'Activo', clave: 'activo', ordenable: true },
+  { label: '', clave: null },
+];
 
 const FORM_VACIO = {
   tipo: 'PRODUCTO',
@@ -58,6 +67,8 @@ function ArticulosPage() {
   const [impuestos, setImpuestos] = useState([]);
   const [listasPrecio, setListasPrecio] = useState([]);
   const [buscar, setBuscar] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
   const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
 
@@ -69,18 +80,40 @@ function ArticulosPage() {
   const [editForm, setEditForm] = useState(FORM_VACIO);
   const [errorEdit, setErrorEdit] = useState('');
 
-  function cargarArticulos(filtro) {
-    listarArticulos(filtro ? { buscar: filtro } : {}).then(setArticulos).catch(() => {});
+  function cargarArticulos(pagina = 1) {
+    listarArticulos({
+      buscar: buscar || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setArticulos(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
+  }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
   }
 
   useEffect(() => {
-    cargarArticulos();
     listarCategorias().then(setCategorias).catch(() => {});
     listarMarcas().then(setMarcas).catch(() => {});
     listarUnidades().then(setUnidades).catch(() => {});
     listarImpuestos().then(setImpuestos).catch(() => {});
     listarListasPrecio().then(setListasPrecio).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    cargarArticulos(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orden]);
 
   function abrirPrecios(articulo) {
     cancelarEdicion();
@@ -105,7 +138,7 @@ function ArticulosPage() {
     try {
       await actualizarPreciosArticulo(preciosArticuloId, precios);
       cerrarPrecios();
-      cargarArticulos(buscar);
+      cargarArticulos(paginacion.pagina);
     } catch (err) {
       setPreciosError(err.response?.data?.error || 'No se pudieron guardar los precios.');
     }
@@ -147,7 +180,7 @@ function ArticulosPage() {
         activo: editForm.activo,
       });
       setEditandoId(null);
-      cargarArticulos(buscar);
+      cargarArticulos(paginacion.pagina);
     } catch (err) {
       setErrorEdit(err.response?.data?.error || 'No se pudo actualizar el artículo.');
     }
@@ -170,7 +203,7 @@ function ArticulosPage() {
         precio: form.precio ? Number(form.precio) : undefined,
       });
       setForm(FORM_VACIO);
-      cargarArticulos(buscar);
+      cargarArticulos(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear el artículo.');
     }
@@ -178,7 +211,7 @@ function ArticulosPage() {
 
   function buscarSubmit(e) {
     e.preventDefault();
-    cargarArticulos(buscar);
+    cargarArticulos(1);
   }
 
   const articuloEnPrecios = articulos.find((a) => a.id === preciosArticuloId);
@@ -214,7 +247,20 @@ function ArticulosPage() {
       </Card>
 
       <Card title="Artículos">
-        <Table columnas={['Nombre', 'SKU', 'Precio', 'Activo', '']}>
+        <Table
+          columnas={COLUMNAS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargarArticulos}
+            />
+          )}
+        >
           {articulos.length === 0 && <TablaVacia colSpan={5} />}
           {articulos.map((a) => (
             <Fila key={a.id}>

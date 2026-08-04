@@ -2,6 +2,9 @@ const prisma = require('../../config/db');
 const AppError = require('../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
 const toJson = require('../../shared/toJson');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../shared/paginacion');
+
+const COLUMNAS_ORDENABLES = { nombre: 'nombre', correo: 'correo', telefono: 'telefono', activo: 'activo' };
 
 // Garantiza que la empresa tenga su Cliente General (§14.1, mostrador/venta sin cliente
 // específico). Resuelto de forma perezosa aquí (no en el registro de empresa de Core) para
@@ -19,7 +22,10 @@ async function validarListaPrecio({ empresaId, listaPrecioId }) {
   if (!lista) throw new AppError(400, 'La lista de precio indicada no pertenece a esta empresa.');
 }
 
-async function listar({ empresaId, filtros }) {
+// `paginacion` opcional, mismo criterio que articulos.service.js: sin `pagina` explícita
+// devuelve el array completo (Ventas y Cotizaciones necesitan la lista completa para su
+// selector de cliente), solo pagina cuando el caller la pide (ClientesPage).
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   await asegurarClienteGeneral(empresaId);
 
   const where = { empresaId };
@@ -32,7 +38,20 @@ async function listar({ empresaId, filtros }) {
       { rfc: { contains: filtros.buscar, mode: 'insensitive' } },
     ];
   }
-  return prisma.cliente.findMany({ where, orderBy: [{ esGeneral: 'desc' }, { nombre: 'asc' }] });
+
+  if (!paginacion || paginacion.pagina === undefined) {
+    return prisma.cliente.findMany({ where, orderBy: [{ esGeneral: 'desc' }, { nombre: 'asc' }] });
+  }
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = [{ esGeneral: 'desc' }, parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { nombre: 'asc' })];
+
+  const [datos, total] = await Promise.all([
+    prisma.cliente.findMany({ where, orderBy, skip: paginado.skip, take: paginado.take }),
+    prisma.cliente.count({ where }),
+  ]);
+
+  return respuestaPaginada(datos, total, paginado);
 }
 
 async function obtener({ empresaId, clienteId }) {

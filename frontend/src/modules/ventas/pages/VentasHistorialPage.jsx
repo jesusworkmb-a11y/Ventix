@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2 } from 'lucide-react';
+import { Search, Trash2 } from 'lucide-react';
 import { listarVentas, cancelarVenta, obtenerVenta } from '../api/ventas.api';
 import { crearDevolucion } from '../api/devoluciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
@@ -11,8 +11,17 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
+
+const COLUMNAS = [
+  { label: 'Folio', clave: 'folio', ordenable: true },
+  { label: 'Cliente', clave: 'cliente', ordenable: true },
+  { label: 'Total', clave: 'total', ordenable: true },
+  { label: 'Estado', clave: 'estado', ordenable: true },
+  { label: '', clave: null },
+];
 
 const MOTIVOS_DEVOLUCION = ['Producto defectuoso', 'Error de venta', 'Cliente cambió de opinión', 'Garantía', 'Otro'];
 
@@ -20,6 +29,9 @@ const ESTADO_TONO = { CONFIRMADA: 'success', CANCELADA: 'gray' };
 
 function VentasHistorialPage() {
   const [ventas, setVentas] = useState([]);
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [busqueda, setBusqueda] = useState('');
+  const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
   const [usuarios, setUsuarios] = useState([]);
   const [cajas, setCajas] = useState([]);
   const [sesionesAbiertas, setSesionesAbiertas] = useState([]);
@@ -35,15 +47,37 @@ function VentasHistorialPage() {
   const [devAutorizadoPorId, setDevAutorizadoPorId] = useState('');
   const [devError, setDevError] = useState('');
 
+  function cargarVentas(pagina = 1) {
+    listarVentas({
+      buscar: busqueda || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setVentas(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
+  }
+
   useEffect(() => {
-    cargarVentas();
     listarUsuarios().then(setUsuarios).catch(() => {});
     listarCajas().then(setCajas).catch(() => {});
     listarSesiones({ abierta: 'true' }).then(setSesionesAbiertas).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function cargarVentas() {
-    listarVentas().then(setVentas).catch(() => {});
+  useEffect(() => {
+    cargarVentas(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busqueda, orden]);
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
   }
 
   // Una devolución con reembolso necesita una sesión de caja abierta de la MISMA sucursal
@@ -58,7 +92,7 @@ function VentasHistorialPage() {
     setError('');
     try {
       await cancelarVenta(ventaId);
-      cargarVentas();
+      cargarVentas(paginacion.pagina);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo cancelar la venta.');
     }
@@ -150,7 +184,7 @@ function VentasHistorialPage() {
         })),
       });
       cerrarDevolucion();
-      cargarVentas();
+      cargarVentas(paginacion.pagina);
     } catch (err) {
       setDevError(err.response?.data?.error || 'No se pudo procesar la devolución.');
     }
@@ -174,7 +208,33 @@ function VentasHistorialPage() {
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
       <Card>
-        <Table columnas={['Folio', 'Cliente', 'Total', 'Estado', '']}>
+        <div className="relative max-w-sm">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por folio o cliente..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+      </Card>
+
+      <Card>
+        <Table
+          columnas={COLUMNAS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargarVentas}
+            />
+          )}
+        >
           {ventas.length === 0 && <TablaVacia colSpan={5} />}
           {ventas.map((v) => (
             <Fila key={v.id}>

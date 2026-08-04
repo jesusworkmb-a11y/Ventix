@@ -1,6 +1,14 @@
 const prisma = require('../../../config/db');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 
-async function listar({ empresaId, filtros }) {
+const COLUMNAS_ORDENABLES = {
+  creadoEn: 'creadoEn',
+  accion: 'accion',
+  entidad: 'entidad',
+  folio: 'folio',
+};
+
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   const where = { empresaId };
   if (filtros.entidad) where.entidad = filtros.entidad;
   if (filtros.entidadId) where.entidadId = filtros.entidadId;
@@ -10,8 +18,19 @@ async function listar({ empresaId, filtros }) {
     if (filtros.desde) where.creadoEn.gte = new Date(filtros.desde);
     if (filtros.hasta) where.creadoEn.lte = new Date(filtros.hasta);
   }
+  if (filtros.buscar) {
+    where.folio = { contains: filtros.buscar, mode: 'insensitive' };
+  }
 
-  return prisma.auditoria.findMany({ where, orderBy: { creadoEn: 'desc' }, take: 200 });
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.auditoria.findMany({ where, orderBy, skip: paginado.skip, take: paginado.take }),
+    prisma.auditoria.count({ where }),
+  ]);
+
+  return respuestaPaginada(datos, total, paginado);
 }
 
 module.exports = { listar };
