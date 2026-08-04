@@ -767,6 +767,39 @@ devuelto a su estado original sin límites). El click por `ref` del Browser pane
 fallar en silencio en esta pantalla (mismo gotcha ya documentado para Clientes/Reportes) —
 se usó `javascript_tool` para disparar los clics reales sobre los elementos del DOM.
 
+## Menú lateral contraíble en escritorio (2026-08-04, sesión posterior)
+
+A pedido del usuario ("el menú debe poder contraerse y colapsar"), nuevo botón de flecha
+junto al logo en [Sidebar.jsx](frontend/src/shared/layout/Sidebar.jsx) (visible solo en
+`lg:` — escritorio) que alterna el sidebar completo (`w-64`) a una barra angosta solo con
+íconos (`w-20`), con la preferencia guardada en `localStorage` (`ventix_sidebar_colapsado`)
+para persistir entre sesiones.
+
+- Con el menú contraído, los grupos con submenú (Ventas, Inventario, Catálogo,
+  Configuración) se comportan como link directo a su página principal en vez de desplegar
+  el submenú indentado, que no entra en el ancho disponible — mismo criterio que un item
+  sin hijos. Las etiquetas de texto se ocultan (solo ícono) con `title` nativo del navegador
+  como tooltip.
+- **El overlay de mobile ignora esta preferencia a propósito**
+  (`mostrarColapsado = colapsado && !abierto`): abrir el menú en un celular siempre muestra
+  el menú completo con submenús desplegables, sin importar lo que se dejó colapsado la
+  última vez que se usó en escritorio — la preferencia de "rail angosto" no tendría sentido
+  en un overlay que ya se abre y cierra por completo.
+- **Gotcha de esta sesión, importante para verificaciones futuras:** al medir el ancho del
+  `<aside>` con `getBoundingClientRect()`/`getComputedStyle()` justo después de togglear (vía
+  `javascript_tool`, sin poder ver la pestaña), el valor devuelto a veces quedaba "pegado" en
+  el ancho anterior en vez del nuevo — no es un bug de la app: la transición CSS de `width`
+  (150ms) no completa su animación en una pestaña que el Browser pane de este entorno no está
+  compositando activamente (mismo gotcha ya documentado de `screenshot failed: the Browser
+  pane is not displayed`). Se confirmó forzando `aside.style.transition = 'none'` + un reflow
+  (`void aside.offsetWidth`) antes de medir, lo que sí devolvió el ancho final correcto de
+  inmediato. Si una verificación futura de un cambio con transición CSS da un valor que
+  "no cuadra", probar este truco antes de asumir que el cambio está roto.
+- Verificado en producción: alternar colapsado/expandido en escritorio (ancho, visibilidad
+  del wordmark y del texto de los items, preferencia persistida en localStorage), y el
+  overlay de mobile mostrando el menú completo con el submenú de Ventas desplegándose
+  normalmente pese a tener la preferencia de escritorio en "colapsado".
+
 ## Qué contiene
 
 ```text
@@ -852,8 +885,9 @@ ya se agregaron documentos fuera del plan original: impresión de ticket de vent
 cotización (con logo de empresa), PDF de compra, exportar Existencias a CSV/Excel, stock
 mínimo/máximo opcional en Artículos y edición de nombre/logo de la empresa (ver "Documentos",
 "PDF de compra", "Exportar Existencias" y "Stock mínimo/máximo opcional" arriba), el buscador
-global de la barra superior ya está implementado (ver "Buscador global" arriba), y la
-paginación server-side ya se extendió a Usuarios, Existencias, Cotizaciones, Conteos,
+global de la barra superior ya está implementado (ver "Buscador global" arriba), el menú
+lateral ya se puede contraer/expandir en escritorio (ver "Menú lateral contraíble" arriba), y
+la paginación server-side ya se extendió a Usuarios, Existencias, Cotizaciones, Conteos,
 Transferencias y Ajustes (ver "Paginación server-side extendida" arriba) — de las pantallas
 con tabla que quedaban, solo Sucursales, Roles, Caja, Configuración de Catálogo, Herramientas
 y Reportes se dejaron sin paginar a propósito (no son buen fit, ver esa misma sección para el
