@@ -29,6 +29,8 @@ const actualizarArticuloSchema = crearArticuloSchema.partial().extend({
   categoriaId: z.string().min(1).nullable().optional(),
   marcaId: z.string().min(1).nullable().optional(),
   impuestoId: z.string().min(1).nullable().optional(),
+  stockMinimo: z.coerce.number().min(0).nullable().optional(),
+  stockMaximo: z.coerce.number().min(0).nullable().optional(),
 });
 
 const unidadesAlternasSchema = z.object({

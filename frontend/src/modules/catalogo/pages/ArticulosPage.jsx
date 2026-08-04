@@ -41,6 +41,8 @@ const FORM_VACIO = {
   impuestoId: '',
   costo: '',
   precio: '',
+  stockMinimo: '',
+  stockMaximo: '',
 };
 
 function articuloAForm(a) {
@@ -55,6 +57,8 @@ function articuloAForm(a) {
     impuestoId: a.impuestoId || '',
     costo: String(a.costo),
     precio: String(a.precio),
+    stockMinimo: a.stockMinimo === null || a.stockMinimo === undefined ? '' : String(a.stockMinimo),
+    stockMaximo: a.stockMaximo === null || a.stockMaximo === undefined ? '' : String(a.stockMaximo),
     activo: a.activo,
   };
 }
@@ -180,6 +184,10 @@ function ArticulosPage() {
         impuestoId: editForm.impuestoId || null,
         costo: editForm.costo === '' ? undefined : Number(editForm.costo),
         precio: editForm.precio === '' ? undefined : Number(editForm.precio),
+        // Igual que sku/codigoBarras: "" significa "quitar el límite que había" -> null
+        // explícito, para poder volver a dejar el stock mínimo/máximo sin definir.
+        stockMinimo: editForm.stockMinimo === '' ? null : Number(editForm.stockMinimo),
+        stockMaximo: editForm.stockMaximo === '' ? null : Number(editForm.stockMaximo),
         activo: editForm.activo,
       });
       setEditandoId(null);
@@ -204,6 +212,8 @@ function ArticulosPage() {
         impuestoId: form.impuestoId || undefined,
         costo: form.costo ? Number(form.costo) : undefined,
         precio: form.precio ? Number(form.precio) : undefined,
+        stockMinimo: form.stockMinimo ? Number(form.stockMinimo) : undefined,
+        stockMaximo: form.stockMaximo ? Number(form.stockMaximo) : undefined,
       });
       setForm(FORM_VACIO);
       cargarArticulos(1);
@@ -323,6 +333,24 @@ function ArticulosPage() {
           </Select>
           <Input id="costoArticulo" label="Costo" type="number" step="0.01" value={form.costo} onChange={(e) => actualizarCampo('costo', e.target.value)} />
           <Input id="precioArticulo" label="Precio" type="number" step="0.01" value={form.precio} onChange={(e) => actualizarCampo('precio', e.target.value)} />
+          <Input
+            id="stockMinimoArticulo"
+            label="Stock mínimo (opcional)"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.stockMinimo}
+            onChange={(e) => actualizarCampo('stockMinimo', e.target.value)}
+          />
+          <Input
+            id="stockMaximoArticulo"
+            label="Stock máximo (opcional)"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.stockMaximo}
+            onChange={(e) => actualizarCampo('stockMaximo', e.target.value)}
+          />
           {error && <p className="sm:col-span-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
           <div className="sm:col-span-2">
             <Button type="submit">Crear artículo</Button>
@@ -364,6 +392,26 @@ function ArticulosPage() {
           </Select>
           <Input id="costoEdit" label="Costo" type="number" step="0.01" value={editForm.costo} onChange={(e) => setEditForm((f) => ({ ...f, costo: e.target.value }))} />
           <Input id="precioEdit" label="Precio" type="number" step="0.01" value={editForm.precio} onChange={(e) => setEditForm((f) => ({ ...f, precio: e.target.value }))} />
+          <Input
+            id="stockMinimoEdit"
+            label="Stock mínimo (opcional)"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Sin definir"
+            value={editForm.stockMinimo}
+            onChange={(e) => setEditForm((f) => ({ ...f, stockMinimo: e.target.value }))}
+          />
+          <Input
+            id="stockMaximoEdit"
+            label="Stock máximo (opcional)"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="Sin definir"
+            value={editForm.stockMaximo}
+            onChange={(e) => setEditForm((f) => ({ ...f, stockMaximo: e.target.value }))}
+          />
           <label className="sm:col-span-2 flex items-center gap-2 text-sm text-gray-600">
             <input
               type="checkbox"
