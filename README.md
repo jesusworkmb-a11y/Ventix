@@ -800,6 +800,29 @@ para persistir entre sesiones.
   overlay de mobile mostrando el menú completo con el submenú de Ventas desplegándose
   normalmente pese a tener la preferencia de escritorio en "colapsado".
 
+## Exportar Reportes a CSV/Excel (2026-08-04, sesión posterior)
+
+A pedido del usuario ("los reportes específicamente en el módulo de Reportes deben poder
+exportarse en excel"): a diferencia del export de Existencias (que necesitó un endpoint
+nuevo), acá los datos de cada reporte ya están completos en memoria una vez generado
+(`resultado` en [ReportesPage.jsx](frontend/src/modules/reportes/pages/ReportesPage.jsx)),
+así que el export es 100% client-side — nuevo
+[frontend/src/shared/csv.js](frontend/src/shared/csv.js) (`exportarCsv`, mismo criterio de
+escapado que el helper del backend, más un BOM UTF-8 para que los acentos se vean bien al
+abrir directo en Excel). Botón "Exportar CSV" agregado vía el prop `action` de `Card` en cada
+tarjeta de reporte: Ventas por método de pago, Artículos más vendidos, Inventario valorizado,
+Stock bajo, Compras por proveedor, Cortes de caja — son 6 botones en total porque "Inventario
+valorizado" tiene dos tablas independientes (valorización + stock bajo), cada una con su
+propio export. Cada botón exporta exactamente las filas de la tabla que tiene debajo (no las
+cifras resumen de arriba, como subtotal/impuestos/ticket promedio en Ventas), con valores
+numéricos crudos (no `$1,234.00` formateado) para que Excel los trate como números y no como
+texto; se deshabilita solo si la tabla no tiene filas.
+
+Verificado en producción generando reportes reales: "Ventas por período" → CSV con las 4
+filas de método de pago y montos exactos; "Inventario valorizado" → CSV con las 3 sucursales
+y valores exactos, y confirmado que el botón de "Stock bajo" (0 filas ese día) queda
+deshabilitado. Sin datos de prueba generados — solo lectura.
+
 ## Qué contiene
 
 ```text
@@ -882,16 +905,18 @@ ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba), y sus tres pen
 pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orden/paginación
 server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). Además,
 ya se agregaron documentos fuera del plan original: impresión de ticket de venta, PDF de
-cotización (con logo de empresa), PDF de compra, exportar Existencias a CSV/Excel, stock
-mínimo/máximo opcional en Artículos y edición de nombre/logo de la empresa (ver "Documentos",
-"PDF de compra", "Exportar Existencias" y "Stock mínimo/máximo opcional" arriba), el buscador
-global de la barra superior ya está implementado (ver "Buscador global" arriba), el menú
-lateral ya se puede contraer/expandir en escritorio (ver "Menú lateral contraíble" arriba), y
-la paginación server-side ya se extendió a Usuarios, Existencias, Cotizaciones, Conteos,
-Transferencias y Ajustes (ver "Paginación server-side extendida" arriba) — de las pantallas
-con tabla que quedaban, solo Sucursales, Roles, Caja, Configuración de Catálogo, Herramientas
-y Reportes se dejaron sin paginar a propósito (no son buen fit, ver esa misma sección para el
-porqué de cada una). **No queda ningún pendiente abierto.** A elección:
+cotización (con logo de empresa), PDF de compra, exportar Existencias a CSV/Excel, exportar
+Reportes a CSV/Excel, stock mínimo/máximo opcional en Artículos y edición de nombre/logo de
+la empresa (ver "Documentos", "PDF de compra", "Exportar Existencias", "Exportar Reportes" y
+"Stock mínimo/máximo opcional" arriba), el buscador global de la barra superior ya está
+implementado (ver "Buscador global" arriba), el menú lateral ya se puede contraer/expandir en
+escritorio (ver "Menú lateral contraíble" arriba), y la paginación server-side ya se extendió
+a Usuarios, Existencias, Cotizaciones, Conteos, Transferencias y Ajustes (ver "Paginación
+server-side extendida" arriba) — de las pantallas con tabla que quedaban, solo Sucursales,
+Roles, Caja y Configuración de Catálogo se dejaron sin paginar a propósito (catálogos chicos,
+ver esa misma sección para el porqué de cada una; Herramientas no tenía nada que paginar y
+Reportes ya tiene su propio export CSV en vez de paginación, que no aplicaba ahí). **No queda
+ningún pendiente abierto.** A elección:
 - Una segunda ronda de QA más profunda sobre algún módulo.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
