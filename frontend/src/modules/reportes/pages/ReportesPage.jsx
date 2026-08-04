@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Download } from 'lucide-react';
 import {
   reporteVentas,
   reporteArticulosMasVendidos,
@@ -13,6 +14,25 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
+import { exportarCsv } from '../../../shared/csv';
+
+// Botón "Exportar CSV" reusado en cada Card de reporte (via el prop `action` de Card) — cada
+// reporte exporta exactamente las filas de la tabla que tiene abajo, no un volcado aparte ni
+// las cifras resumen que están arriba de la tabla (subtotal/impuestos/etc.), para que lo que
+// se descarga coincida 1:1 con lo que se está viendo.
+function BotonExportar({ nombreArchivo, filas, columnas }) {
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      onClick={() => exportarCsv(nombreArchivo, filas, columnas)}
+      disabled={filas.length === 0}
+    >
+      <Download size={16} /> Exportar CSV
+    </Button>
+  );
+}
 
 const REPORTES = {
   ventas: { etiqueta: 'Ventas por período', fn: reporteVentas, usaFechas: true, usaSucursal: true },
@@ -96,7 +116,16 @@ function ReportesPage() {
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
       {resultado && tipo === 'ventas' && (
-        <Card title="Ventas por período">
+        <Card
+          title="Ventas por período"
+          action={(
+            <BotonExportar
+              nombreArchivo="ventas-por-metodo-pago.csv"
+              filas={resultado.porMetodoPago.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) }))}
+              columnas={[{ clave: 'metodo', label: 'Método' }, { clave: 'monto', label: 'Monto' }]}
+            />
+          )}
+        >
           <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <p className="text-xs text-gray-500">Número de ventas</p>
@@ -131,7 +160,24 @@ function ReportesPage() {
       )}
 
       {resultado && tipo === 'articulos' && (
-        <Card title="Artículos más vendidos">
+        <Card
+          title="Artículos más vendidos"
+          action={(
+            <BotonExportar
+              nombreArchivo="articulos-mas-vendidos.csv"
+              filas={resultado.map((r) => ({
+                articulo: r.articulo?.nombre,
+                cantidad: Number(r.cantidad),
+                monto: Number(r.monto),
+              }))}
+              columnas={[
+                { clave: 'articulo', label: 'Artículo' },
+                { clave: 'cantidad', label: 'Cantidad' },
+                { clave: 'monto', label: 'Monto' },
+              ]}
+            />
+          )}
+        >
           <Table columnas={['Artículo', 'Cantidad', 'Monto']}>
             {resultado.length === 0 && <TablaVacia colSpan={3} />}
             {resultado.map((r) => (
@@ -147,7 +193,16 @@ function ReportesPage() {
 
       {resultado && tipo === 'inventario' && (
         <>
-          <Card title="Inventario valorizado">
+          <Card
+            title="Inventario valorizado"
+            action={(
+              <BotonExportar
+                nombreArchivo="inventario-valorizado.csv"
+                filas={resultado.porSucursal.map((s) => ({ sucursal: s.sucursal.nombre, valor: Number(s.valor) }))}
+                columnas={[{ clave: 'sucursal', label: 'Sucursal' }, { clave: 'valor', label: 'Valor' }]}
+              />
+            )}
+          >
             <p className="mb-4 text-sm text-gray-500">
               Valor total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.valorTotal)}</span>
             </p>
@@ -160,7 +215,26 @@ function ReportesPage() {
               ))}
             </Table>
           </Card>
-          <Card title="Stock bajo">
+          <Card
+            title="Stock bajo"
+            action={(
+              <BotonExportar
+                nombreArchivo="stock-bajo.csv"
+                filas={resultado.stockBajo.map((r) => ({
+                  articulo: r.articulo.nombre,
+                  sucursal: r.sucursal.nombre,
+                  cantidad: Number(r.cantidad),
+                  minimo: Number(r.stockMinimo),
+                }))}
+                columnas={[
+                  { clave: 'articulo', label: 'Artículo' },
+                  { clave: 'sucursal', label: 'Sucursal' },
+                  { clave: 'cantidad', label: 'Cantidad' },
+                  { clave: 'minimo', label: 'Mínimo' },
+                ]}
+              />
+            )}
+          >
             {resultado.stockBajo.length === 0 ? (
               <p className="text-sm text-gray-500">Ningún artículo por debajo de su stock mínimo.</p>
             ) : (
@@ -180,7 +254,24 @@ function ReportesPage() {
       )}
 
       {resultado && tipo === 'compras' && (
-        <Card title="Compras por proveedor">
+        <Card
+          title="Compras por proveedor"
+          action={(
+            <BotonExportar
+              nombreArchivo="compras-por-proveedor.csv"
+              filas={resultado.porProveedor.map((p) => ({
+                proveedor: p.proveedor.nombre,
+                total: Number(p.total),
+                compras: Number(p.numeroCompras),
+              }))}
+              columnas={[
+                { clave: 'proveedor', label: 'Proveedor' },
+                { clave: 'total', label: 'Total' },
+                { clave: 'compras', label: 'Compras' },
+              ]}
+            />
+          )}
+        >
           <p className="mb-4 text-sm text-gray-500">
             Total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.total)}</span> · Número de compras: {resultado.numeroCompras}
           </p>
@@ -198,7 +289,30 @@ function ReportesPage() {
       )}
 
       {resultado && tipo === 'caja' && (
-        <Card title="Cortes de caja">
+        <Card
+          title="Cortes de caja"
+          action={(
+            <BotonExportar
+              nombreArchivo="cortes-de-caja.csv"
+              filas={resultado.sesiones.map((s) => ({
+                caja: s.caja?.nombre,
+                fondo: Number(s.fondoInicial),
+                esperado: Number(s.saldoEsperado),
+                real: Number(s.saldoReal),
+                diferencia: Number(s.diferencia),
+                cerrada: new Date(s.cerradaEn).toLocaleString(),
+              }))}
+              columnas={[
+                { clave: 'caja', label: 'Caja' },
+                { clave: 'fondo', label: 'Fondo' },
+                { clave: 'esperado', label: 'Esperado' },
+                { clave: 'real', label: 'Real' },
+                { clave: 'diferencia', label: 'Diferencia' },
+                { clave: 'cerrada', label: 'Cerrada' },
+              ]}
+            />
+          )}
+        >
           <p className="mb-4 text-sm text-gray-500">
             Diferencia acumulada: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.totalDiferencias)}</span>
           </p>
