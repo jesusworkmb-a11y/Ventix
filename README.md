@@ -72,11 +72,9 @@ Notas del despliegue:
    `FRONTEND_URL` (el frontend ya desplegado), no desde `localhost:5173` — para verificar cambios
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: con los 10 módulos completos y en producción, su primera pasada de QA
-   cerrada, y el rediseño visual completo ya aplicado a las 22 pantallas (ver secciones abajo)
-   — lo siguiente es a elección: pulir el rediseño (responsive real en mobile, tabla con
-   paginación server-side, loading states), una segunda ronda de QA más profunda sobre algún
-   módulo, o nuevas funcionalidades fuera del plan original.
+5. Dile qué sigue: no queda ningún pendiente abierto (10 módulos completos y en producción,
+   primera pasada de QA cerrada, rediseño visual + su pulido ya aplicados, documentos de venta
+   ya implementados) — ver el detalle de opciones en "Qué sigue" al final de este README.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -578,6 +576,58 @@ Los tres pendientes de la sección anterior se cerraron en la misma sesión:
 Detalle completo (incluidos los gotchas de diseño de cada uno) en la memoria del proyecto, no
 se duplica acá.
 
+## Documentos: ticket de venta, PDF de cotización y logo de empresa (2026-08-04)
+
+Fuera del plan original — funcionalidad nueva pedida por el usuario tras cerrar el pulido
+post-rediseño. Todo verificado en vivo contra producción.
+
+- **Impresión de ticket de venta.** Componente
+  [TicketVenta.jsx](frontend/src/modules/ventas/components/TicketVenta.jsx): recibo angosto
+  estilo térmico (80mm) con datos de empresa/sucursal, folio, fecha, cliente, líneas,
+  subtotal/impuestos/total, pago(s) y cambio (cuando se conoce). CSS `@media print` en
+  [index.css](frontend/src/index.css) aísla el ticket del resto de la app al imprimir (oculta
+  todo salvo `#ticket-imprimible`) y el botón dispara `window.print()`. Se usa en
+  [VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx) (botón "Imprimir ticket"
+  al confirmar una venta nueva, con el cambio en efectivo porque ese dato no se persiste en el
+  backend) y en
+  [VentasHistorialPage.jsx](frontend/src/modules/ventas/pages/VentasHistorialPage.jsx) (acción
+  "Imprimir" por fila, para reimprimir cualquier venta ya registrada — incluidas las
+  canceladas, que muestran "** VENTA CANCELADA **").
+- **PDF de cotización para el cliente.** Nuevo
+  [cotizacionPdf.js](frontend/src/modules/ventas/pdf/cotizacionPdf.js) con jsPDF +
+  jspdf-autotable (dependencias nuevas del frontend). `Cotizacion.total` en el backend es el
+  subtotal *sin* impuesto (se calcula recién al convertir, con la tasa vigente en ese momento
+  — igual que en el resto del módulo); el PDF recalcula subtotal/impuestos/total por línea con
+  el mismo criterio para no mostrarle al cliente un monto que no es el que realmente pagaría.
+  jsPDF pesa bastante (~250kB gzip) así que se carga con `import()` dinámico solo cuando se
+  pide un PDF, en vez de ir en el bundle inicial de toda la app (confirmado con el build: queda
+  en su propio chunk). Botón "Descargar PDF" al confirmar una cotización nueva y acción "PDF"
+  por fila en "Cotizaciones recientes"
+  ([CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx)). Requirió
+  que `cotizaciones.service.js#obtener` resolviera `cliente` y `sucursal` con consultas
+  manuales (el modelo `Cotizacion` no declara esas relaciones en Prisma, a diferencia de
+  `Venta`, que sí).
+- **Nombre y logo de la empresa editables.** No existía ninguna forma de cambiar
+  `Empresa.nombreComercial`/`logoUrl` desde que se registra la empresa. Nuevo módulo backend
+  [core/empresa](backend/src/modules/core/empresa) (`PATCH /api/core/empresa`), protegido con
+  el permiso `administracion.empresa.editar` (ya estaba en el catálogo de permisos sin usar).
+  Sin almacenamiento de archivos en el backend — mismo criterio que `Articulo.imagenUrl`, que
+  tampoco lo tiene: el logo se redimensiona (máx. 320px de lado) y comprime en un `<canvas>`
+  del propio navegador y viaja como data URI dentro del JSON; se subió el límite de body de
+  express a 3mb en [app.js](backend/src/app.js) para que quepa. Nueva pantalla
+  [EmpresaPage.jsx](frontend/src/modules/core/pages/EmpresaPage.jsx) en
+  `/administracion/empresa` (dentro de "Configuración" en el sidebar).
+  `AuthContext.actualizarEmpresa()` refresca nombre/logo en toda la app sin recargar; el logo,
+  cuando está cargado, reemplaza el ícono genérico en el pie del sidebar y ese bloque enlaza
+  directo a la pantalla de edición.
+- **Logo en el PDF de cotización (a pedido explícito — en el ticket de venta no).** Si
+  `empresa.logoUrl` está definido, `generarPdfCotizacion` lo dibuja en el encabezado
+  respetando su proporción real (`doc.getImageProperties`, sin deformarlo) y corre el
+  nombre/datos de la empresa a la derecha del logo; un logo corrupto o en un formato que jsPDF
+  no pueda leer no rompe la generación del PDF (se ignora silenciosamente). Verificado con un
+  logo de prueba no cuadrado (200×80) — el PDF resultante embebe un objeto `/Image` con
+  Width=200/Height=80, confirmando que no se deformó.
+
 ## Qué contiene
 
 ```text
@@ -603,15 +653,18 @@ ventix/
         ├── index.css              ← entrypoint de Tailwind
         ├── shared/
         │   ├── api.js             ← cliente HTTP único hacia el backend
-        │   ├── format.js          ← formatoMoneda / tiempoRelativo
+        │   ├── format.js          ← formatoMoneda / formatoFecha / tiempoRelativo
         │   ├── ui/                ← design system: Button, Input, Select, Card, StatCard,
         │   │                         Badge, Table, Modal, TrendChart
         │   └── layout/            ← Sidebar + TopBar + AppLayout (estructura fija, enganchada
         │                             en ProtectedRoute.jsx)
         └── modules/              ← una carpeta por módulo (core, catalogo, ventas...), cada
-                                     una con api/ (llamadas HTTP) y pages/ (pantallas) — ver las
-                                     secciones de QA y "Rediseño visual" arriba para el detalle
-                                     de qué pantallas tiene cada módulo
+                                     una con api/ (llamadas HTTP) y pages/ (pantallas), y
+                                     opcionalmente components/ o pdf/ para piezas reusables
+                                     dentro del módulo (p.ej. ventas/components/TicketVenta.jsx,
+                                     ventas/pdf/cotizacionPdf.js) — ver las secciones de QA,
+                                     "Rediseño visual" y "Documentos" arriba para el detalle de
+                                     qué pantallas tiene cada módulo
 ```
 
 ## Cómo arrancarlo desde cero
@@ -655,10 +708,15 @@ Clientes/Proveedores, Reportes, Herramientas — todos los vacíos detectados ya
 con una excepción documentada de severidad muy baja en Clientes), el rediseño visual completo
 ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba), y sus tres pendientes de
 pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orden/paginación
-server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). **No
-queda ningún pendiente abierto.** A elección:
+server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). Además,
+ya se agregaron documentos fuera del plan original: impresión de ticket de venta, PDF de
+cotización (con logo de empresa) y edición de nombre/logo de la empresa (ver "Documentos"
+arriba). **No queda ningún pendiente abierto.** A elección:
 - Extender la paginación server-side al resto de las tablas (hoy solo la tienen Ventas
   recientes, Compras, Artículos, Clientes, Proveedores, Auditoría).
 - Una segunda ronda de QA más profunda sobre algún módulo.
+- Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
+  web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
+  desde la UI por ahora).
 - Nuevas funcionalidades fuera del plan original.
 - Loading states (spinners) más pulidos — el único ítem del pulido visual que quedó sin tocar.
