@@ -706,6 +706,27 @@ tablas de resultados agregados, no colecciones CRUD).
   IPv6), se verificó pusheando a `main` y probando contra
   `https://ventix-frontend.onrender.com` ya desplegado.
 
+## PDF de compra (2026-08-04, sesión posterior)
+
+A pedido del usuario, mismo tratamiento que la cotización: nuevo
+[compraPdf.js](frontend/src/modules/compras/pdf/compraPdf.js) (`generarPdfCompra`), cargado
+con `import()` dinámico solo al pedirlo para no engordar el bundle inicial. Diferencia clave
+con la cotización: `CompraDetalle.costo` no lleva un impuesto separado (a diferencia de
+`VentaDetalle`/`CotizacionDetalle`), así que el PDF no recalcula subtotal/impuestos — solo
+suma cantidad × costo por línea. Mostraba proveedor en vez de cliente, y marca
+"** COMPRA CANCELADA **" en rojo si `compra.estado === 'CANCELADA'` (las compras canceladas
+siguen listadas y siguen pudiendo generar su PDF, a diferencia de Cotizaciones que no tiene
+estado cancelado). Requirió que `compras.service.js#obtener` incluyera `proveedor`/`sucursal`
+en el `include` (a diferencia de `Cotizacion`, `Compra` sí declara esas relaciones de Prisma
+directamente, así que no hizo falta resolución manual). Botón "PDF" nuevo por fila en
+"Compras recientes" ([ComprasPage.jsx](frontend/src/modules/compras/pages/ComprasPage.jsx)),
+junto al de "Cancelar" ya existente.
+
+Verificado en producción interceptando `URL.createObjectURL` para leer los bytes crudos del
+PDF generado (mismo truco que Cotizaciones/Empresa): una compra `CONFIRMADA` (folio,
+proveedor y total correctos, sin marca de cancelada) y una `CANCELADA` (mismos datos más
+"COMPRA CANCELADA" presente). Sin datos de prueba generados — solo lectura.
+
 ## Qué contiene
 
 ```text
@@ -788,14 +809,14 @@ ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba), y sus tres pen
 pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orden/paginación
 server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). Además,
 ya se agregaron documentos fuera del plan original: impresión de ticket de venta, PDF de
-cotización (con logo de empresa) y edición de nombre/logo de la empresa (ver "Documentos"
-arriba), el buscador global de la barra superior ya está implementado (ver "Buscador
-global" arriba), y la paginación server-side ya se extendió a Usuarios, Existencias,
-Cotizaciones, Conteos, Transferencias y Ajustes (ver "Paginación server-side extendida"
-arriba) — de las pantallas con tabla que quedaban, solo Sucursales, Roles, Caja,
-Configuración de Catálogo, Herramientas y Reportes se dejaron sin paginar a propósito (no
-son buen fit, ver esa misma sección para el porqué de cada una). **No queda ningún
-pendiente abierto.** A elección:
+cotización (con logo de empresa), PDF de compra y edición de nombre/logo de la empresa (ver
+"Documentos" y "PDF de compra" arriba), el buscador global de la barra superior ya está
+implementado (ver "Buscador global" arriba), y la paginación server-side ya se extendió a
+Usuarios, Existencias, Cotizaciones, Conteos, Transferencias y Ajustes (ver "Paginación
+server-side extendida" arriba) — de las pantallas con tabla que quedaban, solo Sucursales,
+Roles, Caja, Configuración de Catálogo, Herramientas y Reportes se dejaron sin paginar a
+propósito (no son buen fit, ver esa misma sección para el porqué de cada una). **No queda
+ningún pendiente abierto.** A elección:
 - Una segunda ronda de QA más profunda sobre algún módulo.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
