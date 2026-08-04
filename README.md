@@ -747,6 +747,26 @@ el buscador filtrado a "coca", el CSV descargado trae exactamente las 3 filas es
 (Coca Cola 600ml en las 3 sucursales) con el encabezado correcto. Sin datos de prueba
 generados — solo lectura.
 
+## Stock mínimo/máximo opcional en Artículos (2026-08-04, sesión posterior)
+
+A pedido del usuario ("la edición de artículos nos debe dejar colocar stock mínimo o máximo
+como opcional"): el backend ya soportaba `stockMinimo`/`stockMaximo` como opcionales desde
+Fase 2 (los usaba la importación CSV de Herramientas), pero ningún formulario del frontend
+los mostraba nunca — ni alta ni edición. Agregados ambos campos a "Nuevo artículo" y "Editar
+artículo" en [ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx),
+sin `required`. En edición, dejar el campo vacío ahora manda `null` explícito para borrar el
+límite que hubiera — mismo patrón ya usado para sku/codigoBarras/categoriaId/marcaId/
+impuestoId — así que `actualizarArticuloSchema` se extendió con `.nullable()` para
+`stockMinimo`/`stockMaximo` en
+[articulos.validators.js](backend/src/modules/catalogo/articulos/articulos.validators.js).
+
+Verificado en producción con clics reales sobre un artículo real (Coca Cola 600ml, no uno de
+prueba): asignar 5/50, reabrir el modal y confirmar que persistieron; volver a vaciar ambos
+campos y confirmar que el modal los muestra vacíos de nuevo (límite borrado, artículo
+devuelto a su estado original sin límites). El click por `ref` del Browser pane volvió a
+fallar en silencio en esta pantalla (mismo gotcha ya documentado para Clientes/Reportes) —
+se usó `javascript_tool` para disparar los clics reales sobre los elementos del DOM.
+
 ## Qué contiene
 
 ```text
@@ -829,14 +849,15 @@ ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba), y sus tres pen
 pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orden/paginación
 server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). Además,
 ya se agregaron documentos fuera del plan original: impresión de ticket de venta, PDF de
-cotización (con logo de empresa), PDF de compra, exportar Existencias a CSV/Excel y edición
-de nombre/logo de la empresa (ver "Documentos", "PDF de compra" y "Exportar Existencias"
-arriba), el buscador global de la barra superior ya está implementado (ver "Buscador global"
-arriba), y la paginación server-side ya se extendió a Usuarios, Existencias, Cotizaciones,
-Conteos, Transferencias y Ajustes (ver "Paginación server-side extendida" arriba) — de las
-pantallas con tabla que quedaban, solo Sucursales, Roles, Caja, Configuración de Catálogo,
-Herramientas y Reportes se dejaron sin paginar a propósito (no son buen fit, ver esa misma
-sección para el porqué de cada una). **No queda ningún pendiente abierto.** A elección:
+cotización (con logo de empresa), PDF de compra, exportar Existencias a CSV/Excel, stock
+mínimo/máximo opcional en Artículos y edición de nombre/logo de la empresa (ver "Documentos",
+"PDF de compra", "Exportar Existencias" y "Stock mínimo/máximo opcional" arriba), el buscador
+global de la barra superior ya está implementado (ver "Buscador global" arriba), y la
+paginación server-side ya se extendió a Usuarios, Existencias, Cotizaciones, Conteos,
+Transferencias y Ajustes (ver "Paginación server-side extendida" arriba) — de las pantallas
+con tabla que quedaban, solo Sucursales, Roles, Caja, Configuración de Catálogo, Herramientas
+y Reportes se dejaron sin paginar a propósito (no son buen fit, ver esa misma sección para el
+porqué de cada una). **No queda ningún pendiente abierto.** A elección:
 - Una segunda ronda de QA más profunda sobre algún módulo.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
