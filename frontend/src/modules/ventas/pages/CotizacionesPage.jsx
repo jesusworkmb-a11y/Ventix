@@ -1,9 +1,18 @@
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
 import { listarCotizaciones, obtenerCotizacion, crearCotizacion, convertirCotizacion } from '../api/cotizaciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Badge from '../../../shared/ui/Badge';
+import Modal from '../../../shared/ui/Modal';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import { formatoMoneda } from '../../../shared/format';
 
 function CotizacionesPage() {
   const [clientes, setClientes] = useState([]);
@@ -137,6 +146,10 @@ function CotizacionesPage() {
     }
   }
 
+  function cerrarConversion() {
+    setConvirtiendoId(null);
+  }
+
   async function confirmarConversion(e, cotizacion) {
     e.preventDefault();
     setConvError('');
@@ -157,142 +170,155 @@ function CotizacionesPage() {
     }
   }
 
+  const cotizacionEnConversion = cotizaciones.find((c) => c.id === convirtiendoId);
+
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 700 }}>
-      <p><Link to="/ventas">← Volver a Ventas</Link></p>
-      <h1>Cotizaciones</h1>
-
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
-      {creada && (
-        <div style={{ background: '#f0f0f0', padding: '1rem', margin: '1rem 0' }}>
-          <p>Cotización {creada.folio} creada. Total: {creada.total}</p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Cotizaciones</h1>
+          <p className="text-sm text-gray-500">Creá cotizaciones y convertilas en venta cuando el cliente confirme.</p>
         </div>
-      )}
+        <Link
+          to="/ventas"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Volver a Ventas
+        </Link>
+      </div>
 
-      <h2>Nueva cotización</h2>
-      <label>
-        Cliente
-        <select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-          {clientes.filter((c) => c.activo).map((c) => (
-            <option key={c.id} value={c.id}>{c.nombre}{c.esGeneral ? ' (general)' : ''}</option>
-          ))}
-        </select>
-      </label>
-
-      <form
-        onSubmit={agregarLinea}
-        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', margin: '1rem 0', flexWrap: 'wrap' }}
-      >
-        <select value={articuloId} onChange={(e) => setArticuloId(e.target.value)} required>
-          <option value="">Artículo...</option>
-          {articulos.map((a) => (
-            <option key={a.id} value={a.id}>{a.nombre} (${precioEfectivo(a)})</option>
-          ))}
-        </select>
-        <input
-          type="number"
-          step="0.01"
-          min="0.01"
-          value={cantidad}
-          onChange={(e) => setCantidad(e.target.value)}
-          style={{ width: '80px' }}
-          required
-        />
-        <button type="submit">Agregar</button>
-      </form>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Artículo</th>
-            <th style={{ textAlign: 'left' }}>Cantidad</th>
-            <th style={{ textAlign: 'left' }}>Precio</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {carrito.map((l, i) => (
-            <tr key={i}>
-              <td>{l.nombre}</td>
-              <td>{l.cantidad}</td>
-              <td>{l.precio}</td>
-              <td><button type="button" onClick={() => quitarLinea(i)}>Quitar</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <p>Total: {total.toFixed(2)}</p>
-
-      <form onSubmit={confirmarCotizacion} style={{ marginBottom: '2rem' }}>
-        <button type="submit">Crear cotización</button>
-      </form>
-
-      <h2>Convertir en venta</h2>
-      {cajas.length > 0 && (
-        <label>
-          Caja para cobrar
-          <select value={cajaId} onChange={(e) => setCajaId(e.target.value)}>
-            {cajas.map((c) => (
-              <option key={c.id} value={c.id}>{c.nombre}</option>
-            ))}
-          </select>
-        </label>
-      )}
-      {cajaId && !sesion && (
-        <p>
-          Esta caja no tiene una sesión abierta. <Link to="/caja">Abre una en Caja</Link> antes de convertir.
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {creada && (
+        <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
+          Cotización {creada.folio} creada. Total: {formatoMoneda(creada.total)}
         </p>
       )}
 
-      <h2>Cotizaciones recientes</h2>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Folio</th>
-            <th style={{ textAlign: 'left' }}>Total</th>
-            <th style={{ textAlign: 'left' }}>Estado</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {cotizaciones.map((c) => (
-            <Fragment key={c.id}>
-              <tr>
-                <td>{c.folio}</td>
-                <td>{c.total}</td>
-                <td>{c.convertidaEnVentaId ? 'Convertida' : 'Pendiente'}</td>
-                <td>
-                  {!c.convertidaEnVentaId && (
-                    <button type="button" onClick={() => abrirConversion(c.id)}>Convertir en venta</button>
-                  )}
-                </td>
-              </tr>
-              {convirtiendoId === c.id && (
-                <tr>
-                  <td colSpan={4} style={{ background: '#f7f7f7', padding: '1rem' }}>
-                    {convError && <p style={{ color: 'crimson' }}>{convError}</p>}
-                    <form
-                      onSubmit={(e) => confirmarConversion(e, c)}
-                      style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
-                    >
-                      <select value={convMetodoPago} onChange={(e) => setConvMetodoPago(e.target.value)}>
-                        <option value="EFECTIVO">Efectivo</option>
-                        <option value="TARJETA">Tarjeta</option>
-                        <option value="TRANSFERENCIA">Transferencia</option>
-                        <option value="MIXTO">Mixto</option>
-                      </select>
-                      <span>Total a cobrar: {convTotal === null ? 'calculando…' : convTotal.toFixed(2)}</span>
-                      <button type="submit" disabled={convTotal === null}>Confirmar conversión</button>
-                      <button type="button" onClick={() => setConvirtiendoId(null)}>Cancelar</button>
-                    </form>
-                  </td>
-                </tr>
-              )}
-            </Fragment>
+      <Card title="Nueva cotización">
+        <Select id="clienteCot" label="Cliente" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+          {clientes.filter((c) => c.activo).map((c) => (
+            <option key={c.id} value={c.id}>{c.nombre}{c.esGeneral ? ' (general)' : ''}</option>
           ))}
-        </tbody>
-      </table>
+        </Select>
+
+        <form onSubmit={agregarLinea} className="mt-5 flex flex-wrap items-end gap-3">
+          <Select
+            id="articuloCot"
+            label="Artículo"
+            value={articuloId}
+            onChange={(e) => setArticuloId(e.target.value)}
+            required
+            className="min-w-[220px]"
+          >
+            <option value="">Selecciona un artículo...</option>
+            {articulos.map((a) => (
+              <option key={a.id} value={a.id}>{a.nombre} ({formatoMoneda(precioEfectivo(a))})</option>
+            ))}
+          </Select>
+          <Input
+            id="cantidadCot"
+            label="Cantidad"
+            type="number"
+            step="0.01"
+            min="0.01"
+            value={cantidad}
+            onChange={(e) => setCantidad(e.target.value)}
+            className="w-28"
+            required
+          />
+          <Button type="submit" variant="secondary">Agregar</Button>
+        </form>
+
+        {carrito.length > 0 && (
+          <div className="mt-4">
+            <Table columnas={['Artículo', 'Cantidad', 'Precio', '']}>
+              {carrito.map((l, i) => (
+                <Fila key={i}>
+                  <Celda>{l.nombre}</Celda>
+                  <Celda>{l.cantidad}</Celda>
+                  <Celda>{formatoMoneda(l.precio)}</Celda>
+                  <Celda className="text-right">
+                    <button type="button" onClick={() => quitarLinea(i)} className="text-gray-400 hover:text-danger-600">
+                      <Trash2 size={16} />
+                    </button>
+                  </Celda>
+                </Fila>
+              ))}
+            </Table>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
+          <span className="text-base font-semibold text-gray-900">Total: {formatoMoneda(total)}</span>
+        </div>
+
+        <form onSubmit={confirmarCotizacion} className="mt-4">
+          <Button type="submit">Crear cotización</Button>
+        </form>
+      </Card>
+
+      <Card title="Convertir en venta">
+        {cajas.length > 0 && (
+          <Select id="cajaCobro" label="Caja para cobrar" value={cajaId} onChange={(e) => setCajaId(e.target.value)}>
+            {cajas.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </Select>
+        )}
+        {cajaId && !sesion && (
+          <p className="mt-3 rounded-lg bg-warning-50 px-4 py-2.5 text-sm text-warning-700">
+            Esta caja no tiene una sesión abierta. <Link to="/caja" className="font-medium underline">Abre una en Caja</Link> antes de convertir.
+          </p>
+        )}
+      </Card>
+
+      <Card title="Cotizaciones recientes">
+        <Table columnas={['Folio', 'Total', 'Estado', '']}>
+          {cotizaciones.length === 0 && <TablaVacia colSpan={4} />}
+          {cotizaciones.map((c) => (
+            <Fila key={c.id}>
+              <Celda className="font-medium text-gray-800">{c.folio}</Celda>
+              <Celda>{formatoMoneda(c.total)}</Celda>
+              <Celda>
+                <Badge tono={c.convertidaEnVentaId ? 'success' : 'warning'}>
+                  {c.convertidaEnVentaId ? 'Convertida' : 'Pendiente'}
+                </Badge>
+              </Celda>
+              <Celda className="text-right">
+                {!c.convertidaEnVentaId && (
+                  <button type="button" onClick={() => abrirConversion(c.id)} className="text-sm text-primary-600 hover:underline">
+                    Convertir en venta
+                  </button>
+                )}
+              </Celda>
+            </Fila>
+          ))}
+        </Table>
+      </Card>
+
+      <Modal abierto={convirtiendoId !== null} onCerrar={cerrarConversion} titulo="Convertir cotización en venta">
+        {convError && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{convError}</p>}
+        <form onSubmit={(e) => confirmarConversion(e, cotizacionEnConversion)} className="flex flex-col gap-4">
+          <Select
+            id="convMetodoPago"
+            label="Método de pago"
+            value={convMetodoPago}
+            onChange={(e) => setConvMetodoPago(e.target.value)}
+          >
+            <option value="EFECTIVO">Efectivo</option>
+            <option value="TARJETA">Tarjeta</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="MIXTO">Mixto</option>
+          </Select>
+          <p className="text-sm font-medium text-gray-700">
+            Total a cobrar: {convTotal === null ? 'calculando…' : formatoMoneda(convTotal)}
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={cerrarConversion}>Cancelar</Button>
+            <Button type="submit" disabled={convTotal === null}>Confirmar conversión</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
