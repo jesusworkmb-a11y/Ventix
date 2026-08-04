@@ -15,6 +15,11 @@ import {
   listarListasPrecio,
   crearListaPrecio,
 } from '../api/catalogo.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Badge from '../../../shared/ui/Badge';
 
 // Categorías tiene lógica propia (padre + límite de 2 niveles), por eso no usa SeccionSimple.
 function SeccionCategorias() {
@@ -76,49 +81,48 @@ function SeccionCategorias() {
   const padresPosibles = categorias.filter((c) => !c.categoriaPadreId);
 
   return (
-    <div style={{ marginBottom: '2rem' }}>
-      <h3>Categorías</h3>
-      <ul>
+    <Card title="Categorías">
+      <ul className="divide-y divide-gray-100">
         {categorias.map((c) => (
-          <li key={c.id} style={{ marginBottom: '0.5rem' }}>
+          <li key={c.id} className="py-2.5">
             {editandoId === c.id ? (
-              <form
-                onSubmit={guardarEdicion}
-                style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
-              >
-                <input value={editNombre} onChange={(e) => setEditNombre(e.target.value)} required />
-                <select value={editPadreId} onChange={(e) => setEditPadreId(e.target.value)}>
+              <form onSubmit={guardarEdicion} className="flex flex-wrap items-end gap-3">
+                <Input id={`catNombre-${c.id}`} value={editNombre} onChange={(e) => setEditNombre(e.target.value)} required className="w-40" />
+                <Select id={`catPadre-${c.id}`} value={editPadreId} onChange={(e) => setEditPadreId(e.target.value)} className="w-48">
                   <option value="">Sin categoría padre</option>
                   {padresPosibles.filter((p) => p.id !== c.id).map((p) => (
                     <option key={p.id} value={p.id}>{p.nombre}</option>
                   ))}
-                </select>
-                <button type="submit">Guardar</button>
-                <button type="button" onClick={cancelarEdicion}>Cancelar</button>
-                {errorEdit && <p style={{ color: 'crimson', width: '100%', margin: 0 }}>{errorEdit}</p>}
+                </Select>
+                <Button type="submit" variant="secondary">Guardar</Button>
+                <Button type="button" variant="ghost" onClick={cancelarEdicion}>Cancelar</Button>
+                {errorEdit && <p className="w-full rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
               </form>
             ) : (
-              <>
-                {c.nombre}
-                {c.categoriaPadreId ? ' (subcategoría)' : ''}{' '}
-                <button type="button" onClick={() => iniciarEdicion(c)}>Editar</button>
-              </>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-700">
+                  {c.nombre}{c.categoriaPadreId ? <Badge tono="gray">subcategoría</Badge> : ''}
+                </span>
+                <button type="button" onClick={() => iniciarEdicion(c)} className="text-sm text-primary-600 hover:underline">
+                  Editar
+                </button>
+              </div>
             )}
           </li>
         ))}
       </ul>
-      <form onSubmit={agregar} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <input placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
-        <select value={padreId} onChange={(e) => setPadreId(e.target.value)}>
+      <form onSubmit={agregar} className="mt-4 flex flex-wrap items-end gap-3">
+        <Input id="catNombreNueva" label="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} required className="w-48" />
+        <Select id="catPadreNueva" label="Categoría padre" value={padreId} onChange={(e) => setPadreId(e.target.value)} className="w-48">
           <option value="">Sin categoría padre</option>
           {padresPosibles.map((c) => (
             <option key={c.id} value={c.id}>{c.nombre}</option>
           ))}
-        </select>
-        <button type="submit">Agregar</button>
+        </Select>
+        <Button type="submit" variant="secondary">Agregar</Button>
       </form>
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
-    </div>
+      {error && <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+    </Card>
   );
 }
 
@@ -180,58 +184,60 @@ function SeccionSimple({ titulo, cargar, crear, actualizar, campos, renderItem }
   }
 
   return (
-    <div style={{ marginBottom: '2rem' }}>
-      <h3>{titulo}</h3>
-      <ul>
+    <Card title={titulo}>
+      <ul className="divide-y divide-gray-100">
         {items.map((item) => (
-          <li key={item.id} style={{ marginBottom: '0.5rem' }}>
+          <li key={item.id} className="py-2.5">
             {editandoId === item.id ? (
-              <form
-                onSubmit={guardarEdicion}
-                style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}
-              >
+              <form onSubmit={guardarEdicion} className="flex flex-wrap items-end gap-3">
                 {campos.map((campo) => (
-                  <input
+                  <Input
                     key={campo.nombre}
+                    id={`${titulo}-${item.id}-${campo.nombre}`}
+                    label={campo.label}
                     type={campo.tipo || 'text'}
                     step={campo.tipo === 'number' ? '0.01' : undefined}
-                    placeholder={campo.label}
                     value={editForm[campo.nombre] ?? ''}
                     onChange={(e) => setEditForm((f) => ({ ...f, [campo.nombre]: e.target.value }))}
                     required={campo.requerido}
+                    className="w-40"
                   />
                 ))}
-                <button type="submit">Guardar</button>
-                <button type="button" onClick={cancelarEdicion}>Cancelar</button>
-                {errorEdit && <p style={{ color: 'crimson', width: '100%', margin: 0 }}>{errorEdit}</p>}
+                <Button type="submit" variant="secondary">Guardar</Button>
+                <Button type="button" variant="ghost" onClick={cancelarEdicion}>Cancelar</Button>
+                {errorEdit && <p className="w-full rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
               </form>
             ) : (
-              <>
-                {renderItem(item)}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-700">{renderItem(item)}</span>
                 {actualizar && (
-                  <>{' '}<button type="button" onClick={() => iniciarEdicion(item)}>Editar</button></>
+                  <button type="button" onClick={() => iniciarEdicion(item)} className="text-sm text-primary-600 hover:underline">
+                    Editar
+                  </button>
                 )}
-              </>
+              </div>
             )}
           </li>
         ))}
       </ul>
-      <form onSubmit={agregar} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+      <form onSubmit={agregar} className="mt-4 flex flex-wrap items-end gap-3">
         {campos.map((campo) => (
-          <input
+          <Input
             key={campo.nombre}
+            id={`${titulo}-nuevo-${campo.nombre}`}
+            label={campo.label}
             type={campo.tipo || 'text'}
             step={campo.tipo === 'number' ? '0.01' : undefined}
-            placeholder={campo.label}
             value={form[campo.nombre] || ''}
             onChange={(e) => setForm((f) => ({ ...f, [campo.nombre]: e.target.value }))}
             required={campo.requerido}
+            className="w-40"
           />
         ))}
-        <button type="submit">Agregar</button>
+        <Button type="submit" variant="secondary">Agregar</Button>
       </form>
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
-    </div>
+      {error && <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+    </Card>
   );
 }
 
@@ -264,34 +270,44 @@ function SeccionListasPrecio() {
   }
 
   return (
-    <div style={{ marginBottom: '2rem' }}>
-      <h3>Listas de precio</h3>
-      <p style={{ color: '#666', fontSize: '0.9rem' }}>
-        Asigna precios por artículo a cada lista en <em>Artículos</em>, y una lista a cada cliente en{' '}
+    <Card title="Listas de precio">
+      <p className="mb-4 text-sm text-gray-500">
+        Asigná precios por artículo a cada lista en <em>Artículos</em>, y una lista a cada cliente en{' '}
         <em>Clientes</em> — al vender, se cobra el precio de la lista del cliente si existe uno definido
         ahí para ese artículo; si no, el precio base del catálogo.
       </p>
-      <ul>
+      <ul className="divide-y divide-gray-100">
         {listas.map((l) => (
-          <li key={l.id}>{l.nombre}{l.esBase ? ' (base)' : ''}</li>
+          <li key={l.id} className="py-2 text-sm text-gray-700">
+            {l.nombre}{l.esBase ? <Badge tono="primary">base</Badge> : ''}
+          </li>
         ))}
       </ul>
-      <form onSubmit={agregar} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <input placeholder="Nombre (ej. Mayoreo)" value={nombre} onChange={(e) => setNombre(e.target.value)} required />
-        <label>
-          <input type="checkbox" checked={esBase} onChange={(e) => setEsBase(e.target.checked)} /> Es base
+      <form onSubmit={agregar} className="mt-4 flex flex-wrap items-end gap-3">
+        <Input id="listaPrecioNombre" label="Nombre" placeholder="ej. Mayoreo" value={nombre} onChange={(e) => setNombre(e.target.value)} required className="w-48" />
+        <label className="flex items-center gap-2 pb-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={esBase}
+            onChange={(e) => setEsBase(e.target.checked)}
+            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          Es base
         </label>
-        <button type="submit">Agregar</button>
+        <Button type="submit" variant="secondary">Agregar</Button>
       </form>
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
-    </div>
+      {error && <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+    </Card>
   );
 }
 
 function ConfiguracionCatalogoPage() {
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 600 }}>
-      <h1>Configuración de catálogo</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Configuración de catálogo</h1>
+        <p className="text-sm text-gray-500">Categorías, marcas, unidades, impuestos y listas de precio.</p>
+      </div>
       <SeccionCategorias />
       <SeccionSimple
         titulo="Marcas"
