@@ -2,27 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Trash2, Search, Plus, Minus, Package, UserPlus, CreditCard,
-  ArrowLeftRight, Layers,
+  ArrowLeftRight, Layers, Banknote,
 } from 'lucide-react';
-import { listarVentas, crearVenta, cancelarVenta, obtenerVenta } from '../api/ventas.api';
-import { crearDevolucion } from '../api/devoluciones.api';
+import { crearVenta } from '../api/ventas.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes, crearCliente } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
 import { listarExistencias } from '../../inventario/api/inventario.api';
-import { listarUsuarios } from '../../core/api/core.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
-import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
-import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
-
-const MOTIVOS_DEVOLUCION = ['Producto defectuoso', 'Error de venta', 'Cliente cambió de opinión', 'Garantía', 'Otro'];
-
-const ESTADO_TONO = { CONFIRMADA: 'success', CANCELADA: 'gray' };
 
 function VentasPage() {
   const [cajas, setCajas] = useState([]);
@@ -37,8 +29,7 @@ function VentasPage() {
   const [carrito, setCarrito] = useState([]);
   const [error, setError] = useState('');
   const [confirmada, setConfirmada] = useState(null);
-  const [ventas, setVentas] = useState([]);
-  const [usuarios, setUsuarios] = useState([]);
+  const [ultimoCambio, setUltimoCambio] = useState(null);
   const [procesando, setProcesando] = useState(false);
   const busquedaRef = useRef(null);
 
@@ -54,15 +45,9 @@ function VentasPage() {
   ]);
   const [mixtoError, setMixtoError] = useState('');
 
-  const [devolviendoId, setDevolviendoId] = useState(null);
-  const [ventaDevolucion, setVentaDevolucion] = useState(null);
-  const [devArticuloId, setDevArticuloId] = useState('');
-  const [devCantidad, setDevCantidad] = useState('1');
-  const [devVuelveAStock, setDevVuelveAStock] = useState(true);
-  const [devCarrito, setDevCarrito] = useState([]);
-  const [devMotivo, setDevMotivo] = useState(MOTIVOS_DEVOLUCION[0]);
-  const [devAutorizadoPorId, setDevAutorizadoPorId] = useState('');
-  const [devError, setDevError] = useState('');
+  const [efectivoAbierto, setEfectivoAbierto] = useState(false);
+  const [efectivoRecibido, setEfectivoRecibido] = useState('');
+  const [efectivoError, setEfectivoError] = useState('');
 
   useEffect(() => {
     listarCajas()
@@ -79,8 +64,6 @@ function VentasPage() {
       })
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
-    listarUsuarios().then(setUsuarios).catch(() => {});
-    cargarVentas();
   }, []);
 
   useEffect(() => {
@@ -99,10 +82,6 @@ function VentasPage() {
       })
       .catch(() => {});
   }, [cajaId, cajas]);
-
-  function cargarVentas() {
-    listarVentas().then(setVentas).catch(() => {});
-  }
 
   async function verificarSesion(id) {
     try {
@@ -213,20 +192,21 @@ function VentasPage() {
   const total = Math.round((subtotal + impuestos) * 100) / 100;
 
   // Cobrar en un clic: cada botón de método de pago llama esto directo con el monto total,
-  // sin paso intermedio de "seleccionar método" + "confirmar". Mixto es la excepción, ver
-  // confirmarPagoMixto más abajo.
-  async function cobrar(metodo) {
+  // sin paso intermedio de "seleccionar método" + "confirmar". Efectivo pasa antes por el
+  // modal de "Recibido" (para calcular cambio) y Mixto por confirmarPagoMixto más abajo.
+  async function cobrar(metodo, cambio = null) {
     setError('');
     setConfirmada(null);
+    setUltimoCambio(null);
     if (!sesion) {
       setError('No hay una sesión de caja abierta para esta caja.');
-      return;
+      return false;
     }
     if (carrito.length === 0) {
       setError('Agrega al menos un artículo.');
-      return;
+      return false;
     }
-    if (procesando) return;
+    if (procesando) return false;
     setProcesando(true);
     const caja = cajas.find((c) => c.id === cajaId);
     try {
@@ -238,13 +218,42 @@ function VentasPage() {
         pagos: [{ metodo, monto: total }],
       });
       setConfirmada(venta);
+      setUltimoCambio(cambio);
       setCarrito([]);
-      cargarVentas();
+      return true;
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo registrar la venta.');
+      return false;
     } finally {
       setProcesando(false);
     }
+  }
+
+  // Efectivo pasa por un modal aparte para poder ingresar cuánto entregó el cliente y
+  // calcular el cambio — el monto que se registra como pago sigue siendo el total exacto,
+  // el cambio es solo informativo (el backend no lleva ese dato).
+  function abrirEfectivo() {
+    if (carrito.length === 0) {
+      setError('Agrega al menos un artículo.');
+      return;
+    }
+    setEfectivoError('');
+    setEfectivoRecibido(total.toFixed(2));
+    setEfectivoAbierto(true);
+  }
+
+  const efectivoCambio = Math.round(((Number(efectivoRecibido) || 0) - total) * 100) / 100;
+
+  async function confirmarEfectivo(e) {
+    e.preventDefault();
+    setEfectivoError('');
+    const recibido = Number(efectivoRecibido);
+    if (!recibido || recibido < total) {
+      setEfectivoError('El monto recibido debe ser al menos el total.');
+      return;
+    }
+    const ok = await cobrar('EFECTIVO', efectivoCambio);
+    if (ok) setEfectivoAbierto(false);
   }
 
   function abrirMixto() {
@@ -298,8 +307,8 @@ function VentasPage() {
         pagos: pagosValidos.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) })),
       });
       setConfirmada(venta);
+      setUltimoCambio(null);
       setCarrito([]);
-      cargarVentas();
       setMixtoAbierto(false);
     } catch (err) {
       setMixtoError(err.response?.data?.error || 'No se pudo registrar la venta.');
@@ -335,13 +344,13 @@ function VentasPage() {
     }
   }
 
-  const hayModalAbierto = devolviendoId !== null || nuevoClienteAbierto || mixtoAbierto;
+  const hayModalAbierto = nuevoClienteAbierto || mixtoAbierto || efectivoAbierto;
 
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === 'F1') {
         e.preventDefault();
-        if (!hayModalAbierto) cobrar('EFECTIVO');
+        if (!hayModalAbierto) abrirEfectivo();
         return;
       }
       if (e.key === 'F2') {
@@ -367,126 +376,34 @@ function VentasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hayModalAbierto, busqueda, carrito, sesion, cajaId, clienteId, total, procesando]);
 
-  async function handleCancelar(ventaId) {
-    setError('');
-    try {
-      await cancelarVenta(ventaId);
-      cargarVentas();
-    } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo cancelar la venta.');
-    }
-  }
-
-  async function abrirDevolucion(venta) {
-    setDevError('');
-    setDevCarrito([]);
-    setDevMotivo(MOTIVOS_DEVOLUCION[0]);
-    setDevAutorizadoPorId('');
-    setDevolviendoId(venta.id);
-    try {
-      const detalle = await obtenerVenta(venta.id);
-      setVentaDevolucion(detalle);
-    } catch (err) {
-      setDevError('No se pudo cargar el detalle de la venta.');
-    }
-  }
-
-  function cerrarDevolucion() {
-    setDevolviendoId(null);
-    setVentaDevolucion(null);
-    setDevCarrito([]);
-  }
-
-  function agregarLineaDevolucion(e) {
-    e.preventDefault();
-    const linea = ventaDevolucion?.detalles.find((d) => d.articuloId === devArticuloId);
-    if (!linea) return;
-    const yaEnCarrito = devCarrito
-      .filter((l) => l.articuloId === devArticuloId)
-      .reduce((acc, l) => acc + l.cantidad, 0);
-    const disponible = Number(linea.cantidad) - Number(linea.cantidadDevuelta) - yaEnCarrito;
-    const cant = Number(devCantidad);
-    if (cant <= 0 || cant > disponible) {
-      setDevError(`Cantidad inválida (disponible para devolver: ${disponible}).`);
-      return;
-    }
-    setDevError('');
-    setDevCarrito((c) => [
-      ...c,
-      {
-        articuloId: devArticuloId,
-        nombre: linea.articulo?.nombre || devArticuloId,
-        cantidad: cant,
-        precio: Number(linea.precio),
-        impuestoTasa: Number(linea.impuestoTasa),
-        vuelveAStock: devVuelveAStock,
-      },
-    ]);
-    setDevArticuloId('');
-    setDevCantidad('1');
-  }
-
-  function quitarLineaDevolucion(index) {
-    setDevCarrito((c) => c.filter((_, i) => i !== index));
-  }
-
-  const devReembolso = Math.round(
-    devCarrito.reduce((acc, l) => acc + l.cantidad * l.precio * (1 + l.impuestoTasa), 0) * 100,
-  ) / 100;
-
-  async function confirmarDevolucion(e) {
-    e.preventDefault();
-    setDevError('');
-    if (devCarrito.length === 0) {
-      setDevError('Agrega al menos un artículo a devolver.');
-      return;
-    }
-    if (!devAutorizadoPorId) {
-      setDevError('Selecciona quién autoriza la devolución.');
-      return;
-    }
-    if (devReembolso > 0 && !sesion) {
-      setDevError('Esta devolución implica un reembolso; abre una sesión de caja para esta caja primero.');
-      return;
-    }
-    try {
-      await crearDevolucion({
-        ventaId: ventaDevolucion.id,
-        motivo: devMotivo,
-        autorizadoPorId: devAutorizadoPorId,
-        sesionCajaId: devReembolso > 0 ? sesion.id : undefined,
-        detalles: devCarrito.map((l) => ({
-          articuloId: l.articuloId,
-          cantidad: l.cantidad,
-          vuelveAStock: l.vuelveAStock,
-        })),
-      });
-      cerrarDevolucion();
-      cargarVentas();
-    } catch (err) {
-      setDevError(err.response?.data?.error || 'No se pudo procesar la devolución.');
-    }
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ventas</h1>
-          <p className="text-sm text-gray-500">Registrá ventas y gestioná cancelaciones y devoluciones.</p>
+          <p className="text-sm text-gray-500">Capturá ventas rápido — escaneá, cobrá y listo.</p>
         </div>
-        <Link
-          to="/ventas/cotizaciones"
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Ver cotizaciones
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            to="/ventas/recientes"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Ver ventas recientes
+          </Link>
+          <Link
+            to="/ventas/cotizaciones"
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Ver cotizaciones
+          </Link>
+        </div>
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
       {confirmada && (
         <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
           Venta {confirmada.folio} registrada. Total: {formatoMoneda(confirmada.total)}
+          {ultimoCambio > 0 && <> · Cambio: <span className="font-semibold">{formatoMoneda(ultimoCambio)}</span></>}
         </p>
       )}
 
@@ -656,11 +573,11 @@ function VentasPage() {
 
                   <Button
                     type="button"
-                    onClick={() => cobrar('EFECTIVO')}
+                    onClick={abrirEfectivo}
                     disabled={carrito.length === 0 || procesando}
                     className="w-full py-3 text-base"
                   >
-                    Cobrar {formatoMoneda(total)} (F1)
+                    <Banknote size={18} /> Cobrar {formatoMoneda(total)} (F1)
                   </Button>
 
                   <div className="grid grid-cols-3 gap-2">
@@ -705,126 +622,32 @@ function VentasPage() {
         </Card>
       )}
 
-      <Card title="Ventas recientes">
-        <Table columnas={['Folio', 'Cliente', 'Total', 'Estado', '']}>
-          {ventas.length === 0 && <TablaVacia colSpan={5} />}
-          {ventas.map((v) => (
-            <Fila key={v.id}>
-              <Celda className="font-medium text-gray-800">{v.folio}</Celda>
-              <Celda>{v.cliente?.nombre}</Celda>
-              <Celda>{formatoMoneda(v.total)}</Celda>
-              <Celda><Badge tono={ESTADO_TONO[v.estado] || 'gray'}>{v.estado}</Badge></Celda>
-              <Celda className="text-right">
-                {v.estado === 'CONFIRMADA' && (
-                  <div className="flex justify-end gap-3">
-                    <button type="button" onClick={() => handleCancelar(v.id)} className="text-sm text-danger-600 hover:underline">
-                      Cancelar
-                    </button>
-                    <button type="button" onClick={() => abrirDevolucion(v)} className="text-sm text-primary-600 hover:underline">
-                      Devolver
-                    </button>
-                  </div>
-                )}
-              </Celda>
-            </Fila>
-          ))}
-        </Table>
-      </Card>
-
-      <Modal abierto={devolviendoId !== null} onCerrar={cerrarDevolucion} titulo="Registrar devolución" ancho="max-w-2xl">
-        {devError && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{devError}</p>}
-        {!ventaDevolucion && <p className="text-sm text-gray-500">Cargando detalle de la venta…</p>}
-        {ventaDevolucion && (
-          <>
-            <form onSubmit={agregarLineaDevolucion} className="flex flex-wrap items-end gap-3">
-              <Select
-                id="devArticulo"
-                label="Artículo vendido"
-                value={devArticuloId}
-                onChange={(e) => setDevArticuloId(e.target.value)}
-                required
-                className="min-w-[220px]"
-              >
-                <option value="">Selecciona un artículo...</option>
-                {ventaDevolucion.detalles.map((d) => (
-                  <option key={d.articuloId} value={d.articuloId}>
-                    {d.articulo?.nombre || d.articuloId} (disponible: {Number(d.cantidad) - Number(d.cantidadDevuelta)})
-                  </option>
-                ))}
-              </Select>
-              <Input
-                id="devCantidad"
-                label="Cantidad"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={devCantidad}
-                onChange={(e) => setDevCantidad(e.target.value)}
-                className="w-28"
-                required
-              />
-              <label className="flex items-center gap-2 pb-2 text-sm text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={devVuelveAStock}
-                  onChange={(e) => setDevVuelveAStock(e.target.checked)}
-                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                />
-                Vuelve a stock
-              </label>
-              <Button type="submit" variant="secondary">Agregar</Button>
-            </form>
-
-            {devCarrito.length > 0 && (
-              <div className="mt-4">
-                <Table columnas={['Artículo', 'Cantidad', 'Vuelve a stock', '']}>
-                  {devCarrito.map((l, i) => (
-                    <Fila key={i}>
-                      <Celda>{l.nombre}</Celda>
-                      <Celda>{l.cantidad}</Celda>
-                      <Celda>{l.vuelveAStock ? 'Sí' : 'No'}</Celda>
-                      <Celda className="text-right">
-                        <button type="button" onClick={() => quitarLineaDevolucion(i)} className="text-gray-400 hover:text-danger-600">
-                          <Trash2 size={16} />
-                        </button>
-                      </Celda>
-                    </Fila>
-                  ))}
-                </Table>
-              </div>
-            )}
-
-            <form onSubmit={confirmarDevolucion} className="mt-4 flex flex-wrap items-end gap-3">
-              <Select
-                id="devMotivo"
-                label="Motivo"
-                value={devMotivo}
-                onChange={(e) => setDevMotivo(e.target.value)}
-              >
-                {MOTIVOS_DEVOLUCION.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </Select>
-              <Select
-                id="devAutorizadoPor"
-                label="Autoriza"
-                value={devAutorizadoPorId}
-                onChange={(e) => setDevAutorizadoPorId(e.target.value)}
-                required
-              >
-                <option value="">Selecciona quién autoriza...</option>
-                {usuarios.map((u) => (
-                  <option key={u.id} value={u.id}>{u.nombre}</option>
-                ))}
-              </Select>
-              <span className="pb-2 text-sm font-medium text-gray-700">Reembolso: {formatoMoneda(devReembolso)}</span>
-              <div className="ml-auto flex gap-2">
-                <Button type="button" variant="secondary" onClick={cerrarDevolucion}>Cancelar</Button>
-                <Button type="submit">Confirmar devolución</Button>
-              </div>
-            </form>
-          </>
-        )}
+      <Modal abierto={efectivoAbierto} onCerrar={() => setEfectivoAbierto(false)} titulo="Cobro en efectivo">
+        <form onSubmit={confirmarEfectivo} className="space-y-4">
+          {efectivoError && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{efectivoError}</p>}
+          <p className="text-sm text-gray-500">Total a cobrar: <span className="font-semibold text-gray-900">{formatoMoneda(total)}</span></p>
+          <Input
+            id="efectivoRecibido"
+            label="Recibido"
+            type="number"
+            step="0.01"
+            min="0"
+            value={efectivoRecibido}
+            onChange={(e) => setEfectivoRecibido(e.target.value)}
+            autoFocus
+            onFocus={(e) => e.target.select()}
+          />
+          <div className="flex justify-between text-base">
+            <span className="font-medium text-gray-700">Cambio</span>
+            <span className={`font-semibold ${efectivoCambio < 0 ? 'text-danger-600' : 'text-success-700'}`}>
+              {formatoMoneda(Math.max(efectivoCambio, 0))}
+            </span>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setEfectivoAbierto(false)}>Cancelar</Button>
+            <Button type="submit" disabled={procesando}>Confirmar cobro</Button>
+          </div>
+        </form>
       </Modal>
 
       <Modal abierto={nuevoClienteAbierto} onCerrar={() => setNuevoClienteAbierto(false)} titulo="Nuevo cliente">

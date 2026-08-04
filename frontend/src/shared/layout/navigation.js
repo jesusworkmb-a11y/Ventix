@@ -24,6 +24,7 @@ export const NAVEGACION = [
     icon: ShoppingCart,
     hijos: [
       { label: 'Ventas', to: '/ventas' },
+      { label: 'Ventas recientes', to: '/ventas/recientes' },
       { label: 'Cotizaciones', to: '/ventas/cotizaciones' },
     ],
   },
