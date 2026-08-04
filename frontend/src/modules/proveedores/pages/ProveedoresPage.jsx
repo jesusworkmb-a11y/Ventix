@@ -1,6 +1,12 @@
-import { Fragment, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Search } from 'lucide-react';
 import { listarProveedores, crearProveedor, actualizarProveedor } from '../api/proveedores.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Badge from '../../../shared/ui/Badge';
+import Modal from '../../../shared/ui/Modal';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 
 const FORM_VACIO = { nombre: '', telefono: '', correo: '', rfc: '', direccion: '' };
 
@@ -91,130 +97,86 @@ function ProveedoresPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 600 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Proveedores</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Proveedores</h1>
+        <p className="text-sm text-gray-500">Directorio de proveedores para tus compras.</p>
+      </div>
 
-      <form onSubmit={buscarSubmit} style={{ marginBottom: '1rem' }}>
-        <input
-          placeholder="Buscar por nombre, correo, teléfono o RFC"
-          value={buscar}
-          onChange={(e) => setBuscar(e.target.value)}
-        />
-        <button type="submit">Buscar</button>
-      </form>
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Nombre</th>
-            <th style={{ textAlign: 'left' }}>Teléfono</th>
-            <th style={{ textAlign: 'left' }}>Correo</th>
-            <th style={{ textAlign: 'left' }}>Activo</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      <Card>
+        <form onSubmit={buscarSubmit} className="flex items-end gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="pointer-events-none absolute left-3 top-[38px] text-gray-400" />
+            <Input
+              id="buscarProveedor"
+              label="Buscar"
+              placeholder="Nombre, correo, teléfono o RFC"
+              value={buscar}
+              onChange={(e) => setBuscar(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Button type="submit" variant="secondary">Buscar</Button>
+        </form>
+      </Card>
+
+      <Card title="Proveedores">
+        <Table columnas={['Nombre', 'Teléfono', 'Correo', 'Activo', '']}>
+          {proveedores.length === 0 && <TablaVacia colSpan={5} />}
           {proveedores.map((p) => (
-            <Fragment key={p.id}>
-              <tr>
-                <td>{p.nombre}</td>
-                <td>{p.telefono || '—'}</td>
-                <td>{p.correo || '—'}</td>
-                <td>{p.activo ? 'Sí' : 'No'}</td>
-                <td>
-                  {editandoId === p.id
-                    ? <button type="button" onClick={cancelarEdicion}>Cerrar</button>
-                    : <button type="button" onClick={() => iniciarEdicion(p)}>Editar</button>}
-                </td>
-              </tr>
-              {editandoId === p.id && (
-                <tr>
-                  <td colSpan={5} style={{ background: '#f7f7f7', padding: '1rem' }}>
-                    <form
-                      onSubmit={guardarEdicion}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}
-                    >
-                      <label>
-                        Nombre
-                        <input
-                          value={editForm.nombre}
-                          onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))}
-                          required
-                        />
-                      </label>
-                      <label>
-                        Teléfono
-                        <input
-                          value={editForm.telefono}
-                          onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        Correo
-                        <input
-                          type="email"
-                          value={editForm.correo}
-                          onChange={(e) => setEditForm((f) => ({ ...f, correo: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        RFC
-                        <input
-                          value={editForm.rfc}
-                          onChange={(e) => setEditForm((f) => ({ ...f, rfc: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        Dirección
-                        <input
-                          value={editForm.direccion}
-                          onChange={(e) => setEditForm((f) => ({ ...f, direccion: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={editForm.activo}
-                          onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
-                        /> Activo (desmarca para dejar de poder registrarle compras)
-                      </label>
-                      {errorEdit && <p style={{ color: 'crimson' }}>{errorEdit}</p>}
-                      <button type="submit">Guardar cambios</button>
-                    </form>
-                  </td>
-                </tr>
-              )}
-            </Fragment>
+            <Fila key={p.id}>
+              <Celda className="font-medium text-gray-800">{p.nombre}</Celda>
+              <Celda>{p.telefono || '—'}</Celda>
+              <Celda>{p.correo || '—'}</Celda>
+              <Celda><Badge tono={p.activo ? 'success' : 'gray'}>{p.activo ? 'Sí' : 'No'}</Badge></Celda>
+              <Celda className="text-right">
+                <button type="button" onClick={() => iniciarEdicion(p)} className="text-sm text-primary-600 hover:underline">
+                  Editar
+                </button>
+              </Celda>
+            </Fila>
           ))}
-        </tbody>
-      </table>
+        </Table>
+      </Card>
 
-      <h2>Nuevo proveedor</h2>
-      <form onSubmit={agregar} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}>
-        <label>
-          Nombre
-          <input value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
-        </label>
-        <label>
-          Teléfono
-          <input value={form.telefono} onChange={(e) => actualizarCampo('telefono', e.target.value)} />
-        </label>
-        <label>
-          Correo
-          <input type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} />
-        </label>
-        <label>
-          RFC
-          <input value={form.rfc} onChange={(e) => actualizarCampo('rfc', e.target.value)} />
-        </label>
-        <label>
-          Dirección
-          <input value={form.direccion} onChange={(e) => actualizarCampo('direccion', e.target.value)} />
-        </label>
-        {error && <p style={{ color: 'crimson' }}>{error}</p>}
-        <button type="submit">Crear proveedor</button>
-      </form>
+      <Card title="Nuevo proveedor">
+        <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input id="nombreProveedor" label="Nombre" value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
+          <Input id="telefonoProveedor" label="Teléfono" value={form.telefono} onChange={(e) => actualizarCampo('telefono', e.target.value)} />
+          <Input id="correoProveedor" label="Correo" type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} />
+          <Input id="rfcProveedor" label="RFC" value={form.rfc} onChange={(e) => actualizarCampo('rfc', e.target.value)} />
+          <Input id="direccionProveedor" label="Dirección" value={form.direccion} onChange={(e) => actualizarCampo('direccion', e.target.value)} />
+          <div className="sm:col-span-2">
+            <Button type="submit">Crear proveedor</Button>
+          </div>
+        </form>
+      </Card>
+
+      <Modal abierto={editandoId !== null} onCerrar={cancelarEdicion} titulo="Editar proveedor">
+        <form onSubmit={guardarEdicion} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input id="nombreEditProveedor" label="Nombre" value={editForm.nombre} onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))} required />
+          <Input id="telefonoEditProveedor" label="Teléfono" value={editForm.telefono} onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))} />
+          <Input id="correoEditProveedor" label="Correo" type="email" value={editForm.correo} onChange={(e) => setEditForm((f) => ({ ...f, correo: e.target.value }))} />
+          <Input id="rfcEditProveedor" label="RFC" value={editForm.rfc} onChange={(e) => setEditForm((f) => ({ ...f, rfc: e.target.value }))} />
+          <Input id="direccionEditProveedor" label="Dirección" value={editForm.direccion} onChange={(e) => setEditForm((f) => ({ ...f, direccion: e.target.value }))} />
+          <label className="sm:col-span-2 flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={editForm.activo}
+              onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            Activo (desmarcá para dejar de poder registrarle compras)
+          </label>
+          {errorEdit && <p className="sm:col-span-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
+          <div className="sm:col-span-2 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={cancelarEdicion}>Cancelar</Button>
+            <Button type="submit">Guardar cambios</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

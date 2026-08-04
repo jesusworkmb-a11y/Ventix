@@ -1,7 +1,14 @@
-import { Fragment, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Search } from 'lucide-react';
 import { listarClientes, crearCliente, actualizarCliente } from '../api/clientes.api';
 import { listarListasPrecio } from '../../catalogo/api/catalogo.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Badge from '../../../shared/ui/Badge';
+import Modal from '../../../shared/ui/Modal';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 
 const FORM_VACIO = { nombre: '', telefono: '', correo: '', rfc: '', direccion: '', listaPrecioId: '' };
 
@@ -106,171 +113,120 @@ function ClientesPage() {
     cargar(buscar);
   }
 
+  const clienteEnEdicion = clientes.find((c) => c.id === editandoId);
+
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 600 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Clientes</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
+        <p className="text-sm text-gray-500">Directorio de clientes y sus listas de precio asignadas.</p>
+      </div>
 
-      <form onSubmit={buscarSubmit} style={{ marginBottom: '1rem' }}>
-        <input
-          placeholder="Buscar por nombre, correo, teléfono o RFC"
-          value={buscar}
-          onChange={(e) => setBuscar(e.target.value)}
-        />
-        <button type="submit">Buscar</button>
-      </form>
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Nombre</th>
-            <th style={{ textAlign: 'left' }}>Teléfono</th>
-            <th style={{ textAlign: 'left' }}>Correo</th>
-            <th style={{ textAlign: 'left' }}>Activo</th>
-            <th style={{ textAlign: 'left' }}>Lista de precio</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      <Card>
+        <form onSubmit={buscarSubmit} className="flex items-end gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="pointer-events-none absolute left-3 top-[38px] text-gray-400" />
+            <Input
+              id="buscarCliente"
+              label="Buscar"
+              placeholder="Nombre, correo, teléfono o RFC"
+              value={buscar}
+              onChange={(e) => setBuscar(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Button type="submit" variant="secondary">Buscar</Button>
+        </form>
+      </Card>
+
+      <Card title="Clientes">
+        <Table columnas={['Nombre', 'Teléfono', 'Correo', 'Activo', 'Lista de precio', '']}>
+          {clientes.length === 0 && <TablaVacia colSpan={6} />}
           {clientes.map((c) => (
-            <Fragment key={c.id}>
-              <tr>
-                <td>{c.nombre}{c.esGeneral ? ' (general)' : ''}</td>
-                <td>{c.telefono || '—'}</td>
-                <td>{c.correo || '—'}</td>
-                <td>{c.activo ? 'Sí' : 'No'}</td>
-                <td>
-                  {listasPrecio.length > 0 ? (
-                    <select
-                      value={c.listaPrecioId || ''}
-                      onChange={(e) => cambiarListaPrecio(c, e.target.value)}
-                    >
-                      <option value="">Precio base</option>
-                      {listasPrecio.map((l) => (
-                        <option key={l.id} value={l.id}>{l.nombre}</option>
-                      ))}
-                    </select>
-                  ) : '—'}
-                </td>
-                <td>
-                  {editandoId === c.id
-                    ? <button type="button" onClick={cancelarEdicion}>Cerrar</button>
-                    : <button type="button" onClick={() => iniciarEdicion(c)}>Editar</button>}
-                </td>
-              </tr>
-              {editandoId === c.id && (
-                <tr>
-                  <td colSpan={6} style={{ background: '#f7f7f7', padding: '1rem' }}>
-                    <form
-                      onSubmit={guardarEdicion}
-                      style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}
-                    >
-                      <label>
-                        Nombre
-                        <input
-                          value={editForm.nombre}
-                          onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))}
-                          required
-                        />
-                      </label>
-                      <label>
-                        Teléfono
-                        <input
-                          value={editForm.telefono}
-                          onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        Correo
-                        <input
-                          type="email"
-                          value={editForm.correo}
-                          onChange={(e) => setEditForm((f) => ({ ...f, correo: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        RFC
-                        <input
-                          value={editForm.rfc}
-                          onChange={(e) => setEditForm((f) => ({ ...f, rfc: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        Dirección
-                        <input
-                          value={editForm.direccion}
-                          onChange={(e) => setEditForm((f) => ({ ...f, direccion: e.target.value }))}
-                        />
-                      </label>
-                      <label>
-                        Lista de precio
-                        <select
-                          value={editForm.listaPrecioId}
-                          onChange={(e) => setEditForm((f) => ({ ...f, listaPrecioId: e.target.value }))}
-                        >
-                          <option value="">Precio base</option>
-                          {listasPrecio.map((l) => (
-                            <option key={l.id} value={l.id}>{l.nombre}</option>
-                          ))}
-                        </select>
-                      </label>
-                      {!c.esGeneral && (
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={editForm.activo}
-                            onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
-                          /> Activo (desmarca para dejar de poderle vender)
-                        </label>
-                      )}
-                      {errorEdit && <p style={{ color: 'crimson' }}>{errorEdit}</p>}
-                      <button type="submit">Guardar cambios</button>
-                    </form>
-                  </td>
-                </tr>
-              )}
-            </Fragment>
+            <Fila key={c.id}>
+              <Celda className="font-medium text-gray-800">
+                {c.nombre}{c.esGeneral && <Badge tono="gray">general</Badge>}
+              </Celda>
+              <Celda>{c.telefono || '—'}</Celda>
+              <Celda>{c.correo || '—'}</Celda>
+              <Celda><Badge tono={c.activo ? 'success' : 'gray'}>{c.activo ? 'Sí' : 'No'}</Badge></Celda>
+              <Celda>
+                {listasPrecio.length > 0 ? (
+                  <Select
+                    id={`listaPrecio-${c.id}`}
+                    value={c.listaPrecioId || ''}
+                    onChange={(e) => cambiarListaPrecio(c, e.target.value)}
+                    className="py-1.5"
+                  >
+                    <option value="">Precio base</option>
+                    {listasPrecio.map((l) => (
+                      <option key={l.id} value={l.id}>{l.nombre}</option>
+                    ))}
+                  </Select>
+                ) : '—'}
+              </Celda>
+              <Celda className="text-right">
+                <button type="button" onClick={() => iniciarEdicion(c)} className="text-sm text-primary-600 hover:underline">
+                  Editar
+                </button>
+              </Celda>
+            </Fila>
           ))}
-        </tbody>
-      </table>
+        </Table>
+      </Card>
 
-      <h2>Nuevo cliente</h2>
-      <form onSubmit={agregar} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}>
-        <label>
-          Nombre
-          <input value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
-        </label>
-        <label>
-          Teléfono
-          <input value={form.telefono} onChange={(e) => actualizarCampo('telefono', e.target.value)} />
-        </label>
-        <label>
-          Correo
-          <input type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} />
-        </label>
-        <label>
-          RFC
-          <input value={form.rfc} onChange={(e) => actualizarCampo('rfc', e.target.value)} />
-        </label>
-        <label>
-          Dirección
-          <input value={form.direccion} onChange={(e) => actualizarCampo('direccion', e.target.value)} />
-        </label>
-        <label>
-          Lista de precio
-          <select
-            value={form.listaPrecioId}
-            onChange={(e) => actualizarCampo('listaPrecioId', e.target.value)}
-          >
+      <Card title="Nuevo cliente">
+        <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input id="nombreCliente" label="Nombre" value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
+          <Input id="telefonoCliente" label="Teléfono" value={form.telefono} onChange={(e) => actualizarCampo('telefono', e.target.value)} />
+          <Input id="correoCliente" label="Correo" type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} />
+          <Input id="rfcCliente" label="RFC" value={form.rfc} onChange={(e) => actualizarCampo('rfc', e.target.value)} />
+          <Input id="direccionCliente" label="Dirección" value={form.direccion} onChange={(e) => actualizarCampo('direccion', e.target.value)} />
+          <Select id="listaPrecioCliente" label="Lista de precio" value={form.listaPrecioId} onChange={(e) => actualizarCampo('listaPrecioId', e.target.value)}>
             <option value="">Precio base</option>
             {listasPrecio.map((l) => (
               <option key={l.id} value={l.id}>{l.nombre}</option>
             ))}
-          </select>
-        </label>
-        {error && <p style={{ color: 'crimson' }}>{error}</p>}
-        <button type="submit">Crear cliente</button>
-      </form>
+          </Select>
+          <div className="sm:col-span-2">
+            <Button type="submit">Crear cliente</Button>
+          </div>
+        </form>
+      </Card>
+
+      <Modal abierto={editandoId !== null} onCerrar={cancelarEdicion} titulo="Editar cliente">
+        <form onSubmit={guardarEdicion} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input id="nombreEditCliente" label="Nombre" value={editForm.nombre} onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))} required />
+          <Input id="telefonoEditCliente" label="Teléfono" value={editForm.telefono} onChange={(e) => setEditForm((f) => ({ ...f, telefono: e.target.value }))} />
+          <Input id="correoEditCliente" label="Correo" type="email" value={editForm.correo} onChange={(e) => setEditForm((f) => ({ ...f, correo: e.target.value }))} />
+          <Input id="rfcEditCliente" label="RFC" value={editForm.rfc} onChange={(e) => setEditForm((f) => ({ ...f, rfc: e.target.value }))} />
+          <Input id="direccionEditCliente" label="Dirección" value={editForm.direccion} onChange={(e) => setEditForm((f) => ({ ...f, direccion: e.target.value }))} />
+          <Select id="listaPrecioEditCliente" label="Lista de precio" value={editForm.listaPrecioId} onChange={(e) => setEditForm((f) => ({ ...f, listaPrecioId: e.target.value }))}>
+            <option value="">Precio base</option>
+            {listasPrecio.map((l) => (
+              <option key={l.id} value={l.id}>{l.nombre}</option>
+            ))}
+          </Select>
+          {clienteEnEdicion && !clienteEnEdicion.esGeneral && (
+            <label className="sm:col-span-2 flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={editForm.activo}
+                onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              Activo (desmarcá para dejar de poderle vender)
+            </label>
+          )}
+          {errorEdit && <p className="sm:col-span-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
+          <div className="sm:col-span-2 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={cancelarEdicion}>Cancelar</Button>
+            <Button type="submit">Guardar cambios</Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
