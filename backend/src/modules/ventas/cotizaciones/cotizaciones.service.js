@@ -4,12 +4,30 @@ const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.se
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 // Reusa ventas.service.js#crear en vez de duplicar la transacción de venta — es un sub-recurso
 // del mismo módulo (MOD-008), no un import entre módulos distintos (§3.1 solo prohíbe eso).
 const ventasService = require('../ventas/ventas.service');
 
-async function listar({ empresaId }) {
-  return prisma.cotizacion.findMany({ where: { empresaId }, orderBy: { creadoEn: 'desc' }, take: 200 });
+const COLUMNAS_ORDENABLES = { folio: 'folio', total: 'total', creadoEn: 'creadoEn' };
+
+// Único consumidor de esta lista (CotizacionesPage), a diferencia de Artículos/Clientes/
+// Proveedores/Ajustes/Existencias/Usuarios — no necesita modo dual, siempre pagina (mismo
+// criterio que Ventas/Compras/Auditoría).
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
+  // Cotizacion no declara relación de Prisma hacia Cliente (ver obtener() más abajo), así que
+  // solo se puede buscar por folio acá sin una consulta manual extra.
+  const where = { empresaId };
+  if (filtros?.buscar) where.folio = { contains: filtros.buscar, mode: 'insensitive' };
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.cotizacion.findMany({ where, orderBy, skip: paginado.skip, take: paginado.take }),
+    prisma.cotizacion.count({ where }),
+  ]);
+  return respuestaPaginada(datos, total, paginado);
 }
 
 // Cotizacion no declara relaciones de Prisma hacia Cliente/Sucursal (solo guarda los IDs

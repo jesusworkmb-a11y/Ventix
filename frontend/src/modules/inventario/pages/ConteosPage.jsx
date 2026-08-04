@@ -14,11 +14,19 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { Trash2 } from 'lucide-react';
 
 const SIGUIENTE_ESTADO = { CAPTURA: 'REVISION', REVISION: 'AUTORIZADO' };
 const ESTADO_TONO = { CAPTURA: 'gray', REVISION: 'warning', AUTORIZADO: 'success' };
+
+const COLUMNAS_CONTEOS = [
+  { label: 'Sucursal', clave: null },
+  { label: 'Estado', clave: 'estado', ordenable: true },
+  { label: 'Fecha', clave: 'creadoEn', ordenable: true },
+  { label: '', clave: null },
+];
 
 function ConteosPage() {
   const [sucursales, setSucursales] = useState([]);
@@ -26,6 +34,9 @@ function ConteosPage() {
   const [articulos, setArticulos] = useState([]);
   const [error, setError] = useState('');
   const [conteos, setConteos] = useState([]);
+  const [filtroSucursalId, setFiltroSucursalId] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
 
   const [abiertoId, setAbiertoId] = useState(null);
   const [detalle, setDetalle] = useState(null);
@@ -42,12 +53,34 @@ function ConteosPage() {
       })
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
-    cargarConteos();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function cargarConteos() {
-    listarConteos().then(setConteos).catch(() => {});
+  function cargarConteos(pagina = 1) {
+    listarConteos({
+      sucursalId: filtroSucursalId || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setConteos(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
   }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
+  }
+
+  useEffect(() => {
+    cargarConteos(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroSucursalId, orden]);
 
   function nombreSucursal(id) {
     return sucursales.find((s) => s.id === id)?.nombre || id;
@@ -58,7 +91,7 @@ function ConteosPage() {
     setError('');
     try {
       const conteo = await crearConteo({ sucursalId });
-      cargarConteos();
+      cargarConteos(1);
       abrirConteo(conteo.id);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear el conteo.');
@@ -124,7 +157,7 @@ function ConteosPage() {
     try {
       await cambiarEstadoConteo(abiertoId, { estado: SIGUIENTE_ESTADO[detalle.estado] });
       await abrirConteo(abiertoId);
-      cargarConteos();
+      cargarConteos(paginacion.pagina);
     } catch (err) {
       setPanelError(err.response?.data?.error || 'No se pudo cambiar el estado.');
     }
@@ -151,7 +184,32 @@ function ConteosPage() {
       </Card>
 
       <Card title="Conteos recientes">
-        <Table columnas={['Sucursal', 'Estado', 'Fecha', '']}>
+        <Select
+          id="filtroSucursalConteo"
+          label="Filtrar por sucursal"
+          value={filtroSucursalId}
+          onChange={(e) => setFiltroSucursalId(e.target.value)}
+          className="mb-4 max-w-xs"
+        >
+          <option value="">Todas las sucursales</option>
+          {sucursales.map((s) => (
+            <option key={s.id} value={s.id}>{s.nombre}</option>
+          ))}
+        </Select>
+        <Table
+          columnas={COLUMNAS_CONTEOS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargarConteos}
+            />
+          )}
+        >
           {conteos.length === 0 && <TablaVacia colSpan={4} />}
           {conteos.map((c) => (
             <Fila key={c.id}>

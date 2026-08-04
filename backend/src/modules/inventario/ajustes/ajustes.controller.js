@@ -3,7 +3,13 @@ const service = require('./ajustes.service');
 const { crearAjusteSchema } = require('./ajustes.validators');
 
 async function listar(req, res) {
-  const ajustes = await service.listar({ empresaId: req.auth.empresaId });
+  const { buscar, pagina, porPagina, ordenarPor, orden } = req.query;
+  const ajustes = await service.listar({
+    empresaId: req.auth.empresaId,
+    filtros: { buscar },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
+  });
   res.json(ajustes);
 }
 

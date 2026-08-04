@@ -3,7 +3,13 @@ const service = require('./usuarios.service');
 const { crearUsuarioSchema, actualizarUsuarioSchema } = require('./usuarios.validators');
 
 async function listar(req, res) {
-  const usuarios = await service.listar({ empresaId: req.auth.empresaId });
+  const { buscar, pagina, porPagina, ordenarPor, orden } = req.query;
+  const usuarios = await service.listar({
+    empresaId: req.auth.empresaId,
+    filtros: { buscar },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
+  });
   res.json(usuarios);
 }
 

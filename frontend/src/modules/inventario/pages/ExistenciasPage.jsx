@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Search } from 'lucide-react';
 import { listarExistencias, establecerExistenciaInicial } from '../api/inventario.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
@@ -7,9 +8,17 @@ import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 
 const FORM_VACIO = { sucursalId: '', articuloId: '', cantidad: '' };
+
+const COLUMNAS_EXISTENCIAS = [
+  { label: 'Sucursal', clave: 'sucursal', ordenable: true },
+  { label: 'Artículo', clave: 'articulo', ordenable: true },
+  { label: 'SKU', clave: 'sku', ordenable: true },
+  { label: 'Cantidad', clave: 'cantidad', ordenable: true },
+];
 
 function ExistenciasPage() {
   const [existencias, setExistencias] = useState([]);
@@ -17,16 +26,45 @@ function ExistenciasPage() {
   const [articulos, setArticulos] = useState([]);
   const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
+  const [buscar, setBuscar] = useState('');
+  const [filtroSucursalId, setFiltroSucursalId] = useState('');
+  const [soloConStock, setSoloConStock] = useState(false);
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'sucursal', orden: 'asc' });
 
-  function cargarExistencias() {
-    listarExistencias().then(setExistencias).catch(() => {});
+  function cargarExistencias(pagina = 1) {
+    listarExistencias({
+      buscar: buscar || undefined,
+      sucursalId: filtroSucursalId || undefined,
+      soloConStock: soloConStock || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setExistencias(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
+  }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
   }
 
   useEffect(() => {
-    cargarExistencias();
     listarSucursales().then(setSucursales).catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    cargarExistencias(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscar, filtroSucursalId, soloConStock, orden]);
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -42,7 +80,7 @@ function ExistenciasPage() {
         cantidad: Number(form.cantidad),
       });
       setForm(FORM_VACIO);
-      cargarExistencias();
+      cargarExistencias(paginacion.pagina);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo establecer la existencia inicial.');
     }
@@ -62,7 +100,54 @@ function ExistenciasPage() {
       )}
 
       <Card title="Existencias por sucursal">
-        <Table columnas={['Sucursal', 'Artículo', 'SKU', 'Cantidad']}>
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="pointer-events-none absolute left-3 top-[38px] text-gray-400" />
+            <Input
+              id="buscarExistencia"
+              label="Buscar"
+              placeholder="Nombre o SKU"
+              value={buscar}
+              onChange={(e) => setBuscar(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select
+            id="filtroSucursalExistencia"
+            label="Sucursal"
+            value={filtroSucursalId}
+            onChange={(e) => setFiltroSucursalId(e.target.value)}
+            className="min-w-[180px]"
+          >
+            <option value="">Todas las sucursales</option>
+            {sucursales.map((s) => (
+              <option key={s.id} value={s.id}>{s.nombre}</option>
+            ))}
+          </Select>
+          <label className="flex items-center gap-2 pb-2.5 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={soloConStock}
+              onChange={(e) => setSoloConStock(e.target.checked)}
+              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            Solo con stock
+          </label>
+        </div>
+        <Table
+          columnas={COLUMNAS_EXISTENCIAS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargarExistencias}
+            />
+          )}
+        >
           {existencias.length === 0 && <TablaVacia colSpan={4} />}
           {existencias.map((e) => (
             <Fila key={e.id}>

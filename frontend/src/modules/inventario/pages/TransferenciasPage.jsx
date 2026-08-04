@@ -8,10 +8,18 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Search } from 'lucide-react';
 
 const ESTADO_TONO = { EN_TRANSITO: 'warning', RECIBIDA: 'success' };
+
+const COLUMNAS_TRANSFERENCIAS = [
+  { label: 'Folio', clave: 'folio', ordenable: true },
+  { label: 'Origen → Destino', clave: null },
+  { label: 'Estado', clave: 'estado', ordenable: true },
+  { label: '', clave: null },
+];
 
 function TransferenciasPage() {
   const [sucursales, setSucursales] = useState([]);
@@ -24,6 +32,9 @@ function TransferenciasPage() {
   const [error, setError] = useState('');
   const [creada, setCreada] = useState(null);
   const [transferencias, setTransferencias] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
 
   const [verDetalleId, setVerDetalleId] = useState(null);
   const [detalle, setDetalle] = useState(null);
@@ -40,12 +51,34 @@ function TransferenciasPage() {
       })
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
-    cargarTransferencias();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function cargarTransferencias() {
-    listarTransferencias().then(setTransferencias).catch(() => {});
+  function cargarTransferencias(pagina = 1) {
+    listarTransferencias({
+      buscar: busqueda || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setTransferencias(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
   }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
+  }
+
+  useEffect(() => {
+    cargarTransferencias(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busqueda, orden]);
 
   function nombreSucursal(id) {
     return sucursales.find((s) => s.id === id)?.nombre || id;
@@ -84,7 +117,7 @@ function TransferenciasPage() {
       });
       setCreada(transferencia);
       setCarrito([]);
-      cargarTransferencias();
+      cargarTransferencias(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear la transferencia.');
     }
@@ -106,7 +139,7 @@ function TransferenciasPage() {
     setRecibirError('');
     try {
       await recibirTransferencia(id);
-      cargarTransferencias();
+      cargarTransferencias(paginacion.pagina);
       if (verDetalleId === id) verDetalle(id);
     } catch (err) {
       setRecibirError(err.response?.data?.error || 'No se pudo recibir la transferencia.');
@@ -194,7 +227,30 @@ function TransferenciasPage() {
 
       <Card title="Transferencias recientes">
         {recibirError && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{recibirError}</p>}
-        <Table columnas={['Folio', 'Origen → Destino', 'Estado', '']}>
+        <div className="relative mb-4 max-w-sm">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por folio..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+        <Table
+          columnas={COLUMNAS_TRANSFERENCIAS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargarTransferencias}
+            />
+          )}
+        >
           {transferencias.length === 0 && <TablaVacia colSpan={4} />}
           {transferencias.map((t) => (
             <Fila key={t.id}>

@@ -26,8 +26,8 @@ export function actualizarSucursal(id, datos) {
   return api.patch(`/core/sucursales/${id}`, datos).then((res) => res.data);
 }
 
-export function listarUsuarios() {
-  return api.get('/core/usuarios').then((res) => res.data);
+export function listarUsuarios(params) {
+  return api.get('/core/usuarios', { params }).then((res) => res.data);
 }
 export function crearUsuario(datos) {
   return api.post('/core/usuarios', datos).then((res) => res.data);

@@ -1,16 +1,26 @@
 import { useEffect, useState } from 'react';
+import { Search } from 'lucide-react';
 import { listarUsuarios, crearUsuario, actualizarUsuario, listarRoles } from '../api/core.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 
 const FORM_VACIO = { nombre: '', correo: '', password: '', rolId: '' };
 const EDIT_VACIO = { rolId: '', estado: 'ACTIVO', telefono: '' };
 
 const ESTADO_TONO = { ACTIVO: 'success', INACTIVO: 'gray', BLOQUEADO: 'danger' };
+
+const COLUMNAS_USUARIOS = [
+  { label: 'Nombre', clave: 'nombre', ordenable: true },
+  { label: 'Correo', clave: 'correo', ordenable: true },
+  { label: 'Rol', clave: 'rol', ordenable: true },
+  { label: 'Estado', clave: 'estado', ordenable: true },
+  { label: '', clave: null },
+];
 
 function UsuariosPage() {
   const [usuarios, setUsuarios] = useState([]);
@@ -20,15 +30,45 @@ function UsuariosPage() {
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState(EDIT_VACIO);
   const [errorEdit, setErrorEdit] = useState('');
+  const [buscar, setBuscar] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
 
-  function cargar() {
-    listarUsuarios().then(setUsuarios).catch(() => {});
+  function cargar(pagina = 1) {
+    listarUsuarios({
+      buscar: buscar || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setUsuarios(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
+  }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
   }
 
   useEffect(() => {
-    cargar();
     listarRoles().then(setRoles).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    cargar(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orden]);
+
+  function buscarSubmit(e) {
+    e.preventDefault();
+    cargar(1);
+  }
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -45,7 +85,7 @@ function UsuariosPage() {
         rolId: form.rolId,
       });
       setForm(FORM_VACIO);
-      cargar();
+      cargar(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear el usuario.');
     }
@@ -75,7 +115,7 @@ function UsuariosPage() {
         telefono: editForm.telefono,
       });
       setEditandoId(null);
-      cargar();
+      cargar(paginacion.pagina);
     } catch (err) {
       setErrorEdit(err.response?.data?.error || 'No se pudo actualizar el usuario.');
     }
@@ -88,9 +128,39 @@ function UsuariosPage() {
         <p className="text-sm text-gray-500">Cuentas de acceso al sistema y su rol asignado.</p>
       </div>
 
+      <Card>
+        <form onSubmit={buscarSubmit} className="flex items-end gap-3">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={16} className="pointer-events-none absolute left-3 top-[38px] text-gray-400" />
+            <Input
+              id="buscarUsuario"
+              label="Buscar"
+              placeholder="Nombre o correo"
+              value={buscar}
+              onChange={(e) => setBuscar(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Button type="submit" variant="secondary">Buscar</Button>
+        </form>
+      </Card>
+
       <Card title="Usuarios">
         {errorEdit && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
-        <Table columnas={['Nombre', 'Correo', 'Rol', 'Estado', '']}>
+        <Table
+          columnas={COLUMNAS_USUARIOS}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargar}
+            />
+          )}
+        >
           {usuarios.length === 0 && <TablaVacia colSpan={5} />}
           {usuarios.map((u) => (
             <Fila key={u.id}>

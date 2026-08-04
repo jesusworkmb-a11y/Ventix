@@ -3,7 +3,13 @@ const service = require('./conteos.service');
 const { crearConteoSchema, detallesConteoSchema, estadoConteoSchema } = require('./conteos.validators');
 
 async function listar(req, res) {
-  const conteos = await service.listar({ empresaId: req.auth.empresaId });
+  const { sucursalId, pagina, porPagina, ordenarPor, orden } = req.query;
+  const conteos = await service.listar({
+    empresaId: req.auth.empresaId,
+    filtros: { sucursalId },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
+  });
   res.json(conteos);
 }
 

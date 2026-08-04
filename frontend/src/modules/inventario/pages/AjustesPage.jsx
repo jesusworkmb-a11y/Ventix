@@ -8,8 +8,16 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Search } from 'lucide-react';
+
+const COLUMNAS_AJUSTES = [
+  { label: 'Folio', clave: 'folio', ordenable: true },
+  { label: 'Motivo', clave: 'motivo', ordenable: true },
+  { label: 'Fecha', clave: 'creadoEn', ordenable: true },
+  { label: '', clave: null },
+];
 
 function AjustesPage() {
   const [sucursales, setSucursales] = useState([]);
@@ -24,6 +32,9 @@ function AjustesPage() {
   const [error, setError] = useState('');
   const [creado, setCreado] = useState(null);
   const [ajustes, setAjustes] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
 
   const [verDetalleId, setVerDetalleId] = useState(null);
   const [detalle, setDetalle] = useState(null);
@@ -37,12 +48,34 @@ function AjustesPage() {
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
     listarUsuarios().then(setUsuarios).catch(() => {});
-    cargarAjustes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function cargarAjustes() {
-    listarAjustes().then(setAjustes).catch(() => {});
+  function cargarAjustes(pagina = 1) {
+    listarAjustes({
+      buscar: busqueda || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setAjustes(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
   }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
+  }
+
+  useEffect(() => {
+    cargarAjustes(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busqueda, orden]);
 
   function agregarLinea(e) {
     e.preventDefault();
@@ -81,7 +114,7 @@ function AjustesPage() {
       setCreado(ajuste);
       setCarrito([]);
       setMotivo('');
-      cargarAjustes();
+      cargarAjustes(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo registrar el ajuste.');
     }
@@ -183,7 +216,30 @@ function AjustesPage() {
       </Card>
 
       <Card title="Ajustes recientes">
-        <Table columnas={['Folio', 'Motivo', 'Fecha', '']}>
+        <div className="relative mb-4 max-w-sm">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por folio o motivo..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+        <Table
+          columnas={COLUMNAS_AJUSTES}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargarAjustes}
+            />
+          )}
+        >
           {ajustes.length === 0 && <TablaVacia colSpan={4} />}
           {ajustes.map((a) => (
             <Fila key={a.id}>

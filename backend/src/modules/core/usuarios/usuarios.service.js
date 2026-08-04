@@ -4,16 +4,55 @@ const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 
-async function listar({ empresaId }) {
-  const relaciones = await prisma.usuarioEmpresa.findMany({
-    where: { empresaId },
-    include: {
-      usuario: { select: { id: true, nombre: true, correo: true, estado: true, ultimoAcceso: true } },
-      rol: true,
-    },
-  });
-  return relaciones.map((r) => ({ ...r.usuario, activo: r.activo, rol: r.rol }));
+const INCLUDE_USUARIO = {
+  usuario: { select: { id: true, nombre: true, correo: true, estado: true, ultimoAcceso: true } },
+  rol: true,
+};
+
+const COLUMNAS_ORDENABLES = {
+  nombre: 'usuario.nombre',
+  correo: 'usuario.correo',
+  rol: 'rol.nombre',
+  estado: 'usuario.estado',
+};
+
+function relacionAUsuario(r) {
+  return { ...r.usuario, activo: r.activo, rol: r.rol };
+}
+
+// `paginacion` opcional, mismo criterio que Artículos/Clientes/Proveedores: sin `pagina`
+// explícita devuelve el array completo (VentasHistorialPage/AuditoriaPage/AjustesPage lo usan
+// como fuente de un dropdown, no como tabla), solo pagina cuando el caller la pide (UsuariosPage).
+// El modelo real es UsuarioEmpresa (join table), no Usuario directo — de ahí filtrar/ordenar por
+// campos anidados `usuario.*`/`rol.*`.
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
+  const where = { empresaId };
+  if (filtros?.buscar) {
+    where.usuario = {
+      OR: [
+        { nombre: { contains: filtros.buscar, mode: 'insensitive' } },
+        { correo: { contains: filtros.buscar, mode: 'insensitive' } },
+      ],
+    };
+  }
+
+  if (!paginacion || paginacion.pagina === undefined) {
+    const relaciones = await prisma.usuarioEmpresa.findMany({ where, include: INCLUDE_USUARIO });
+    return relaciones.map(relacionAUsuario);
+  }
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { usuario: { nombre: 'asc' } });
+
+  const [relaciones, total] = await Promise.all([
+    prisma.usuarioEmpresa.findMany({
+      where, include: INCLUDE_USUARIO, orderBy, skip: paginado.skip, take: paginado.take,
+    }),
+    prisma.usuarioEmpresa.count({ where }),
+  ]);
+  return respuestaPaginada(relaciones.map(relacionAUsuario), total, paginado);
 }
 
 // Solo crea usuarios con correo nuevo (Usuario.correo es único global). Si el correo ya existe

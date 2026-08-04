@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2, FileDown } from 'lucide-react';
+import { Trash2, FileDown, Search } from 'lucide-react';
 import { listarCotizaciones, obtenerCotizacion, crearCotizacion, convertirCotizacion } from '../api/cotizaciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
@@ -12,8 +12,16 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
+
+const COLUMNAS_COTIZACIONES = [
+  { label: 'Folio', clave: 'folio', ordenable: true },
+  { label: 'Total', clave: 'total', ordenable: true },
+  { label: 'Estado', clave: null },
+  { label: '', clave: null },
+];
 
 function CotizacionesPage() {
   const { empresa } = useAuth();
@@ -26,6 +34,9 @@ function CotizacionesPage() {
   const [error, setError] = useState('');
   const [creada, setCreada] = useState(null);
   const [cotizaciones, setCotizaciones] = useState([]);
+  const [busqueda, setBusqueda] = useState('');
+  const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
+  const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
 
   const [cajas, setCajas] = useState([]);
   const [cajaId, setCajaId] = useState('');
@@ -50,7 +61,7 @@ function CotizacionesPage() {
         if (data.length) setCajaId((actual) => actual || data[0].id);
       })
       .catch(() => {});
-    cargarCotizaciones();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -58,9 +69,31 @@ function CotizacionesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cajaId]);
 
-  function cargarCotizaciones() {
-    listarCotizaciones().then(setCotizaciones).catch(() => {});
+  function cargarCotizaciones(pagina = 1) {
+    listarCotizaciones({
+      buscar: busqueda || undefined,
+      pagina,
+      porPagina: 20,
+      ordenarPor: orden.ordenarPor,
+      orden: orden.orden,
+    })
+      .then((r) => {
+        setCotizaciones(r.datos);
+        setPaginacion({ pagina: r.pagina, totalPaginas: r.totalPaginas, total: r.total });
+      })
+      .catch(() => {});
   }
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
+  }
+
+  useEffect(() => {
+    cargarCotizaciones(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busqueda, orden]);
 
   // jsPDF (+ sus dependencias, ~250kB gzip) solo se descarga cuando alguien realmente pide un
   // PDF, vía import() dinámico, para no engordar el bundle inicial de toda la app por una
@@ -137,7 +170,7 @@ function CotizacionesPage() {
       });
       setCreada(cotizacion);
       setCarrito([]);
-      cargarCotizaciones();
+      cargarCotizaciones(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear la cotización.');
     }
@@ -182,7 +215,7 @@ function CotizacionesPage() {
         pagos: [{ metodo: convMetodoPago, monto: convTotal }],
       });
       setConvirtiendoId(null);
-      cargarCotizaciones();
+      cargarCotizaciones(paginacion.pagina);
     } catch (err) {
       setConvError(err.response?.data?.error || 'No se pudo convertir la cotización.');
     }
@@ -297,8 +330,34 @@ function CotizacionesPage() {
         )}
       </Card>
 
+      <Card>
+        <div className="relative max-w-sm">
+          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por folio..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
+      </Card>
+
       <Card title="Cotizaciones recientes">
-        <Table columnas={['Folio', 'Total', 'Estado', '']}>
+        <Table
+          columnas={COLUMNAS_COTIZACIONES}
+          ordenarPor={orden.ordenarPor}
+          orden={orden.orden}
+          onOrdenar={handleOrdenar}
+          pie={(
+            <Paginacion
+              pagina={paginacion.pagina}
+              totalPaginas={paginacion.totalPaginas}
+              total={paginacion.total}
+              onCambiar={cargarCotizaciones}
+            />
+          )}
+        >
           {cotizaciones.length === 0 && <TablaVacia colSpan={4} />}
           {cotizaciones.map((c) => (
             <Fila key={c.id}>

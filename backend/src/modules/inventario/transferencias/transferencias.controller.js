@@ -3,7 +3,13 @@ const service = require('./transferencias.service');
 const { crearTransferenciaSchema } = require('./transferencias.validators');
 
 async function listar(req, res) {
-  const transferencias = await service.listar({ empresaId: req.auth.empresaId });
+  const { buscar, pagina, porPagina, ordenarPor, orden } = req.query;
+  const transferencias = await service.listar({
+    empresaId: req.auth.empresaId,
+    filtros: { buscar },
+    paginacion: { pagina, porPagina },
+    ordenamiento: { ordenarPor, orden },
+  });
   res.json(transferencias);
 }
 

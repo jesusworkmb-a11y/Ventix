@@ -4,9 +4,23 @@ const { aplicarMovimiento } = require('../../../shared/services/inventario.servi
 const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.service');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 
-async function listar({ empresaId }) {
-  return prisma.transferencia.findMany({ where: { empresaId }, orderBy: { creadoEn: 'desc' }, take: 200 });
+const COLUMNAS_ORDENABLES = { folio: 'folio', estado: 'estado', creadoEn: 'creadoEn' };
+
+// Único consumidor (TransferenciasPage) — no necesita modo dual.
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
+  const where = { empresaId };
+  if (filtros?.buscar) where.folio = { contains: filtros.buscar, mode: 'insensitive' };
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.transferencia.findMany({ where, orderBy, skip: paginado.skip, take: paginado.take }),
+    prisma.transferencia.count({ where }),
+  ]);
+  return respuestaPaginada(datos, total, paginado);
 }
 
 async function obtener({ empresaId, transferenciaId }) {

@@ -3,9 +3,25 @@ const AppError = require('../../../shared/errors/AppError');
 const { aplicarMovimiento } = require('../../../shared/services/inventario.service');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 
-async function listar({ empresaId }) {
-  return prisma.conteoFisico.findMany({ where: { empresaId }, orderBy: { creadoEn: 'desc' }, take: 200 });
+const COLUMNAS_ORDENABLES = { estado: 'estado', creadoEn: 'creadoEn' };
+
+// Único consumidor (ConteosPage) — no necesita modo dual. ConteoFisico no tiene ningún campo
+// de texto libre (ni folio, a diferencia de Ajustes/Transferencias) así que el filtro real es
+// por sucursalId exacto en vez de un `buscar` de texto.
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
+  const where = { empresaId };
+  if (filtros?.sucursalId) where.sucursalId = filtros.sucursalId;
+
+  const paginado = parsePaginacion(paginacion);
+  const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });
+
+  const [datos, total] = await Promise.all([
+    prisma.conteoFisico.findMany({ where, orderBy, skip: paginado.skip, take: paginado.take }),
+    prisma.conteoFisico.count({ where }),
+  ]);
+  return respuestaPaginada(datos, total, paginado);
 }
 
 async function obtener({ empresaId, conteoId }) {
