@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   reporteVentas,
   reporteArticulosMasVendidos,
@@ -8,6 +7,12 @@ import {
   reporteCaja,
 } from '../api/reportes.api';
 import { listarSucursales } from '../../core/api/core.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import { formatoMoneda } from '../../../shared/format';
 
 const REPORTES = {
   ventas: { etiqueta: 'Ventas por período', fn: reporteVentas, usaFechas: true, usaSucursal: true },
@@ -51,154 +56,166 @@ function ReportesPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 800 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Reportes</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
+        <p className="text-sm text-gray-500">Generá reportes de ventas, inventario, compras y caja.</p>
+      </div>
 
-      <form
-        onSubmit={generar}
-        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1.5rem' }}
-      >
-        <select value={tipo} onChange={(e) => { setTipo(e.target.value); setResultado(null); }}>
-          {Object.entries(REPORTES).map(([clave, r]) => (
-            <option key={clave} value={clave}>{r.etiqueta}</option>
-          ))}
-        </select>
-        {config.usaFechas && (
-          <>
-            <label>Desde <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} /></label>
-            <label>Hasta <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} /></label>
-          </>
-        )}
-        {config.usaSucursal && (
-          <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
-            <option value="">Todas las sucursales</option>
-            {sucursales.map((s) => (
-              <option key={s.id} value={s.id}>{s.nombre}</option>
+      <Card>
+        <form onSubmit={generar} className="flex flex-wrap items-end gap-3">
+          <Select
+            id="tipoReporte"
+            label="Reporte"
+            value={tipo}
+            onChange={(e) => { setTipo(e.target.value); setResultado(null); }}
+            className="min-w-[200px]"
+          >
+            {Object.entries(REPORTES).map(([clave, r]) => (
+              <option key={clave} value={clave}>{r.etiqueta}</option>
             ))}
-          </select>
-        )}
-        <button type="submit">Generar</button>
-      </form>
+          </Select>
+          {config.usaFechas && (
+            <>
+              <Input id="desdeReporte" label="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+              <Input id="hastaReporte" label="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+            </>
+          )}
+          {config.usaSucursal && (
+            <Select id="sucursalReporte" label="Sucursal" value={sucursalId} onChange={(e) => setSucursalId(e.target.value)} className="min-w-[180px]">
+              <option value="">Todas las sucursales</option>
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </Select>
+          )}
+          <Button type="submit">Generar</Button>
+        </form>
+      </Card>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
       {resultado && tipo === 'ventas' && (
-        <div>
-          <p>Número de ventas: {resultado.numeroVentas}</p>
-          <p>Subtotal: {resultado.subtotal} — Impuestos: {resultado.impuestos} — Total: {resultado.total}</p>
-          <p>Devoluciones: {resultado.totalDevoluciones} — <strong>Neto: {resultado.totalNeto}</strong></p>
-          <p>Ticket promedio: {Number(resultado.ticketPromedio).toFixed(2)}</p>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th style={{ textAlign: 'left' }}>Método</th><th style={{ textAlign: 'left' }}>Monto</th></tr></thead>
-            <tbody>
-              {resultado.porMetodoPago.map((p) => (
-                <tr key={p.metodo}><td>{p.metodo}</td><td>{p.monto}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card title="Ventas por período">
+          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div>
+              <p className="text-xs text-gray-500">Número de ventas</p>
+              <p className="text-lg font-semibold text-gray-900">{resultado.numeroVentas}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Total</p>
+              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.total)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Devoluciones</p>
+              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.totalDevoluciones)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Neto</p>
+              <p className="text-lg font-semibold text-primary-700">{formatoMoneda(resultado.totalNeto)}</p>
+            </div>
+          </div>
+          <p className="mb-4 text-sm text-gray-500">
+            Subtotal: {formatoMoneda(resultado.subtotal)} · Impuestos: {formatoMoneda(resultado.impuestos)} · Ticket promedio: {formatoMoneda(resultado.ticketPromedio)}
+          </p>
+          <Table columnas={['Método', 'Monto']}>
+            {resultado.porMetodoPago.length === 0 && <TablaVacia colSpan={2} />}
+            {resultado.porMetodoPago.map((p) => (
+              <Fila key={p.metodo}>
+                <Celda>{p.metodo}</Celda>
+                <Celda>{formatoMoneda(p.monto)}</Celda>
+              </Fila>
+            ))}
+          </Table>
+        </Card>
       )}
 
       {resultado && tipo === 'articulos' && (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr><th style={{ textAlign: 'left' }}>Artículo</th><th style={{ textAlign: 'left' }}>Cantidad</th><th style={{ textAlign: 'left' }}>Monto</th></tr>
-          </thead>
-          <tbody>
+        <Card title="Artículos más vendidos">
+          <Table columnas={['Artículo', 'Cantidad', 'Monto']}>
+            {resultado.length === 0 && <TablaVacia colSpan={3} />}
             {resultado.map((r) => (
-              <tr key={r.articulo?.id}>
-                <td>{r.articulo?.nombre}</td>
-                <td>{r.cantidad}</td>
-                <td>{r.monto.toFixed(2)}</td>
-              </tr>
+              <Fila key={r.articulo?.id}>
+                <Celda className="font-medium text-gray-800">{r.articulo?.nombre}</Celda>
+                <Celda>{r.cantidad}</Celda>
+                <Celda>{formatoMoneda(r.monto)}</Celda>
+              </Fila>
             ))}
-          </tbody>
-        </table>
+          </Table>
+        </Card>
       )}
 
       {resultado && tipo === 'inventario' && (
-        <div>
-          <p>Valor total: {resultado.valorTotal.toFixed(2)}</p>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
-            <thead><tr><th style={{ textAlign: 'left' }}>Sucursal</th><th style={{ textAlign: 'left' }}>Valor</th></tr></thead>
-            <tbody>
+        <>
+          <Card title="Inventario valorizado">
+            <p className="mb-4 text-sm text-gray-500">
+              Valor total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.valorTotal)}</span>
+            </p>
+            <Table columnas={['Sucursal', 'Valor']}>
               {resultado.porSucursal.map((s) => (
-                <tr key={s.sucursal.id}><td>{s.sucursal.nombre}</td><td>{s.valor.toFixed(2)}</td></tr>
+                <Fila key={s.sucursal.id}>
+                  <Celda>{s.sucursal.nombre}</Celda>
+                  <Celda>{formatoMoneda(s.valor)}</Celda>
+                </Fila>
               ))}
-            </tbody>
-          </table>
-          <h3>Stock bajo</h3>
-          {resultado.stockBajo.length === 0 ? (
-            <p>Ningún artículo por debajo de su stock mínimo.</p>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left' }}>Artículo</th>
-                  <th style={{ textAlign: 'left' }}>Sucursal</th>
-                  <th style={{ textAlign: 'left' }}>Cantidad</th>
-                  <th style={{ textAlign: 'left' }}>Mínimo</th>
-                </tr>
-              </thead>
-              <tbody>
+            </Table>
+          </Card>
+          <Card title="Stock bajo">
+            {resultado.stockBajo.length === 0 ? (
+              <p className="text-sm text-gray-500">Ningún artículo por debajo de su stock mínimo.</p>
+            ) : (
+              <Table columnas={['Artículo', 'Sucursal', 'Cantidad', 'Mínimo']}>
                 {resultado.stockBajo.map((r, i) => (
-                  <tr key={i}>
-                    <td>{r.articulo.nombre}</td><td>{r.sucursal.nombre}</td><td>{r.cantidad}</td><td>{r.stockMinimo}</td>
-                  </tr>
+                  <Fila key={i}>
+                    <Celda className="font-medium text-gray-800">{r.articulo.nombre}</Celda>
+                    <Celda>{r.sucursal.nombre}</Celda>
+                    <Celda>{r.cantidad}</Celda>
+                    <Celda>{r.stockMinimo}</Celda>
+                  </Fila>
                 ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+              </Table>
+            )}
+          </Card>
+        </>
       )}
 
       {resultado && tipo === 'compras' && (
-        <div>
-          <p>Total: {resultado.total} — Número de compras: {resultado.numeroCompras}</p>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr><th style={{ textAlign: 'left' }}>Proveedor</th><th style={{ textAlign: 'left' }}>Total</th><th style={{ textAlign: 'left' }}>Compras</th></tr>
-            </thead>
-            <tbody>
-              {resultado.porProveedor.map((p) => (
-                <tr key={p.proveedor.id}>
-                  <td>{p.proveedor.nombre}</td><td>{p.total.toFixed(2)}</td><td>{p.numeroCompras}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card title="Compras por proveedor">
+          <p className="mb-4 text-sm text-gray-500">
+            Total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.total)}</span> · Número de compras: {resultado.numeroCompras}
+          </p>
+          <Table columnas={['Proveedor', 'Total', 'Compras']}>
+            {resultado.porProveedor.length === 0 && <TablaVacia colSpan={3} />}
+            {resultado.porProveedor.map((p) => (
+              <Fila key={p.proveedor.id}>
+                <Celda className="font-medium text-gray-800">{p.proveedor.nombre}</Celda>
+                <Celda>{formatoMoneda(p.total)}</Celda>
+                <Celda>{p.numeroCompras}</Celda>
+              </Fila>
+            ))}
+          </Table>
+        </Card>
       )}
 
       {resultado && tipo === 'caja' && (
-        <div>
-          <p>Diferencia acumulada: {resultado.totalDiferencias.toFixed(2)}</p>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left' }}>Caja</th>
-                <th style={{ textAlign: 'left' }}>Fondo</th>
-                <th style={{ textAlign: 'left' }}>Esperado</th>
-                <th style={{ textAlign: 'left' }}>Real</th>
-                <th style={{ textAlign: 'left' }}>Diferencia</th>
-                <th style={{ textAlign: 'left' }}>Cerrada</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resultado.sesiones.map((s) => (
-                <tr key={s.id}>
-                  <td>{s.caja?.nombre}</td>
-                  <td>{Number(s.fondoInicial).toFixed(2)}</td>
-                  <td>{Number(s.saldoEsperado).toFixed(2)}</td>
-                  <td>{Number(s.saldoReal).toFixed(2)}</td>
-                  <td>{Number(s.diferencia).toFixed(2)}</td>
-                  <td>{new Date(s.cerradaEn).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card title="Cortes de caja">
+          <p className="mb-4 text-sm text-gray-500">
+            Diferencia acumulada: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.totalDiferencias)}</span>
+          </p>
+          <Table columnas={['Caja', 'Fondo', 'Esperado', 'Real', 'Diferencia', 'Cerrada']}>
+            {resultado.sesiones.length === 0 && <TablaVacia colSpan={6} />}
+            {resultado.sesiones.map((s) => (
+              <Fila key={s.id}>
+                <Celda className="font-medium text-gray-800">{s.caja?.nombre}</Celda>
+                <Celda>{formatoMoneda(s.fondoInicial)}</Celda>
+                <Celda>{formatoMoneda(s.saldoEsperado)}</Celda>
+                <Celda>{formatoMoneda(s.saldoReal)}</Celda>
+                <Celda>{formatoMoneda(s.diferencia)}</Celda>
+                <Celda>{new Date(s.cerradaEn).toLocaleString()}</Celda>
+              </Fila>
+            ))}
+          </Table>
+        </Card>
       )}
     </div>
   );

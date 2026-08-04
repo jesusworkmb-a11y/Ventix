@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Download, Upload } from 'lucide-react';
 import {
   exportarArticulos,
   exportarClientes,
   exportarProveedores,
   importarArticulos,
 } from '../api/herramientas.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Table, { Fila, Celda } from '../../../shared/ui/Table';
 
 function HerramientasPage() {
   const [archivo, setArchivo] = useState(null);
@@ -43,63 +46,79 @@ function HerramientasPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 700 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Herramientas</h1>
-
-      <h2>Exportar</h2>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem' }}>
-        <button type="button" onClick={() => manejarExportar(exportarArticulos)}>Artículos</button>
-        <button type="button" onClick={() => manejarExportar(exportarClientes)}>Clientes</button>
-        <button type="button" onClick={() => manejarExportar(exportarProveedores)}>Proveedores</button>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Herramientas</h1>
+        <p className="text-sm text-gray-500">Exportá tus datos o importá artículos en lote desde CSV.</p>
       </div>
 
-      <h2>Importar artículos</h2>
-      <p style={{ color: '#555' }}>
-        CSV con columnas: tipo, sku, codigoBarras, clave, nombre, descripcion, categoria, marca,
-        unidadBase, impuesto, costo, precio, stockMinimo, stockMaximo. La unidad debe existir ya
-        en Configuración de catálogo.
-      </p>
-      <form
-        onSubmit={manejarImportar}
-        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1rem' }}
-      >
-        <input type="file" accept=".csv" onChange={(e) => setArchivo(e.target.files[0] || null)} />
-        <button type="submit" disabled={cargando}>{cargando ? 'Importando...' : 'Importar'}</button>
-      </form>
+      <Card title="Exportar">
+        <div className="flex flex-wrap gap-3">
+          <Button variant="secondary" onClick={() => manejarExportar(exportarArticulos)}>
+            <Download size={16} /> Artículos
+          </Button>
+          <Button variant="secondary" onClick={() => manejarExportar(exportarClientes)}>
+            <Download size={16} /> Clientes
+          </Button>
+          <Button variant="secondary" onClick={() => manejarExportar(exportarProveedores)}>
+            <Download size={16} /> Proveedores
+          </Button>
+        </div>
+      </Card>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      <Card title="Importar artículos">
+        <p className="mb-4 text-sm text-gray-500">
+          CSV con columnas: tipo, sku, codigoBarras, clave, nombre, descripcion, categoria, marca,
+          unidadBase, impuesto, costo, precio, stockMinimo, stockMaximo. La unidad debe existir ya
+          en Configuración de catálogo.
+        </p>
+        <form onSubmit={manejarImportar} className="flex flex-wrap items-center gap-3">
+          <input
+            type="file"
+            accept=".csv"
+            onChange={(e) => setArchivo(e.target.files[0] || null)}
+            className="text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+          />
+          <Button type="submit" disabled={cargando}>
+            <Upload size={16} /> {cargando ? 'Importando...' : 'Importar'}
+          </Button>
+        </form>
+      </Card>
+
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
       {resultado && (
-        <div>
-          <p>Creados: {resultado.creados}</p>
+        <Card title="Resultado de la importación">
+          <p className="mb-4 text-sm text-gray-700">
+            Creados: <span className="font-semibold text-success-700">{resultado.creados}</span>
+          </p>
           {resultado.errores.length > 0 && (
-            <>
-              <h3>Errores</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
-                <thead><tr><th style={{ textAlign: 'left' }}>Fila</th><th style={{ textAlign: 'left' }}>Mensaje</th></tr></thead>
-                <tbody>
-                  {resultado.errores.map((e, i) => (
-                    <tr key={i}><td>{e.fila}</td><td>{e.mensaje}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
+            <div className="mb-4">
+              <h3 className="mb-2 text-sm font-semibold text-danger-700">Errores</h3>
+              <Table columnas={['Fila', 'Mensaje']}>
+                {resultado.errores.map((e, i) => (
+                  <Fila key={i}>
+                    <Celda>{e.fila}</Celda>
+                    <Celda>{e.mensaje}</Celda>
+                  </Fila>
+                ))}
+              </Table>
+            </div>
           )}
           {resultado.advertencias.length > 0 && (
-            <>
-              <h3>Advertencias</h3>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead><tr><th style={{ textAlign: 'left' }}>Fila</th><th style={{ textAlign: 'left' }}>Mensaje</th></tr></thead>
-                <tbody>
-                  {resultado.advertencias.map((a, i) => (
-                    <tr key={i}><td>{a.fila}</td><td>{a.mensaje}</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-warning-700">Advertencias</h3>
+              <Table columnas={['Fila', 'Mensaje']}>
+                {resultado.advertencias.map((a, i) => (
+                  <Fila key={i}>
+                    <Celda>{a.fila}</Celda>
+                    <Celda>{a.mensaje}</Celda>
+                  </Fila>
+                ))}
+              </Table>
+            </div>
           )}
-        </div>
+        </Card>
       )}
     </div>
   );
