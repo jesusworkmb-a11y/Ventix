@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChevronDown, Building2 } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { NAVEGACION } from './navigation';
+
+const CLAVE_COLAPSADO = 'ventix_sidebar_colapsado';
 
 function itemVisible(item, permisos) {
   if (!item.permiso) return true;
@@ -21,6 +23,21 @@ function Sidebar({ abierto, onCerrar }) {
     const activo = NAVEGACION.find((item) => item.hijos?.some((h) => pathname.startsWith(h.to)));
     return activo?.label ?? null;
   });
+  // Preferencia de escritorio, persistida entre sesiones. El overlay de mobile (abierto=true)
+  // ignora esta preferencia a propósito -- ver `mostrarColapsado` más abajo -- así que abrir
+  // el menú en un celular siempre muestra el menú completo, sin importar lo que se dejó
+  // colapsado la última vez que se usó en escritorio.
+  const [colapsado, setColapsado] = useState(() => localStorage.getItem(CLAVE_COLAPSADO) === 'true');
+
+  function alternarColapsado() {
+    setColapsado((c) => {
+      const nuevo = !c;
+      localStorage.setItem(CLAVE_COLAPSADO, String(nuevo));
+      return nuevo;
+    });
+  }
+
+  const mostrarColapsado = colapsado && !abierto;
 
   const puedeEditarEmpresa = permisos?.includes('administracion.empresa.editar');
   const ContenedorEmpresa = puedeEditarEmpresa ? Link : 'div';
@@ -37,14 +54,24 @@ function Sidebar({ abierto, onCerrar }) {
       )}
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-navy-900 transition-transform
-          lg:static lg:translate-x-0
+          lg:static lg:translate-x-0 lg:transition-[width]
+          ${colapsado ? 'lg:w-20' : 'lg:w-64'}
           ${abierto ? 'translate-x-0' : '-translate-x-full'}`}
       >
-        <div className="flex h-16 shrink-0 items-center gap-2 px-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 text-lg font-bold text-white">
+        <div className={`flex h-16 shrink-0 items-center gap-2 px-5 ${mostrarColapsado ? 'lg:justify-center lg:px-2' : ''}`}>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 text-lg font-bold text-white">
             V
           </div>
-          <span className="text-lg font-bold text-white">Ventix</span>
+          <span className={`text-lg font-bold text-white ${mostrarColapsado ? 'lg:hidden' : ''}`}>Ventix</span>
+          <button
+            type="button"
+            onClick={alternarColapsado}
+            aria-label={colapsado ? 'Expandir menú' : 'Contraer menú'}
+            title={colapsado ? 'Expandir menú' : 'Contraer menú'}
+            className={`hidden shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-white lg:flex ${mostrarColapsado ? '' : 'ml-auto'}`}
+          >
+            {colapsado ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
@@ -52,17 +79,22 @@ function Sidebar({ abierto, onCerrar }) {
             const Icon = item.icon;
             const activo = pathname.startsWith(item.to) || item.hijos?.some((h) => pathname.startsWith(h.to));
 
-            if (!item.hijos) {
+            // Con el menú contraído no hay lugar para el submenú indentado, así que un grupo
+            // se comporta como un link directo a su página principal (mismo criterio que un
+            // item sin hijos) -- ver el resto del submenú solo con el menú expandido.
+            if (!item.hijos || mostrarColapsado) {
               return (
                 <Link
                   key={item.label}
                   to={item.to}
                   onClick={onCerrar}
+                  title={mostrarColapsado ? item.label : undefined}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors
+                    ${mostrarColapsado ? 'lg:justify-center lg:px-2' : ''}
                     ${activo ? 'bg-primary-600 text-white' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
                 >
-                  <Icon size={18} />
-                  {item.label}
+                  <Icon size={18} className="shrink-0" />
+                  <span className={mostrarColapsado ? 'lg:hidden' : ''}>{item.label}</span>
                 </Link>
               );
             }
@@ -78,7 +110,7 @@ function Sidebar({ abierto, onCerrar }) {
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors
                     ${activo ? 'bg-primary-600 text-white' : 'text-gray-300 hover:bg-white/5 hover:text-white'}`}
                 >
-                  <Icon size={18} />
+                  <Icon size={18} className="shrink-0" />
                   <span className="flex-1 text-left">{item.label}</span>
                   <ChevronDown
                     size={16}
@@ -107,7 +139,8 @@ function Sidebar({ abierto, onCerrar }) {
 
         <ContenedorEmpresa
           {...propsEmpresa}
-          className="flex items-center gap-2 border-t border-white/10 px-4 py-4 hover:bg-white/5"
+          title={mostrarColapsado ? (empresa?.nombreComercial || 'Mi empresa') : undefined}
+          className={`flex items-center gap-2 border-t border-white/10 px-4 py-4 hover:bg-white/5 ${mostrarColapsado ? 'lg:justify-center lg:px-2' : ''}`}
         >
           <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10 text-gray-300">
             {empresa?.logoUrl ? (
@@ -116,7 +149,7 @@ function Sidebar({ abierto, onCerrar }) {
               <Building2 size={16} />
             )}
           </div>
-          <div className="min-w-0">
+          <div className={`min-w-0 ${mostrarColapsado ? 'lg:hidden' : ''}`}>
             <p className="truncate text-sm font-medium text-white">{empresa?.nombreComercial || 'Mi empresa'}</p>
           </div>
         </ContenedorEmpresa>
