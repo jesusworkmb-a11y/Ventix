@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { registro } from '../api/core.api';
 import { useAuth } from '../../../shared/context/AuthContext';
+import Card from '../../../shared/ui/Card';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Button from '../../../shared/ui/Button';
 
 const PAISES = ['MX', 'US', 'CO', 'AR', 'CL', 'PE'];
 const MONEDAS = ['MXN', 'USD', 'COP', 'ARS', 'CLP', 'PEN'];
@@ -49,61 +53,88 @@ function RegistroPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 420 }}>
-      <h1>Registrar empresa</h1>
-      <form onSubmit={enviar} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        <label>
-          Nombre comercial
-          <input
-            value={form.nombreComercial}
-            onChange={(e) => actualizar('nombreComercial', e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          País
-          <select value={form.pais} onChange={(e) => actualizar('pais', e.target.value)}>
-            {PAISES.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Moneda
-          <select value={form.moneda} onChange={(e) => actualizar('moneda', e.target.value)}>
-            {MONEDAS.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </label>
-        <hr />
-        <label>
-          Tu nombre
-          <input value={form.nombreAdmin} onChange={(e) => actualizar('nombreAdmin', e.target.value)} required />
-        </label>
-        <label>
-          Tu correo
-          <input
-            type="email"
-            value={form.correoAdmin}
-            onChange={(e) => actualizar('correoAdmin', e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Contraseña (mínimo 8 caracteres)
-          <input
-            type="password"
-            minLength={8}
-            value={form.password}
-            onChange={(e) => actualizar('password', e.target.value)}
-            required
-          />
-        </label>
-        {error && <p style={{ color: 'crimson' }}>{error}</p>}
-        <button type="submit" disabled={cargando}>{cargando ? 'Creando...' : 'Crear empresa'}</button>
-      </form>
-      <p>¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link></p>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex flex-col items-center gap-2">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 text-xl font-bold text-white">
+            V
+          </div>
+          <span className="text-xl font-bold text-gray-900">Ventix</span>
+        </div>
+
+        <Card>
+          <h1 className="mb-1 text-lg font-semibold text-gray-900">Registrar empresa</h1>
+          <p className="mb-5 text-sm text-gray-500">Creá tu empresa y tu usuario administrador.</p>
+
+          <form onSubmit={enviar} className="flex flex-col gap-4">
+            <Input
+              id="nombreComercial"
+              label="Nombre comercial"
+              value={form.nombreComercial}
+              onChange={(e) => actualizar('nombreComercial', e.target.value)}
+              required
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Select id="pais" label="País" value={form.pais} onChange={(e) => actualizar('pais', e.target.value)}>
+                {PAISES.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </Select>
+              <Select
+                id="moneda"
+                label="Moneda"
+                value={form.moneda}
+                onChange={(e) => actualizar('moneda', e.target.value)}
+              >
+                {MONEDAS.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </Select>
+            </div>
+
+            <hr className="border-gray-100" />
+
+            <Input
+              id="nombreAdmin"
+              label="Tu nombre"
+              value={form.nombreAdmin}
+              onChange={(e) => actualizar('nombreAdmin', e.target.value)}
+              required
+            />
+            <Input
+              id="correoAdmin"
+              label="Tu correo"
+              type="email"
+              value={form.correoAdmin}
+              onChange={(e) => actualizar('correoAdmin', e.target.value)}
+              required
+            />
+            <Input
+              id="passwordRegistro"
+              label="Contraseña (mínimo 8 caracteres)"
+              type="password"
+              minLength={8}
+              value={form.password}
+              onChange={(e) => actualizar('password', e.target.value)}
+              required
+            />
+
+            {error && (
+              <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>
+            )}
+            <Button type="submit" disabled={cargando} className="w-full">
+              {cargando ? 'Creando...' : 'Crear empresa'}
+            </Button>
+          </form>
+        </Card>
+
+        <p className="mt-5 text-center text-sm text-gray-500">
+          ¿Ya tenés cuenta?{' '}
+          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-700">
+            Inicia sesión
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }
