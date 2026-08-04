@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { listarAuditoria, listarUsuarios } from '../api/core.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 
 const ENTIDADES = ['Empresa', 'Sucursal', 'Usuario', 'Rol', 'RolPermiso'];
 
@@ -41,74 +45,78 @@ function AuditoriaPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 900 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Bitácora de auditoría</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Bitácora de auditoría</h1>
+        <p className="text-sm text-gray-500">Historial de cambios realizados en el sistema.</p>
+      </div>
 
-      <form onSubmit={aplicarFiltros} style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        <label>
-          Entidad
-          <select
+      <Card>
+        <form onSubmit={aplicarFiltros} className="flex flex-wrap items-end gap-3">
+          <Select
+            id="entidadFiltro"
+            label="Entidad"
             value={filtros.entidad}
             onChange={(e) => setFiltros((f) => ({ ...f, entidad: e.target.value }))}
+            className="min-w-[180px]"
           >
             <option value="">Todas</option>
             {ENTIDADES.map((ent) => (
               <option key={ent} value={ent}>{ent}</option>
             ))}
-          </select>
-        </label>
-        <label>
-          Desde
-          <input
+          </Select>
+          <Input
+            id="desdeFiltro"
+            label="Desde"
             type="date"
             value={filtros.desde}
             onChange={(e) => setFiltros((f) => ({ ...f, desde: e.target.value }))}
           />
-        </label>
-        <label>
-          Hasta
-          <input
+          <Input
+            id="hastaFiltro"
+            label="Hasta"
             type="date"
             value={filtros.hasta}
             onChange={(e) => setFiltros((f) => ({ ...f, hasta: e.target.value }))}
           />
-        </label>
-        <button type="submit" style={{ alignSelf: 'flex-end' }}>Filtrar</button>
-      </form>
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+          <Button type="submit" variant="secondary">Filtrar</Button>
+        </form>
+      </Card>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Fecha</th>
-            <th style={{ textAlign: 'left' }}>Usuario</th>
-            <th style={{ textAlign: 'left' }}>Acción</th>
-            <th style={{ textAlign: 'left' }}>Entidad</th>
-            <th style={{ textAlign: 'left' }}>Detalle</th>
-          </tr>
-        </thead>
-        <tbody>
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+
+      <Card title="Registros">
+        <Table columnas={['Fecha', 'Usuario', 'Acción', 'Entidad', 'Detalle']}>
+          {registros.length === 0 && <TablaVacia colSpan={5} mensaje="Sin registros para los filtros seleccionados." />}
           {registros.map((r) => (
-            <tr key={r.id}>
-              <td>{new Date(r.creadoEn).toLocaleString()}</td>
-              <td>{usuariosPorId[r.usuarioEjecutorId] || r.usuarioEjecutorId}</td>
-              <td>{r.accion}</td>
-              <td>{r.entidad}{r.entidadId ? ` (${r.entidadId.slice(0, 8)}…)` : ''}</td>
-              <td>
+            <Fila key={r.id}>
+              <Celda>{new Date(r.creadoEn).toLocaleString()}</Celda>
+              <Celda>{usuariosPorId[r.usuarioEjecutorId] || r.usuarioEjecutorId}</Celda>
+              <Celda>{r.accion}</Celda>
+              <Celda>{r.entidad}{r.entidadId ? ` (${r.entidadId.slice(0, 8)}…)` : ''}</Celda>
+              <Celda>
                 {(r.valoresAntes || r.valoresDespues) ? (
                   <details>
-                    <summary>ver</summary>
-                    {r.valoresAntes && <pre>Antes: {JSON.stringify(r.valoresAntes, null, 2)}</pre>}
-                    {r.valoresDespues && <pre>Después: {JSON.stringify(r.valoresDespues, null, 2)}</pre>}
+                    <summary className="cursor-pointer text-sm text-primary-600 hover:underline">ver</summary>
+                    <div className="mt-2 space-y-2">
+                      {r.valoresAntes && (
+                        <pre className="max-w-md overflow-x-auto rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
+                          Antes: {JSON.stringify(r.valoresAntes, null, 2)}
+                        </pre>
+                      )}
+                      {r.valoresDespues && (
+                        <pre className="max-w-md overflow-x-auto rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
+                          Después: {JSON.stringify(r.valoresDespues, null, 2)}
+                        </pre>
+                      )}
+                    </div>
                   </details>
                 ) : '—'}
-              </td>
-            </tr>
+              </Celda>
+            </Fila>
           ))}
-        </tbody>
-      </table>
-      {registros.length === 0 && <p>Sin registros para los filtros seleccionados.</p>}
+        </Table>
+      </Card>
     </div>
   );
 }

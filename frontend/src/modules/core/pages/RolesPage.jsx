@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { listarRoles, crearRol, actualizarRol, reemplazarPermisosRol, listarPermisos } from '../api/core.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Modal from '../../../shared/ui/Modal';
 
 function agruparPorGrupo(permisos) {
   const grupos = new Map();
@@ -90,70 +93,83 @@ function RolesPage() {
   }
 
   const gruposPermisos = agruparPorGrupo(permisosCatalogo);
+  const rolEnEdicion = roles.find((r) => r.id === editandoPermisosId);
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 800 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Roles y permisos</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Roles y permisos</h1>
+        <p className="text-sm text-gray-500">Definí qué puede hacer cada rol dentro del sistema.</p>
+      </div>
 
-      {roles.map((rol) => (
-        <div key={rol.id} style={{ border: '1px solid #ccc', borderRadius: 4, padding: '1rem', marginBottom: '1rem' }}>
-          {renombrandoId === rol.id ? (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <input value={renombrarValor} onChange={(e) => setRenombrarValor(e.target.value)} required />
-              <button type="button" onClick={() => guardarRenombrar(rol.id)}>Guardar</button>
-              <button type="button" onClick={() => setRenombrandoId(null)}>Cancelar</button>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <h3 style={{ margin: 0 }}>{rol.nombre}</h3>
-              <button type="button" onClick={() => iniciarRenombrar(rol)}>Renombrar</button>
-            </div>
-          )}
-          {renombrandoId === rol.id && errorRenombrar && <p style={{ color: 'crimson' }}>{errorRenombrar}</p>}
+      <div className="space-y-4">
+        {roles.map((rol) => (
+          <Card key={rol.id}>
+            {renombrandoId === rol.id ? (
+              <div className="mb-2 flex flex-wrap items-end gap-3">
+                <Input id={`renombrarRol-${rol.id}`} value={renombrarValor} onChange={(e) => setRenombrarValor(e.target.value)} required className="w-56" />
+                <Button variant="secondary" onClick={() => guardarRenombrar(rol.id)}>Guardar</Button>
+                <Button variant="ghost" onClick={() => setRenombrandoId(null)}>Cancelar</Button>
+              </div>
+            ) : (
+              <div className="mb-2 flex items-center gap-3">
+                <h3 className="text-base font-semibold text-gray-900">{rol.nombre}</h3>
+                <button type="button" onClick={() => iniciarRenombrar(rol)} className="text-sm text-primary-600 hover:underline">
+                  Renombrar
+                </button>
+              </div>
+            )}
+            {renombrandoId === rol.id && errorRenombrar && (
+              <p className="mb-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorRenombrar}</p>
+            )}
 
-          <p>{rol.permisos.length} permiso(s) asignado(s)</p>
+            <p className="mb-3 text-sm text-gray-500">{rol.permisos.length} permiso(s) asignado(s)</p>
 
-          {editandoPermisosId === rol.id ? (
-            <div>
-              {gruposPermisos.map(([grupo, permisos]) => (
-                <div key={grupo} style={{ marginBottom: '0.75rem' }}>
-                  <strong>{grupo}</strong>
-                  <div style={{ display: 'flex', flexDirection: 'column', marginLeft: '1rem' }}>
-                    {permisos.map((p) => (
-                      <label key={p.clave}>
-                        <input
-                          type="checkbox"
-                          checked={permisosSeleccionados.has(p.clave)}
-                          onChange={() => alternarPermiso(p.clave)}
-                        />{' '}
-                        {p.nombre}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {errorPermisos && <p style={{ color: 'crimson' }}>{errorPermisos}</p>}
-              <button type="button" onClick={() => guardarPermisos(rol.id)}>Guardar permisos</button>{' '}
-              <button type="button" onClick={() => setEditandoPermisosId(null)}>Cancelar</button>
+            <Button variant="secondary" onClick={() => iniciarEdicionPermisos(rol)}>Editar permisos</Button>
+          </Card>
+        ))}
+      </div>
+
+      <Card title="Nuevo rol">
+        <form onSubmit={agregar} className="flex flex-wrap items-end gap-3">
+          <Input id="nombreRolNuevo" label="Nombre del rol" value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} required className="w-56" />
+          <Button type="submit">Crear rol</Button>
+        </form>
+        {error && <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+      </Card>
+
+      <Modal
+        abierto={editandoPermisosId !== null}
+        onCerrar={() => setEditandoPermisosId(null)}
+        titulo={`Permisos de ${rolEnEdicion?.nombre || ''}`}
+        ancho="max-w-2xl"
+      >
+        <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+          {gruposPermisos.map(([grupo, permisos]) => (
+            <div key={grupo}>
+              <p className="mb-2 text-sm font-semibold text-gray-800">{grupo}</p>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {permisos.map((p) => (
+                  <label key={p.clave} className="flex items-center gap-2 text-sm text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={permisosSeleccionados.has(p.clave)}
+                      onChange={() => alternarPermiso(p.clave)}
+                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    {p.nombre}
+                  </label>
+                ))}
+              </div>
             </div>
-          ) : (
-            <button type="button" onClick={() => iniciarEdicionPermisos(rol)}>Editar permisos</button>
-          )}
+          ))}
         </div>
-      ))}
-
-      <h2>Nuevo rol</h2>
-      <form onSubmit={agregar} style={{ display: 'flex', gap: '0.5rem', maxWidth: 320 }}>
-        <input
-          placeholder="Nombre del rol"
-          value={nombreNuevo}
-          onChange={(e) => setNombreNuevo(e.target.value)}
-          required
-        />
-        <button type="submit">Crear rol</button>
-      </form>
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+        {errorPermisos && <p className="mt-4 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorPermisos}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setEditandoPermisosId(null)}>Cancelar</Button>
+          <Button onClick={() => guardarPermisos(editandoPermisosId)}>Guardar permisos</Button>
+        </div>
+      </Modal>
     </div>
   );
 }

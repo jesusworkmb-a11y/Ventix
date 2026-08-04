@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { listarUsuarios, crearUsuario, actualizarUsuario, listarRoles } from '../api/core.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Badge from '../../../shared/ui/Badge';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 
 const FORM_VACIO = { nombre: '', correo: '', password: '', rolId: '' };
 const EDIT_VACIO = { rolId: '', estado: 'ACTIVO', telefono: '' };
+
+const ESTADO_TONO = { ACTIVO: 'success', INACTIVO: 'gray', BLOQUEADO: 'danger' };
 
 function UsuariosPage() {
   const [usuarios, setUsuarios] = useState([]);
@@ -75,100 +82,93 @@ function UsuariosPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 800 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Usuarios</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Usuarios</h1>
+        <p className="text-sm text-gray-500">Cuentas de acceso al sistema y su rol asignado.</p>
+      </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Nombre</th>
-            <th style={{ textAlign: 'left' }}>Correo</th>
-            <th style={{ textAlign: 'left' }}>Rol</th>
-            <th style={{ textAlign: 'left' }}>Estado</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
+      <Card title="Usuarios">
+        {errorEdit && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
+        <Table columnas={['Nombre', 'Correo', 'Rol', 'Estado', '']}>
+          {usuarios.length === 0 && <TablaVacia colSpan={5} />}
           {usuarios.map((u) => (
-            <tr key={u.id}>
+            <Fila key={u.id}>
               {editandoId === u.id ? (
                 <>
-                  <td>{u.nombre}</td>
-                  <td>{u.correo}</td>
-                  <td>
-                    <select
+                  <Celda className="font-medium text-gray-800">{u.nombre}</Celda>
+                  <Celda>{u.correo}</Celda>
+                  <Celda>
+                    <Select
+                      id={`rolUsuario-${u.id}`}
                       value={editForm.rolId}
                       onChange={(e) => setEditForm((f) => ({ ...f, rolId: e.target.value }))}
+                      className="py-1.5"
                     >
                       {roles.map((r) => (
                         <option key={r.id} value={r.id}>{r.nombre}</option>
                       ))}
-                    </select>
-                  </td>
-                  <td>
-                    <select
+                    </Select>
+                  </Celda>
+                  <Celda>
+                    <Select
+                      id={`estadoUsuario-${u.id}`}
                       value={editForm.estado}
                       onChange={(e) => setEditForm((f) => ({ ...f, estado: e.target.value }))}
+                      className="py-1.5"
                     >
                       <option value="ACTIVO">Activo</option>
                       <option value="INACTIVO">Inactivo</option>
                       <option value="BLOQUEADO">Bloqueado</option>
-                    </select>
-                  </td>
-                  <td>
-                    <button type="button" onClick={() => guardarEdicion(u.id)}>Guardar</button>{' '}
-                    <button type="button" onClick={cancelarEdicion}>Cancelar</button>
-                  </td>
+                    </Select>
+                  </Celda>
+                  <Celda className="text-right">
+                    <div className="flex justify-end gap-3">
+                      <button type="button" onClick={() => guardarEdicion(u.id)} className="text-sm text-primary-600 hover:underline">
+                        Guardar
+                      </button>
+                      <button type="button" onClick={cancelarEdicion} className="text-sm text-gray-500 hover:underline">
+                        Cancelar
+                      </button>
+                    </div>
+                  </Celda>
                 </>
               ) : (
                 <>
-                  <td>{u.nombre}</td>
-                  <td>{u.correo}</td>
-                  <td>{u.rol?.nombre || '—'}</td>
-                  <td>{u.estado}</td>
-                  <td><button type="button" onClick={() => iniciarEdicion(u)}>Editar</button></td>
+                  <Celda className="font-medium text-gray-800">{u.nombre}</Celda>
+                  <Celda>{u.correo}</Celda>
+                  <Celda>{u.rol?.nombre || '—'}</Celda>
+                  <Celda><Badge tono={ESTADO_TONO[u.estado] || 'gray'}>{u.estado}</Badge></Celda>
+                  <Celda className="text-right">
+                    <button type="button" onClick={() => iniciarEdicion(u)} className="text-sm text-primary-600 hover:underline">
+                      Editar
+                    </button>
+                  </Celda>
                 </>
               )}
-            </tr>
+            </Fila>
           ))}
-        </tbody>
-      </table>
-      {errorEdit && <p style={{ color: 'crimson' }}>{errorEdit}</p>}
+        </Table>
+      </Card>
 
-      <h2>Nuevo usuario</h2>
-      {roles.length === 0 && <p>Cargando roles disponibles...</p>}
-      <form onSubmit={agregar} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 320 }}>
-        <label>
-          Nombre
-          <input value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
-        </label>
-        <label>
-          Correo
-          <input type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} required />
-        </label>
-        <label>
-          Contraseña
-          <input
-            type="password"
-            minLength={8}
-            value={form.password}
-            onChange={(e) => actualizarCampo('password', e.target.value)}
-            required
-          />
-        </label>
-        <label>
-          Rol
-          <select value={form.rolId} onChange={(e) => actualizarCampo('rolId', e.target.value)} required>
+      <Card title="Nuevo usuario">
+        {roles.length === 0 && <p className="mb-4 text-sm text-gray-500">Cargando roles disponibles...</p>}
+        <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input id="nombreUsuario" label="Nombre" value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
+          <Input id="correoUsuario" label="Correo" type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} required />
+          <Input id="passwordUsuario" label="Contraseña" type="password" minLength={8} value={form.password} onChange={(e) => actualizarCampo('password', e.target.value)} required />
+          <Select id="rolUsuarioNuevo" label="Rol" value={form.rolId} onChange={(e) => actualizarCampo('rolId', e.target.value)} required>
             <option value="">Selecciona...</option>
             {roles.map((r) => (
               <option key={r.id} value={r.id}>{r.nombre}</option>
             ))}
-          </select>
-        </label>
-        {error && <p style={{ color: 'crimson' }}>{error}</p>}
-        <button type="submit">Crear usuario</button>
-      </form>
+          </Select>
+          {error && <p className="sm:col-span-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+          <div className="sm:col-span-2">
+            <Button type="submit">Crear usuario</Button>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }
