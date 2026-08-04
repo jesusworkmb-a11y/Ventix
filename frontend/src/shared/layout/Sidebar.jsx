@@ -22,6 +22,10 @@ function Sidebar({ abierto, onCerrar }) {
     return activo?.label ?? null;
   });
 
+  const puedeEditarEmpresa = permisos?.includes('administracion.empresa.editar');
+  const ContenedorEmpresa = puedeEditarEmpresa ? Link : 'div';
+  const propsEmpresa = puedeEditarEmpresa ? { to: '/administracion/empresa', onClick: onCerrar } : {};
+
   return (
     <>
       {abierto && (
@@ -101,14 +105,21 @@ function Sidebar({ abierto, onCerrar }) {
           })}
         </nav>
 
-        <div className="flex items-center gap-2 border-t border-white/10 px-4 py-4">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/10 text-gray-300">
-            <Building2 size={16} />
+        <ContenedorEmpresa
+          {...propsEmpresa}
+          className="flex items-center gap-2 border-t border-white/10 px-4 py-4 hover:bg-white/5"
+        >
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white/10 text-gray-300">
+            {empresa?.logoUrl ? (
+              <img src={empresa.logoUrl} alt="" className="h-full w-full object-contain" />
+            ) : (
+              <Building2 size={16} />
+            )}
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-white">{empresa?.nombreComercial || 'Mi empresa'}</p>
           </div>
-        </div>
+        </ContenedorEmpresa>
       </aside>
     </>
   );

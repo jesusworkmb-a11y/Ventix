@@ -48,8 +48,14 @@ export function AuthProvider({ children }) {
     setStatus('anon');
   }
 
+  // Actualiza la empresa en el contexto tras editarla (EmpresaPage), sin necesitar un
+  // round-trip a /me — el resto de la UI (Sidebar, etc.) la lee de acá.
+  function actualizarEmpresa(empresa) {
+    setContexto((c) => ({ ...c, empresa }));
+  }
+
   return (
-    <AuthContext.Provider value={{ status, ...contexto, login, setSesion, logout }}>
+    <AuthContext.Provider value={{ status, ...contexto, login, setSesion, logout, actualizarEmpresa }}>
       {children}
     </AuthContext.Provider>
   );

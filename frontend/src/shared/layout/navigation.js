@@ -59,6 +59,7 @@ export const NAVEGACION = [
     to: '/administracion/sucursales',
     icon: Settings,
     hijos: [
+      { label: 'Empresa', to: '/administracion/empresa', permiso: 'administracion.empresa.editar' },
       { label: 'Sucursales', to: '/administracion/sucursales', permiso: 'administracion.sucursales.ver' },
       { label: 'Usuarios', to: '/administracion/usuarios', permiso: 'administracion.usuarios.ver' },
       { label: 'Roles y permisos', to: '/administracion/roles', permiso: 'administracion.roles.ver' },

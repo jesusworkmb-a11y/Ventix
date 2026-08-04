@@ -3,6 +3,7 @@ import { AuthProvider } from './shared/context/AuthContext';
 import ProtectedRoute from './shared/components/ProtectedRoute';
 import RegistroPage from './modules/core/pages/RegistroPage';
 import LoginPage from './modules/core/pages/LoginPage';
+import EmpresaPage from './modules/core/pages/EmpresaPage';
 import SucursalesPage from './modules/core/pages/SucursalesPage';
 import UsuariosPage from './modules/core/pages/UsuariosPage';
 import RolesPage from './modules/core/pages/RolesPage';
@@ -36,6 +37,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/administracion/empresa"
+          element={(
+            <ProtectedRoute>
+              <EmpresaPage />
             </ProtectedRoute>
           )}
         />

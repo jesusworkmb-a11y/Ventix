@@ -20,7 +20,9 @@ const herramientasRoutes = require('./modules/herramientas/herramientas.routes')
 const app = express();
 
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
-app.use(express.json());
+// Límite subido de 100kb (default de express) a 3mb: el logo de la empresa viaja como data URI
+// (base64) en el body de PATCH /core/empresa — ver empresa.validators.js.
+app.use(express.json({ limit: '3mb' }));
 
 app.use('/api', healthRoutes);
 app.use('/api/core', coreRoutes);

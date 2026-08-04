@@ -12,6 +12,10 @@ export function me() {
   return api.get('/core/me').then((res) => res.data);
 }
 
+export function actualizarEmpresa(datos) {
+  return api.patch('/core/empresa', datos).then((res) => res.data);
+}
+
 export function listarSucursales() {
   return api.get('/core/sucursales').then((res) => res.data);
 }
