@@ -549,6 +549,35 @@ colapso del sidebar), una tabla con búsqueda/orden/paginación server-side prop
 system (hoy las tablas son simples, la búsqueda ya existente en Artículos/Clientes/Proveedores
 se dejó igual), y loading states (spinners) más pulidos.
 
+## Pulido post-rediseño (2026-08-04)
+
+Los tres pendientes de la sección anterior se cerraron en la misma sesión:
+
+- **Ventas como POS real**: [VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx)
+  se reescribió para capturar sin clics de más — clic en la tarjeta de un producto (o Enter
+  en el buscador con match exacto de SKU/código de barras) lo agrega directo al carrito, sin
+  botón "Agregar"; carrito con steppers +/-; cobrar en un clic (Tarjeta/Transferencia), con
+  Efectivo abriendo un modal para ingresar el monto recibido y calcular el cambio antes de
+  confirmar; atajos F1/F2/F3/Esc. "Ventas recientes" (cancelar/devolver) se separó a su propia
+  pantalla, [VentasHistorialPage.jsx](frontend/src/modules/ventas/pages/VentasHistorialPage.jsx)
+  en `/ventas/recientes`, para que la captura quede enfocada solo en vender.
+- **Responsive mobile real**: auditoría de las 22 pantallas a 375px; el único bug real eran
+  los headers de página con botón de acción (Ventas, Ventas recientes, Cotizaciones) que no
+  apilaban y partían el texto en varias líneas — corregido.
+- **Búsqueda/orden/paginación server-side**: implementado con alcance acotado a las listas
+  grandes — Ventas recientes, Compras, Artículos, Clientes, Proveedores, Auditoría (el resto
+  de las tablas queda simple, a pedido del usuario). Helper compartido
+  [backend/src/shared/paginacion.js](backend/src/shared/paginacion.js) + componente
+  [Paginacion.jsx](frontend/src/shared/ui/Paginacion.jsx) y `Table` extendido con headers
+  ordenables de forma retrocompatible. Artículos/Clientes/Proveedores quedaron "dual-mode"
+  (sin `pagina` en el query devuelven el array completo de siempre, porque otras pantallas
+  —el POS de Ventas, Cotizaciones, Compras, Ajustes, Conteos, Transferencias— dependen de esa
+  lista completa para sus selects/grillas) — **grepear quién más consume un endpoint antes de
+  cambiarle el shape de la respuesta**.
+
+Detalle completo (incluidos los gotchas de diseño de cada uno) en la memoria del proyecto, no
+se duplica acá.
+
 ## Qué contiene
 
 ```text
@@ -623,9 +652,13 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 Los 10 módulos del plan original están completos y en producción, los 10 ya tuvieron su
 primera ronda de QA (ver secciones arriba: Core, Ventas, Caja, Inventario, Catálogo, Compras,
 Clientes/Proveedores, Reportes, Herramientas — todos los vacíos detectados ya están resueltos,
-con una excepción documentada de severidad muy baja en Clientes), y el rediseño visual completo
-ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba). A elección:
-- Pulir el rediseño: responsive real en mobile, tabla con búsqueda/orden/paginación
-  server-side propia del design system, loading states más pulidos.
+con una excepción documentada de severidad muy baja en Clientes), el rediseño visual completo
+ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba), y sus tres pendientes de
+pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orden/paginación
+server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). **No
+queda ningún pendiente abierto.** A elección:
+- Extender la paginación server-side al resto de las tablas (hoy solo la tienen Ventas
+  recientes, Compras, Artículos, Clientes, Proveedores, Auditoría).
 - Una segunda ronda de QA más profunda sobre algún módulo.
 - Nuevas funcionalidades fuera del plan original.
+- Loading states (spinners) más pulidos — el único ítem del pulido visual que quedó sin tocar.
