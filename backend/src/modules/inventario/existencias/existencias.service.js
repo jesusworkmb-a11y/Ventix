@@ -4,6 +4,7 @@ const { aplicarMovimiento } = require('../../../shared/services/inventario.servi
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
+const { aCsv } = require('../../../shared/csv');
 
 const COLUMNAS_ORDENABLES = {
   sucursal: 'sucursal.nombre',
@@ -13,12 +14,10 @@ const COLUMNAS_ORDENABLES = {
 };
 const ORDEN_DEFECTO = [{ sucursal: { nombre: 'asc' } }, { articulo: { nombre: 'asc' } }];
 
-// `paginacion` opcional, mismo criterio que Artículos/Clientes/Proveedores: sin `pagina`
-// explícita devuelve el array completo (VentasPage y useDashboardData.js lo usan para
-// lookups de stock, no como tabla), solo pagina cuando el caller la pide (ExistenciasPage).
-// Es la colección que más crece de las seis migradas (sucursales × artículos), así que era la
-// única de las seis sin ningún `take` — antes totalmente sin límite.
-async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
+// Compartido por listar() y exportarCsv(): mismos filtros aplican a ambos, para que el CSV
+// exportado sea siempre exactamente lo que se está viendo en la pantalla (misma búsqueda/
+// sucursal/solo-con-stock), no un volcado completo aparte.
+function construirWhere({ empresaId, filtros }) {
   const where = { empresaId };
   if (filtros.sucursalId) where.sucursalId = filtros.sucursalId;
   if (filtros.articuloId) where.articuloId = filtros.articuloId;
@@ -31,6 +30,16 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
       ],
     };
   }
+  return where;
+}
+
+// `paginacion` opcional, mismo criterio que Artículos/Clientes/Proveedores: sin `pagina`
+// explícita devuelve el array completo (VentasPage y useDashboardData.js lo usan para
+// lookups de stock, no como tabla), solo pagina cuando el caller la pide (ExistenciasPage).
+// Es la colección que más crece de las seis migradas (sucursales × artículos), así que era la
+// única de las seis sin ningún `take` — antes totalmente sin límite.
+async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
+  const where = construirWhere({ empresaId, filtros });
   const include = { articulo: true, sucursal: true };
 
   if (!paginacion || paginacion.pagina === undefined) {
@@ -89,4 +98,24 @@ async function establecerInicial({ empresaId, usuarioId, sucursalId, articuloId,
   });
 }
 
-module.exports = { listar, establecerInicial };
+const COLUMNAS_EXPORTAR = ['sucursal', 'articulo', 'sku', 'cantidad'];
+
+async function exportarCsv({ empresaId, filtros }) {
+  const where = construirWhere({ empresaId, filtros });
+  const existencias = await prisma.existencia.findMany({
+    where,
+    include: { articulo: true, sucursal: true },
+    orderBy: ORDEN_DEFECTO,
+  });
+
+  const filas = existencias.map((e) => ({
+    sucursal: e.sucursal.nombre,
+    articulo: e.articulo.nombre,
+    sku: e.articulo.sku || '',
+    cantidad: e.cantidad,
+  }));
+
+  return aCsv(filas, COLUMNAS_EXPORTAR);
+}
+
+module.exports = { listar, establecerInicial, exportarCsv };

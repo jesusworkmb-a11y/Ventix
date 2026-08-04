@@ -13,6 +13,17 @@ async function listar(req, res) {
   res.json(existencias);
 }
 
+async function exportar(req, res) {
+  const { sucursalId, articuloId, buscar, soloConStock } = req.query;
+  const csv = await service.exportarCsv({
+    empresaId: req.auth.empresaId,
+    filtros: { sucursalId, articuloId, buscar, soloConStock: soloConStock === 'true' },
+  });
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="existencias.csv"');
+  res.send(csv);
+}
+
 async function establecerInicial(req, res) {
   const parsed = existenciaInicialSchema.safeParse(req.body);
   if (!parsed.success) throw new AppError(400, 'Datos de existencia inicial inválidos.');
@@ -24,4 +35,4 @@ async function establecerInicial(req, res) {
   res.status(201).json(resultado);
 }
 
-module.exports = { listar, establecerInicial };
+module.exports = { listar, exportar, establecerInicial };

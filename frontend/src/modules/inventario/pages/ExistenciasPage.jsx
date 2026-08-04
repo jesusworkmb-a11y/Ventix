@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search } from 'lucide-react';
-import { listarExistencias, establecerExistenciaInicial } from '../api/inventario.api';
+import { Search, Download } from 'lucide-react';
+import { listarExistencias, establecerExistenciaInicial, exportarExistencias } from '../api/inventario.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
 import Card from '../../../shared/ui/Card';
@@ -31,6 +31,8 @@ function ExistenciasPage() {
   const [soloConStock, setSoloConStock] = useState(false);
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'sucursal', orden: 'asc' });
+  const [exportando, setExportando] = useState(false);
+  const [errorExport, setErrorExport] = useState('');
 
   function cargarExistencias(pagina = 1) {
     listarExistencias({
@@ -66,6 +68,24 @@ function ExistenciasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buscar, filtroSucursalId, soloConStock, orden]);
 
+  // Exporta exactamente lo que la pantalla tiene filtrado en ese momento (búsqueda/sucursal/
+  // solo-con-stock), no un volcado completo aparte — mismos filtros que cargarExistencias().
+  async function exportar() {
+    setErrorExport('');
+    setExportando(true);
+    try {
+      await exportarExistencias({
+        buscar: buscar || undefined,
+        sucursalId: filtroSucursalId || undefined,
+        soloConStock: soloConStock || undefined,
+      });
+    } catch (err) {
+      setErrorExport('No se pudo exportar el reporte.');
+    } finally {
+      setExportando(false);
+    }
+  }
+
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
@@ -99,7 +119,15 @@ function ExistenciasPage() {
         </p>
       )}
 
-      <Card title="Existencias por sucursal">
+      <Card
+        title="Existencias por sucursal"
+        action={(
+          <Button type="button" variant="secondary" size="sm" onClick={exportar} disabled={exportando}>
+            <Download size={16} /> {exportando ? 'Exportando...' : 'Exportar CSV'}
+          </Button>
+        )}
+      >
+        {errorExport && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorExport}</p>}
         <div className="mb-4 flex flex-wrap items-end gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search size={16} className="pointer-events-none absolute left-3 top-[38px] text-gray-400" />
