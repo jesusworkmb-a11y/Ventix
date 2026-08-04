@@ -31,14 +31,31 @@ function calcularTotales(cotizacion, articulosCompletos) {
   return { lineas, subtotal, impuestos, total };
 }
 
+const ALTO_LOGO = 16; // mm — ancho se deriva de la proporción real de la imagen
+
 export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
   const { lineas, subtotal, impuestos, total } = calcularTotales(cotizacion, articulosCompletos);
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   let y = 20;
+  let xTexto = MARGEN_X;
+
+  // El logo (data URI PNG generado en EmpresaPage) empuja el nombre/datos de la empresa a la
+  // derecha en vez de superponerse — si no hay logo, xTexto queda igual a MARGEN_X. Un logo
+  // corrupto o con un formato que jsPDF no pueda leer no debe tumbar la generación del PDF.
+  if (empresa?.logoUrl) {
+    try {
+      const propiedades = doc.getImageProperties(empresa.logoUrl);
+      const anchoLogo = (propiedades.width / propiedades.height) * ALTO_LOGO;
+      doc.addImage(empresa.logoUrl, 'PNG', MARGEN_X, 10, anchoLogo, ALTO_LOGO);
+      xTexto = MARGEN_X + anchoLogo + 4;
+    } catch (err) {
+      xTexto = MARGEN_X;
+    }
+  }
 
   doc.setFontSize(16);
   doc.setFont(undefined, 'bold');
-  doc.text(empresa?.nombreComercial || '', MARGEN_X, y);
+  doc.text(empresa?.nombreComercial || '', xTexto, y);
 
   doc.setFontSize(14);
   doc.text('COTIZACIÓN', DERECHA, y, { align: 'right' });
@@ -49,14 +66,14 @@ export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
   y += 6;
   const datosEmpresa = [empresa?.rfc && `RFC: ${empresa.rfc}`, empresa?.telefono, empresa?.correo]
     .filter(Boolean).join(' · ');
-  if (datosEmpresa) { doc.text(datosEmpresa, MARGEN_X, y); }
+  if (datosEmpresa) { doc.text(datosEmpresa, xTexto, y); }
   doc.text(`Folio: ${cotizacion.folio || '-'}`, DERECHA, y, { align: 'right' });
   y += 5;
   if (cotizacion.sucursal?.nombre) {
     const sucursalTexto = cotizacion.sucursal.direccion
       ? `${cotizacion.sucursal.nombre} — ${cotizacion.sucursal.direccion}`
       : cotizacion.sucursal.nombre;
-    doc.text(sucursalTexto, MARGEN_X, y);
+    doc.text(sucursalTexto, xTexto, y);
   }
   doc.text(`Fecha: ${formatoFecha(cotizacion.creadoEn)}`, DERECHA, y, { align: 'right' });
 
