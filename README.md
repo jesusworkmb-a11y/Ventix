@@ -72,9 +72,11 @@ Notas del despliegue:
    `FRONTEND_URL` (el frontend ya desplegado), no desde `localhost:5173` — para verificar cambios
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: con los 10 módulos completos y ya en producción, y los 10 ya con su primera
-   pasada de QA (ver secciones abajo) — lo siguiente es a elección: una segunda ronda de QA más
-   profunda sobre algún módulo, o nuevas funcionalidades fuera del plan original.
+5. Dile qué sigue: con los 10 módulos completos y en producción, su primera pasada de QA
+   cerrada, y el rediseño visual completo ya aplicado a las 22 pantallas (ver secciones abajo)
+   — lo siguiente es a elección: pulir el rediseño (responsive real en mobile, tabla con
+   paginación server-side, loading states), una segunda ronda de QA más profunda sobre algún
+   módulo, o nuevas funcionalidades fuera del plan original.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -496,6 +498,57 @@ inherente al valor específico convertido (algunos floats sobreviven la conversi
 limpios, otros no), no al campo. Si en el futuro aparece un monto con decimales "sucios" en
 cualquier reporte o pantalla, este es el patrón a revisar primero.
 
+## Rediseño visual (2026-08-04)
+
+Con los 10 módulos completos y su primera ronda de QA cerrada, se hizo un rediseño visual
+completo del frontend a pedido del usuario, siguiendo una guía de diseño provista por él
+(minimalista, inspirada en Linear/Notion/Stripe/Vercel — mucho blanco, colores solo
+funcionales, bordes redondeados, sombras sutiles) más una imagen de referencia de un dashboard.
+Sin cambios de lógica de negocio en ningún módulo: mismos estados, handlers y llamadas a la
+API en todas las pantallas, solo cambió el markup/estilos.
+
+- **Stack:** se sumó Tailwind CSS (antes el frontend no tenía ningún framework de estilos,
+  todo era CSS inline) + tipografía Inter (Google Fonts) + [lucide-react](https://lucide.dev)
+  para íconos. Tokens de diseño (paleta azul/verde/amarillo/rojo funcionales, navy para el
+  sidebar, radios, sombras) en
+  [tailwind.config.js](frontend/tailwind.config.js).
+- **Design system reutilizable** en `frontend/src/shared/ui/`: `Button`, `Input`, `Select`,
+  `Card`, `StatCard`, `Badge`, `Table`, `Modal`, `TrendChart` (gráfico de línea propio en SVG,
+  sin librería de charts). Un solo estilo por tipo de componente, reusado en las 22 pantallas.
+- **Layout fijo** en `frontend/src/shared/layout/`: `Sidebar` (navy, con los 11 módulos
+  agrupados — Ventas/Inventario/Catálogo/Configuración son expandibles porque cada uno cuelga
+  de varias pantallas) + `TopBar` (búsqueda, usuario, logout). Se engancha automáticamente en
+  [ProtectedRoute.jsx](frontend/src/shared/components/ProtectedRoute.jsx), así que toda
+  pantalla autenticada lo hereda sin tocarla una por una.
+- **Dashboard reconstruido** ([DashboardPage.jsx](frontend/src/modules/dashboard/pages/DashboardPage.jsx))
+  con datos 100% reales del backend existente (ventas del día, caja actual vía sesiones
+  abiertas, artículos en stock, clientes activos, tendencia de 7 días, productos más vendidos,
+  movimientos recientes fusionando ventas/compras/ajustes/clientes nuevos, alertas de stock
+  bajo y estado de caja, resumen de cobros por método de pago) — sin inventar datos que el
+  backend no expone: por ejemplo "compras pendientes" no existe como concepto (las compras se
+  confirman al crearse, no hay flujo de recepción pendiente), así que ese card de la imagen de
+  referencia se reemplazó por algo real.
+- **Login/Registro** reconstruidos como card centrado con logo. **Los otros 8 módulos**
+  (Ventas, Cotizaciones, Caja, Compras, Inventario ×4, Catálogo ×2, Clientes, Proveedores,
+  Reportes, Herramientas, Sucursales, Usuarios, Roles, Auditoría) se re-skinaron 1:1 sobre el
+  código existente. Los paneles que antes eran filas de tabla expandibles (editar, ver
+  detalle, devolver una venta, convertir cotización, precios por lista, permisos de rol) ahora
+  son `Modal`.
+- **Verificación:** cada lote se probó primero en local (`npm run dev` del frontend, sin
+  necesidad de backend para detectar errores de compilación/consola — todas las páginas se
+  importan de forma eager en `App.jsx`, así que un error de sintaxis en cualquiera rompe hasta
+  el login) y después en producción con clics reales vía el usuario de prueba, incluyendo el
+  modal de devolución de Ventas.
+- Se pusheó a `main` en 8 commits incrementales (fundación+Dashboard, Login/Registro,
+  Ventas/Cotizaciones, Caja/Compras/Inventario, Catálogo, Clientes/Proveedores,
+  Reportes/Herramientas, Configuración/Administración) — cada uno redesplegado y verificado en
+  Render antes de seguir con el siguiente.
+
+Pendiente si se quiere profundizar: diseño responsivo real en mobile (solo se probó el
+colapso del sidebar), una tabla con búsqueda/orden/paginación server-side propia del design
+system (hoy las tablas son simples, la búsqueda ya existente en Artículos/Clientes/Proveedores
+se dejó igual), y loading states (spinners) más pulidos.
+
 ## Qué contiene
 
 ```text
@@ -515,13 +568,21 @@ ventix/
 │       └── modules/              ← MOD-001 a MOD-010, cada uno con sus propios
 │                                    <recurso>/{.controller,.service,.routes,.validators}.js
 └── frontend/
+    ├── tailwind.config.js        ← tokens de diseño (colores, tipografía, sombras, radios)
     └── src/
         ├── App.jsx               ← rutas de la app (una por pantalla, todas tras login salvo /login y /registro)
-        ├── shared/api.js         ← cliente HTTP único hacia el backend
+        ├── index.css              ← entrypoint de Tailwind
+        ├── shared/
+        │   ├── api.js             ← cliente HTTP único hacia el backend
+        │   ├── format.js          ← formatoMoneda / tiempoRelativo
+        │   ├── ui/                ← design system: Button, Input, Select, Card, StatCard,
+        │   │                         Badge, Table, Modal, TrendChart
+        │   └── layout/            ← Sidebar + TopBar + AppLayout (estructura fija, enganchada
+        │                             en ProtectedRoute.jsx)
         └── modules/              ← una carpeta por módulo (core, catalogo, ventas...), cada
                                      una con api/ (llamadas HTTP) y pages/ (pantallas) — ver las
-                                     secciones de QA arriba para el detalle de qué pantallas
-                                     tiene cada módulo y qué le falta
+                                     secciones de QA y "Rediseño visual" arriba para el detalle
+                                     de qué pantallas tiene cada módulo
 ```
 
 ## Cómo arrancarlo desde cero
@@ -559,9 +620,12 @@ permisos y secuencias) — no hay datos de arranque más allá de eso.
 
 ## Qué sigue
 
-Los 10 módulos del plan original están completos y en producción, y los 10 ya tuvieron su
+Los 10 módulos del plan original están completos y en producción, los 10 ya tuvieron su
 primera ronda de QA (ver secciones arriba: Core, Ventas, Caja, Inventario, Catálogo, Compras,
-Clientes/Proveedores, Reportes, Herramientas). Todos los vacíos detectados en esas pasadas ya
-están resueltos (con una excepción documentada de severidad muy baja en Clientes). A elección:
-una segunda ronda de QA más profunda sobre algún módulo, o nuevas funcionalidades fuera del plan
-original.
+Clientes/Proveedores, Reportes, Herramientas — todos los vacíos detectados ya están resueltos,
+con una excepción documentada de severidad muy baja en Clientes), y el rediseño visual completo
+ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba). A elección:
+- Pulir el rediseño: responsive real en mobile, tabla con búsqueda/orden/paginación
+  server-side propia del design system, loading states más pulidos.
+- Una segunda ronda de QA más profunda sobre algún módulo.
+- Nuevas funcionalidades fuera del plan original.
