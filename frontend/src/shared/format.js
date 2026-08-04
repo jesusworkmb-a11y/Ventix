@@ -1,7 +1,12 @@
 const formateador = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' });
+const formateadorFecha = new Intl.DateTimeFormat('es-MX', { dateStyle: 'short', timeStyle: 'short' });
 
 export function formatoMoneda(valor) {
   return formateador.format(Number(valor) || 0);
+}
+
+export function formatoFecha(fecha) {
+  return formateadorFecha.format(new Date(fecha));
 }
 
 export function tiempoRelativo(fecha) {

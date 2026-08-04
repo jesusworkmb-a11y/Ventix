@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Trash2, Search, Plus, Minus, Package, UserPlus, CreditCard,
-  ArrowLeftRight, Layers, Banknote,
+  ArrowLeftRight, Layers, Banknote, Printer,
 } from 'lucide-react';
-import { crearVenta } from '../api/ventas.api';
+import { crearVenta, obtenerVenta } from '../api/ventas.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes, crearCliente } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
@@ -14,6 +14,7 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Modal from '../../../shared/ui/Modal';
+import TicketVenta from '../components/TicketVenta';
 import { formatoMoneda } from '../../../shared/format';
 
 function VentasPage() {
@@ -32,6 +33,9 @@ function VentasPage() {
   const [ultimoCambio, setUltimoCambio] = useState(null);
   const [procesando, setProcesando] = useState(false);
   const busquedaRef = useRef(null);
+
+  const [ticketVenta, setTicketVenta] = useState(null);
+  const [ticketAbierto, setTicketAbierto] = useState(false);
 
   const [nuevoClienteAbierto, setNuevoClienteAbierto] = useState(false);
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
@@ -219,6 +223,8 @@ function VentasPage() {
       });
       setConfirmada(venta);
       setUltimoCambio(cambio);
+      setTicketVenta(null);
+      obtenerVenta(venta.id).then(setTicketVenta).catch(() => {});
       setCarrito([]);
       return true;
     } catch (err) {
@@ -308,6 +314,8 @@ function VentasPage() {
       });
       setConfirmada(venta);
       setUltimoCambio(null);
+      setTicketVenta(null);
+      obtenerVenta(venta.id).then(setTicketVenta).catch(() => {});
       setCarrito([]);
       setMixtoAbierto(false);
     } catch (err) {
@@ -401,10 +409,20 @@ function VentasPage() {
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
       {confirmada && (
-        <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
-          Venta {confirmada.folio} registrada. Total: {formatoMoneda(confirmada.total)}
-          {ultimoCambio > 0 && <> · Cambio: <span className="font-semibold">{formatoMoneda(ultimoCambio)}</span></>}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
+          <p>
+            Venta {confirmada.folio} registrada. Total: {formatoMoneda(confirmada.total)}
+            {ultimoCambio > 0 && <> · Cambio: <span className="font-semibold">{formatoMoneda(ultimoCambio)}</span></>}
+          </p>
+          <button
+            type="button"
+            onClick={() => setTicketAbierto(true)}
+            disabled={!ticketVenta}
+            className="inline-flex items-center gap-1.5 font-medium text-success-800 hover:underline disabled:opacity-50 disabled:no-underline"
+          >
+            <Printer size={15} /> Imprimir ticket
+          </button>
+        </div>
       )}
 
       {cajas.length === 0 && (
@@ -714,6 +732,16 @@ function VentasPage() {
             <Button type="submit" disabled={procesando}>Confirmar venta</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal abierto={ticketAbierto} onCerrar={() => setTicketAbierto(false)} titulo="Ticket de venta" ancho="max-w-sm">
+        <TicketVenta venta={ticketVenta} cambio={ultimoCambio} />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={() => setTicketAbierto(false)}>Cerrar</Button>
+          <Button type="button" onClick={() => window.print()}>
+            <Printer size={16} /> Imprimir
+          </Button>
+        </div>
       </Modal>
     </div>
   );

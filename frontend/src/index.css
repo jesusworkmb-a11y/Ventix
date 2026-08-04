@@ -10,3 +10,22 @@
     @apply bg-gray-50 text-gray-900;
   }
 }
+
+/* Impresión de ticket de venta: al imprimir, solo se muestra el contenido de
+   #ticket-imprimible (el resto de la app — sidebar, topbar, modal, botones —
+   queda oculto aunque siga en el DOM). */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #ticket-imprimible,
+  #ticket-imprimible * {
+    visibility: visible;
+  }
+  #ticket-imprimible {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 80mm;
+  }
+}

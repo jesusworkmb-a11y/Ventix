@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Trash2 } from 'lucide-react';
+import { Search, Trash2, Printer } from 'lucide-react';
 import { listarVentas, cancelarVenta, obtenerVenta } from '../api/ventas.api';
 import { crearDevolucion } from '../api/devoluciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
@@ -13,6 +13,7 @@ import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
 import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import TicketVenta from '../components/TicketVenta';
 import { formatoMoneda } from '../../../shared/format';
 
 const COLUMNAS = [
@@ -46,6 +47,9 @@ function VentasHistorialPage() {
   const [devMotivo, setDevMotivo] = useState(MOTIVOS_DEVOLUCION[0]);
   const [devAutorizadoPorId, setDevAutorizadoPorId] = useState('');
   const [devError, setDevError] = useState('');
+
+  const [ticketVenta, setTicketVenta] = useState(null);
+  const [ticketAbierto, setTicketAbierto] = useState(false);
 
   function cargarVentas(pagina = 1) {
     listarVentas({
@@ -86,6 +90,19 @@ function VentasHistorialPage() {
   function sesionParaSucursal(sucursalId) {
     const cajaIds = cajas.filter((c) => c.sucursalId === sucursalId).map((c) => c.id);
     return sesionesAbiertas.find((s) => cajaIds.includes(s.cajaId)) || null;
+  }
+
+  async function imprimirTicket(ventaId) {
+    setError('');
+    setTicketVenta(null);
+    setTicketAbierto(true);
+    try {
+      const detalle = await obtenerVenta(ventaId);
+      setTicketVenta(detalle);
+    } catch (err) {
+      setError('No se pudo cargar el ticket de la venta.');
+      setTicketAbierto(false);
+    }
   }
 
   async function handleCancelar(ventaId) {
@@ -243,16 +260,26 @@ function VentasHistorialPage() {
               <Celda>{formatoMoneda(v.total)}</Celda>
               <Celda><Badge tono={ESTADO_TONO[v.estado] || 'gray'}>{v.estado}</Badge></Celda>
               <Celda className="text-right">
-                {v.estado === 'CONFIRMADA' && (
-                  <div className="flex justify-end gap-3">
-                    <button type="button" onClick={() => handleCancelar(v.id)} className="text-sm text-danger-600 hover:underline">
-                      Cancelar
-                    </button>
-                    <button type="button" onClick={() => abrirDevolucion(v)} className="text-sm text-primary-600 hover:underline">
-                      Devolver
-                    </button>
-                  </div>
-                )}
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => imprimirTicket(v.id)}
+                    className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 hover:underline"
+                    title="Imprimir ticket"
+                  >
+                    <Printer size={14} /> Imprimir
+                  </button>
+                  {v.estado === 'CONFIRMADA' && (
+                    <>
+                      <button type="button" onClick={() => handleCancelar(v.id)} className="text-sm text-danger-600 hover:underline">
+                        Cancelar
+                      </button>
+                      <button type="button" onClick={() => abrirDevolucion(v)} className="text-sm text-primary-600 hover:underline">
+                        Devolver
+                      </button>
+                    </>
+                  )}
+                </div>
               </Celda>
             </Fila>
           ))}
@@ -352,6 +379,19 @@ function VentasHistorialPage() {
               </div>
             </form>
           </>
+        )}
+      </Modal>
+
+      <Modal abierto={ticketAbierto} onCerrar={() => setTicketAbierto(false)} titulo="Ticket de venta" ancho="max-w-sm">
+        {!ticketVenta && <p className="text-sm text-gray-500">Cargando ticket…</p>}
+        <TicketVenta venta={ticketVenta} />
+        {ticketVenta && (
+          <div className="mt-4 flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setTicketAbierto(false)}>Cerrar</Button>
+            <Button type="button" onClick={() => window.print()}>
+              <Printer size={16} /> Imprimir
+            </Button>
+          </div>
         )}
       </Modal>
     </div>
