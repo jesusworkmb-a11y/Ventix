@@ -628,6 +628,42 @@ post-rediseño. Todo verificado en vivo contra producción.
   logo de prueba no cuadrado (200×80) — el PDF resultante embebe un objeto `/Image` con
   Width=200/Height=80, confirmando que no se deformó.
 
+## Buscador global de la barra superior (2026-08-04)
+
+El input de búsqueda del `TopBar` era puramente decorativo desde el rediseño visual —
+sin `value`/`onChange`, nunca conectado a nada. Implementado como funcionalidad nueva a
+pedido del usuario:
+
+- **Backend:** nuevo módulo [`busqueda`](backend/src/modules/busqueda) (`GET
+  /api/busqueda?q=...`), sin permiso único propio — cada categoría (Artículos, Clientes,
+  Proveedores, Ventas) se consulta solo si el usuario tiene el permiso de "ver" de ese
+  módulo (mismo catálogo de permisos que ya exige cada ruta propia), así que el resultado
+  respeta los mismos límites de visibilidad que el resto de la app. Umbral mínimo de 2
+  caracteres, máximo 5 resultados por categoría. Busca por nombre/SKU/código de barras
+  (artículos), nombre/correo/teléfono (clientes y proveedores) y folio/nombre de cliente
+  (ventas).
+- **Frontend:** [`TopBar.jsx`](frontend/src/shared/layout/TopBar.jsx) ahora tiene estado
+  real: debounce de 300ms, dropdown agrupado por categoría, cierre con click afuera o
+  Escape. Como la app no tiene páginas de detalle por registro (todo es lista + panel
+  inline/modal), un clic en un resultado navega a la pantalla de esa categoría pasando el
+  término por `location.state.buscar`; las 4 páginas destino
+  ([ArticulosPage](frontend/src/modules/catalogo/pages/ArticulosPage.jsx),
+  [ClientesPage](frontend/src/modules/clientes/pages/ClientesPage.jsx),
+  [ProveedoresPage](frontend/src/modules/proveedores/pages/ProveedoresPage.jsx),
+  [VentasHistorialPage](frontend/src/modules/ventas/pages/VentasHistorialPage.jsx)) ya
+  tenían su propio buscador local con paginación server-side (ver "Pulido post-rediseño"
+  arriba) — solo se les agregó leer ese estado inicial para prefiltrar en vez de duplicar
+  lógica de búsqueda.
+- Verificado en vivo contra producción con clics reales: búsqueda "general" → Cliente
+  General + 5 ventas con ese cliente, clic navega a Clientes filtrado a 1 resultado;
+  búsqueda "coca" → artículo por SKU, clic navega a Artículos filtrado a 1 resultado;
+  término sin match → "Sin resultados"; Escape cierra el dropdown. No se creó ningún dato
+  de prueba (funcionalidad de solo lectura), nada que limpiar.
+- **Gotcha de esta sesión:** el backend local no pudo levantar contra Supabase (mismo
+  problema de siempre, sin salida IPv6 para la conexión directa) — se verificó pusheando a
+  `main` y probando contra `https://ventix-frontend.onrender.com` ya desplegado, patrón ya
+  establecido en sesiones anteriores.
+
 ## Qué contiene
 
 ```text
@@ -711,7 +747,8 @@ pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orde
 server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). Además,
 ya se agregaron documentos fuera del plan original: impresión de ticket de venta, PDF de
 cotización (con logo de empresa) y edición de nombre/logo de la empresa (ver "Documentos"
-arriba). **No queda ningún pendiente abierto.** A elección:
+arriba), y el buscador global de la barra superior ya está implementado (ver "Buscador
+global" arriba). **No queda ningún pendiente abierto.** A elección:
 - Extender la paginación server-side al resto de las tablas (hoy solo la tienen Ventas
   recientes, Compras, Artículos, Clientes, Proveedores, Auditoría).
 - Una segunda ronda de QA más profunda sobre algún módulo.
