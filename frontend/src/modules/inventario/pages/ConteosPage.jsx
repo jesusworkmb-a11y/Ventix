@@ -1,5 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   listarConteos,
   obtenerConteo,
@@ -9,8 +8,17 @@ import {
 } from '../api/conteos.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Badge from '../../../shared/ui/Badge';
+import Modal from '../../../shared/ui/Modal';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import { Trash2 } from 'lucide-react';
 
 const SIGUIENTE_ESTADO = { CAPTURA: 'REVISION', REVISION: 'AUTORIZADO' };
+const ESTADO_TONO = { CAPTURA: 'gray', REVISION: 'warning', AUTORIZADO: 'success' };
 
 function ConteosPage() {
   const [sucursales, setSucursales] = useState([]);
@@ -77,6 +85,12 @@ function ConteosPage() {
     }
   }
 
+  function cerrarConteo() {
+    setAbiertoId(null);
+    setDetalle(null);
+    setCapCarrito([]);
+  }
+
   function agregarLineaCaptura(e) {
     e.preventDefault();
     const articulo = articulos.find((a) => a.id === capArticuloId);
@@ -117,138 +131,134 @@ function ConteosPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 700 }}>
-      <p><Link to="/inventario/existencias">← Volver a Existencias</Link></p>
-      <h1>Conteos físicos</h1>
-      <p>
-        <Link to="/inventario/ajustes">Ver ajustes →</Link>{' '}
-        <Link to="/inventario/transferencias">Ver transferencias →</Link>
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Conteos físicos</h1>
+        <p className="text-sm text-gray-500">Capturá el conteo, pasalo a revisión y autorizalo para aplicar el ajuste.</p>
+      </div>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
-      <h2>Nuevo conteo</h2>
-      <form onSubmit={handleCrear} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '2rem' }}>
-        <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
-          {sucursales.map((s) => (
-            <option key={s.id} value={s.id}>{s.nombre}</option>
-          ))}
-        </select>
-        <button type="submit">Iniciar conteo</button>
-      </form>
+      <Card title="Nuevo conteo">
+        <form onSubmit={handleCrear} className="flex flex-wrap items-end gap-3">
+          <Select id="sucursalConteo" label="Sucursal" value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+            {sucursales.map((s) => (
+              <option key={s.id} value={s.id}>{s.nombre}</option>
+            ))}
+          </Select>
+          <Button type="submit">Iniciar conteo</Button>
+        </form>
+      </Card>
 
-      <h2>Conteos recientes</h2>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Sucursal</th>
-            <th style={{ textAlign: 'left' }}>Estado</th>
-            <th style={{ textAlign: 'left' }}>Fecha</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      <Card title="Conteos recientes">
+        <Table columnas={['Sucursal', 'Estado', 'Fecha', '']}>
+          {conteos.length === 0 && <TablaVacia colSpan={4} />}
           {conteos.map((c) => (
-            <Fragment key={c.id}>
-              <tr>
-                <td>{nombreSucursal(c.sucursalId)}</td>
-                <td>{c.estado}</td>
-                <td>{new Date(c.creadoEn).toLocaleString()}</td>
-                <td><button type="button" onClick={() => abrirConteo(c.id)}>Abrir</button></td>
-              </tr>
-              {abiertoId === c.id && (
-                <tr>
-                  <td colSpan={4} style={{ background: '#f7f7f7', padding: '1rem' }}>
-                    {panelError && <p style={{ color: 'crimson' }}>{panelError}</p>}
-                    {!detalle && <p>Cargando…</p>}
-                    {detalle && detalle.estado === 'CAPTURA' && (
-                      <>
-                        <form
-                          onSubmit={agregarLineaCaptura}
-                          style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}
-                        >
-                          <select value={capArticuloId} onChange={(e) => setCapArticuloId(e.target.value)} required>
-                            <option value="">Artículo...</option>
-                            {articulos.map((a) => (
-                              <option key={a.id} value={a.id}>{a.nombre}</option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="Cantidad física"
-                            value={capCantidad}
-                            onChange={(e) => setCapCantidad(e.target.value)}
-                            style={{ width: '140px' }}
-                            required
-                          />
-                          <button type="submit">Agregar/actualizar línea</button>
-                        </form>
-
-                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '0.75rem' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ textAlign: 'left' }}>Artículo</th>
-                              <th style={{ textAlign: 'left' }}>Cantidad física</th>
-                              <th />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {capCarrito.map((l) => (
-                              <tr key={l.articuloId}>
-                                <td>{l.nombre}</td>
-                                <td>{l.cantidadFisica}</td>
-                                <td><button type="button" onClick={() => quitarLineaCaptura(l.articuloId)}>Quitar</button></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-
-                        <button type="button" onClick={guardarLineas}>Guardar líneas</button>{' '}
-                        <button type="button" onClick={avanzarEstado} disabled={detalle.detalles.length === 0}>
-                          Pasar a revisión
-                        </button>
-                      </>
-                    )}
-                    {detalle && detalle.estado !== 'CAPTURA' && (
-                      <>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '0.75rem' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ textAlign: 'left' }}>Artículo</th>
-                              <th style={{ textAlign: 'left' }}>Sistema</th>
-                              <th style={{ textAlign: 'left' }}>Física</th>
-                              <th style={{ textAlign: 'left' }}>Diferencia</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {detalle.detalles.map((d) => {
-                              const diferencia = Number(d.cantidadFisica) - Number(d.cantidadSistema);
-                              return (
-                                <tr key={d.id}>
-                                  <td>{d.articulo?.nombre || d.articuloId}</td>
-                                  <td>{d.cantidadSistema}</td>
-                                  <td>{d.cantidadFisica}</td>
-                                  <td>{diferencia > 0 ? `+${diferencia}` : diferencia}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                        {detalle.estado === 'REVISION' && (
-                          <button type="button" onClick={avanzarEstado}>Autorizar (aplica el ajuste a existencias)</button>
-                        )}
-                        {detalle.estado === 'AUTORIZADO' && <p>Conteo autorizado — ajuste ya aplicado al kardex.</p>}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              )}
-            </Fragment>
+            <Fila key={c.id}>
+              <Celda>{nombreSucursal(c.sucursalId)}</Celda>
+              <Celda><Badge tono={ESTADO_TONO[c.estado] || 'gray'}>{c.estado}</Badge></Celda>
+              <Celda>{new Date(c.creadoEn).toLocaleString()}</Celda>
+              <Celda className="text-right">
+                <button type="button" onClick={() => abrirConteo(c.id)} className="text-sm text-primary-600 hover:underline">
+                  Abrir
+                </button>
+              </Celda>
+            </Fila>
           ))}
-        </tbody>
-      </table>
+        </Table>
+      </Card>
+
+      <Modal abierto={abiertoId !== null} onCerrar={cerrarConteo} titulo="Detalle del conteo" ancho="max-w-2xl">
+        {panelError && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{panelError}</p>}
+        {!detalle && <p className="text-sm text-gray-500">Cargando…</p>}
+
+        {detalle && detalle.estado === 'CAPTURA' && (
+          <>
+            <form onSubmit={agregarLineaCaptura} className="flex flex-wrap items-end gap-3">
+              <Select
+                id="capArticulo"
+                label="Artículo"
+                value={capArticuloId}
+                onChange={(e) => setCapArticuloId(e.target.value)}
+                required
+                className="min-w-[220px]"
+              >
+                <option value="">Selecciona un artículo...</option>
+                {articulos.map((a) => (
+                  <option key={a.id} value={a.id}>{a.nombre}</option>
+                ))}
+              </Select>
+              <Input
+                id="capCantidad"
+                label="Cantidad física"
+                type="number"
+                step="0.01"
+                min="0"
+                value={capCantidad}
+                onChange={(e) => setCapCantidad(e.target.value)}
+                className="w-36"
+                required
+              />
+              <Button type="submit" variant="secondary">Agregar/actualizar</Button>
+            </form>
+
+            {capCarrito.length > 0 && (
+              <div className="mt-4">
+                <Table columnas={['Artículo', 'Cantidad física', '']}>
+                  {capCarrito.map((l) => (
+                    <Fila key={l.articuloId}>
+                      <Celda>{l.nombre}</Celda>
+                      <Celda>{l.cantidadFisica}</Celda>
+                      <Celda className="text-right">
+                        <button type="button" onClick={() => quitarLineaCaptura(l.articuloId)} className="text-gray-400 hover:text-danger-600">
+                          <Trash2 size={16} />
+                        </button>
+                      </Celda>
+                    </Fila>
+                  ))}
+                </Table>
+              </div>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <Button type="button" variant="secondary" onClick={guardarLineas}>Guardar líneas</Button>
+              <Button type="button" onClick={avanzarEstado} disabled={detalle.detalles.length === 0}>
+                Pasar a revisión
+              </Button>
+            </div>
+          </>
+        )}
+
+        {detalle && detalle.estado !== 'CAPTURA' && (
+          <>
+            <Table columnas={['Artículo', 'Sistema', 'Física', 'Diferencia']}>
+              {detalle.detalles.map((d) => {
+                const diferencia = Number(d.cantidadFisica) - Number(d.cantidadSistema);
+                return (
+                  <Fila key={d.id}>
+                    <Celda>{d.articulo?.nombre || d.articuloId}</Celda>
+                    <Celda>{d.cantidadSistema}</Celda>
+                    <Celda>{d.cantidadFisica}</Celda>
+                    <Celda className={diferencia !== 0 ? 'font-medium text-warning-700' : ''}>
+                      {diferencia > 0 ? `+${diferencia}` : diferencia}
+                    </Celda>
+                  </Fila>
+                );
+              })}
+            </Table>
+            {detalle.estado === 'REVISION' && (
+              <Button type="button" onClick={avanzarEstado} className="mt-4">
+                Autorizar (aplica el ajuste a existencias)
+              </Button>
+            )}
+            {detalle.estado === 'AUTORIZADO' && (
+              <p className="mt-4 rounded-lg bg-success-50 px-3 py-2 text-sm text-success-700">
+                Conteo autorizado — ajuste ya aplicado al kardex.
+              </p>
+            )}
+          </>
+        )}
+      </Modal>
     </div>
   );
 }

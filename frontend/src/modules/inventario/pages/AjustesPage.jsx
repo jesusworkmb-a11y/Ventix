@@ -1,9 +1,15 @@
-import { Fragment, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { listarAjustes, obtenerAjuste, crearAjuste } from '../api/ajustes.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
 import { listarUsuarios } from '../../core/api/core.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Modal from '../../../shared/ui/Modal';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import { Trash2 } from 'lucide-react';
 
 function AjustesPage() {
   const [sucursales, setSucursales] = useState([]);
@@ -93,130 +99,122 @@ function AjustesPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 700 }}>
-      <p><Link to="/inventario/existencias">← Volver a Existencias</Link></p>
-      <h1>Ajustes de inventario</h1>
-      <p>
-        <Link to="/inventario/transferencias">Ver transferencias →</Link>{' '}
-        <Link to="/inventario/conteos">Ver conteos físicos →</Link>
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Ajustes de inventario</h1>
+        <p className="text-sm text-gray-500">Corregí existencias por caducidad, daño, robo u otro motivo.</p>
+      </div>
 
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
       {creado && (
-        <div style={{ background: '#f0f0f0', padding: '1rem', margin: '1rem 0' }}>
-          <p>Ajuste {creado.folio} registrado.</p>
-        </div>
+        <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">Ajuste {creado.folio} registrado.</p>
       )}
 
-      <h2>Nuevo ajuste</h2>
-      <label>
-        Sucursal
-        <select value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
-          {sucursales.map((s) => (
-            <option key={s.id} value={s.id}>{s.nombre}</option>
-          ))}
-        </select>
-      </label>
-      <br />
-      <label>
-        Motivo
-        <input value={motivo} onChange={(e) => setMotivo(e.target.value)} required style={{ marginLeft: '0.5rem' }} />
-      </label>
+      <Card title="Nuevo ajuste">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Select id="sucursalAjuste" label="Sucursal" value={sucursalId} onChange={(e) => setSucursalId(e.target.value)}>
+            {sucursales.map((s) => (
+              <option key={s.id} value={s.id}>{s.nombre}</option>
+            ))}
+          </Select>
+          <Input id="motivoAjuste" label="Motivo" value={motivo} onChange={(e) => setMotivo(e.target.value)} required />
+        </div>
 
-      <form
-        onSubmit={agregarLinea}
-        style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', margin: '1rem 0', flexWrap: 'wrap' }}
-      >
-        <select value={articuloId} onChange={(e) => setArticuloId(e.target.value)} required>
-          <option value="">Artículo...</option>
-          {articulos.map((a) => (
-            <option key={a.id} value={a.id}>{a.nombre}</option>
-          ))}
-        </select>
-        <input
-          type="number"
-          step="0.01"
-          placeholder="Cantidad (+ entra, - sale)"
-          value={cantidad}
-          onChange={(e) => setCantidad(e.target.value)}
-          style={{ width: '160px' }}
-          required
-        />
-        <button type="submit">Agregar</button>
-      </form>
+        <form onSubmit={agregarLinea} className="mt-5 flex flex-wrap items-end gap-3">
+          <Select
+            id="articuloAjuste"
+            label="Artículo"
+            value={articuloId}
+            onChange={(e) => setArticuloId(e.target.value)}
+            required
+            className="min-w-[220px]"
+          >
+            <option value="">Selecciona un artículo...</option>
+            {articulos.map((a) => (
+              <option key={a.id} value={a.id}>{a.nombre}</option>
+            ))}
+          </Select>
+          <Input
+            id="cantidadAjuste"
+            label="Cantidad (+ entra, - sale)"
+            type="number"
+            step="0.01"
+            value={cantidad}
+            onChange={(e) => setCantidad(e.target.value)}
+            className="w-48"
+            required
+          />
+          <Button type="submit" variant="secondary">Agregar</Button>
+        </form>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '1rem' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Artículo</th>
-            <th style={{ textAlign: 'left' }}>Cantidad</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {carrito.map((l, i) => (
-            <tr key={i}>
-              <td>{l.nombre}</td>
-              <td>{l.cantidad > 0 ? `+${l.cantidad}` : l.cantidad}</td>
-              <td><button type="button" onClick={() => quitarLinea(i)}>Quitar</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        {carrito.length > 0 && (
+          <div className="mt-4">
+            <Table columnas={['Artículo', 'Cantidad', '']}>
+              {carrito.map((l, i) => (
+                <Fila key={i}>
+                  <Celda>{l.nombre}</Celda>
+                  <Celda>{l.cantidad > 0 ? `+${l.cantidad}` : l.cantidad}</Celda>
+                  <Celda className="text-right">
+                    <button type="button" onClick={() => quitarLinea(i)} className="text-gray-400 hover:text-danger-600">
+                      <Trash2 size={16} />
+                    </button>
+                  </Celda>
+                </Fila>
+              ))}
+            </Table>
+          </div>
+        )}
 
-      <label>
-        Autoriza (opcional)
-        <select value={autorizadoPorId} onChange={(e) => setAutorizadoPorId(e.target.value)} style={{ marginLeft: '0.5rem' }}>
-          <option value="">—</option>
-          {usuarios.map((u) => (
-            <option key={u.id} value={u.id}>{u.nombre}</option>
-          ))}
-        </select>
-      </label>
+        <form onSubmit={confirmarAjuste} className="mt-5 flex flex-wrap items-end gap-3">
+          <Select
+            id="autorizaAjuste"
+            label="Autoriza (opcional)"
+            value={autorizadoPorId}
+            onChange={(e) => setAutorizadoPorId(e.target.value)}
+            className="min-w-[200px]"
+          >
+            <option value="">—</option>
+            {usuarios.map((u) => (
+              <option key={u.id} value={u.id}>{u.nombre}</option>
+            ))}
+          </Select>
+          <Button type="submit">Registrar ajuste</Button>
+        </form>
+      </Card>
 
-      <form onSubmit={confirmarAjuste} style={{ marginTop: '1rem', marginBottom: '2rem' }}>
-        <button type="submit">Registrar ajuste</button>
-      </form>
-
-      <h2>Ajustes recientes</h2>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={{ textAlign: 'left' }}>Folio</th>
-            <th style={{ textAlign: 'left' }}>Motivo</th>
-            <th style={{ textAlign: 'left' }}>Fecha</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      <Card title="Ajustes recientes">
+        <Table columnas={['Folio', 'Motivo', 'Fecha', '']}>
+          {ajustes.length === 0 && <TablaVacia colSpan={4} />}
           {ajustes.map((a) => (
-            <Fragment key={a.id}>
-              <tr>
-                <td>{a.folio}</td>
-                <td>{a.motivo}</td>
-                <td>{new Date(a.creadoEn).toLocaleString()}</td>
-                <td><button type="button" onClick={() => verDetalle(a.id)}>Ver líneas</button></td>
-              </tr>
-              {verDetalleId === a.id && (
-                <tr>
-                  <td colSpan={4} style={{ background: '#f7f7f7', padding: '1rem' }}>
-                    {!detalle && <p>Cargando…</p>}
-                    {detalle && (
-                      <ul>
-                        {detalle.detalles.map((d) => (
-                          <li key={d.id}>
-                            {d.articulo?.nombre || d.articuloId}: {Number(d.cantidad) > 0 ? '+' : ''}{d.cantidad}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </td>
-                </tr>
-              )}
-            </Fragment>
+            <Fila key={a.id}>
+              <Celda className="font-medium text-gray-800">{a.folio}</Celda>
+              <Celda>{a.motivo}</Celda>
+              <Celda>{new Date(a.creadoEn).toLocaleString()}</Celda>
+              <Celda className="text-right">
+                <button type="button" onClick={() => verDetalle(a.id)} className="text-sm text-primary-600 hover:underline">
+                  Ver líneas
+                </button>
+              </Celda>
+            </Fila>
           ))}
-        </tbody>
-      </table>
+        </Table>
+      </Card>
+
+      <Modal abierto={verDetalleId !== null} onCerrar={() => setVerDetalleId(null)} titulo="Líneas del ajuste">
+        {!detalle && <p className="text-sm text-gray-500">Cargando…</p>}
+        {detalle && (
+          <ul className="divide-y divide-gray-100">
+            {detalle.detalles.map((d) => (
+              <li key={d.id} className="flex items-center justify-between py-2 text-sm">
+                <span className="text-gray-700">{d.articulo?.nombre || d.articuloId}</span>
+                <span className={Number(d.cantidad) > 0 ? 'font-medium text-success-700' : 'font-medium text-danger-700'}>
+                  {Number(d.cantidad) > 0 ? '+' : ''}{d.cantidad}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Modal>
     </div>
   );
 }

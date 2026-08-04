@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   listarCajas,
   listarSesiones,
@@ -8,6 +7,15 @@ import {
   cerrarSesion,
   registrarMovimiento,
 } from '../api/caja.api';
+import Card from '../../../shared/ui/Card';
+import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
+import Badge from '../../../shared/ui/Badge';
+import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import { formatoMoneda } from '../../../shared/format';
+
+const TONO_MOVIMIENTO = { INGRESO: 'success', VENTA: 'success', RETIRO: 'danger', DEVOLUCION: 'danger' };
 
 function CajaPage() {
   const [cajas, setCajas] = useState([]);
@@ -95,117 +103,114 @@ function CajaPage() {
   }
 
   return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem', maxWidth: 500 }}>
-      <p><Link to="/dashboard">← Volver al dashboard</Link></p>
-      <h1>Caja</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Caja</h1>
+        <p className="text-sm text-gray-500">Abrí y cerrá sesiones de caja, y registrá ingresos y retiros.</p>
+      </div>
 
-      {cajas.length === 0 && <p>No hay cajas registradas todavía (créalas vía la API).</p>}
+      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {cierre && (
+        <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
+          Sesión cerrada. Esperado: {formatoMoneda(cierre.saldoEsperado)} — Real: {formatoMoneda(cierre.saldoReal)} — Diferencia: {formatoMoneda(cierre.diferencia)}
+        </p>
+      )}
+
+      {cajas.length === 0 && (
+        <Card>
+          <p className="text-sm text-gray-500">No hay cajas registradas todavía (créalas vía la API).</p>
+        </Card>
+      )}
 
       {cajas.length > 0 && (
-        <label>
-          Caja
-          <select value={cajaId} onChange={(e) => setCajaId(e.target.value)}>
+        <Card>
+          <Select id="cajaSel" label="Caja" value={cajaId} onChange={(e) => setCajaId(e.target.value)} className="max-w-xs">
             {cajas.map((c) => (
               <option key={c.id} value={c.id}>{c.nombre}</option>
             ))}
-          </select>
-        </label>
-      )}
-
-      {error && <p style={{ color: 'crimson' }}>{error}</p>}
-
-      {cierre && (
-        <div style={{ background: '#f0f0f0', padding: '1rem', margin: '1rem 0' }}>
-          <p>
-            Sesión cerrada. Esperado: {Number(cierre.saldoEsperado).toFixed(2)} — Real: {Number(cierre.saldoReal).toFixed(2)} — Diferencia:{' '}
-            {Number(cierre.diferencia).toFixed(2)}
-          </p>
-        </div>
+          </Select>
+        </Card>
       )}
 
       {cajaId && !sesion && (
-        <form
-          onSubmit={handleAbrir}
-          style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: 300, marginTop: '1rem' }}
-        >
-          <h2>Abrir sesión</h2>
-          <label>
-            Fondo inicial
-            <input
+        <Card title="Abrir sesión">
+          <form onSubmit={handleAbrir} className="flex flex-wrap items-end gap-3">
+            <Input
+              id="fondoInicial"
+              label="Fondo inicial"
               type="number"
               step="0.01"
               min="0"
               value={fondoInicial}
               onChange={(e) => setFondoInicial(e.target.value)}
+              className="w-40"
               required
             />
-          </label>
-          <button type="submit">Abrir</button>
-        </form>
+            <Button type="submit">Abrir</Button>
+          </form>
+        </Card>
       )}
 
       {sesion && (
-        <div style={{ marginTop: '1rem' }}>
-          <h2>Sesión abierta</h2>
-          <p>
-            Fondo inicial: {sesion.fondoInicial} — Abierta: {new Date(sesion.abiertaEn).toLocaleString()}
+        <Card title="Sesión abierta">
+          <p className="mb-4 text-sm text-gray-500">
+            Fondo inicial: <span className="font-medium text-gray-700">{formatoMoneda(sesion.fondoInicial)}</span>
+            {' · '}Abierta: {new Date(sesion.abiertaEn).toLocaleString()}
           </p>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', margin: '1rem 0' }}>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left' }}>Tipo</th>
-                <th style={{ textAlign: 'left' }}>Monto</th>
-                <th style={{ textAlign: 'left' }}>Motivo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sesion.movimientos.map((m) => (
-                <tr key={m.id}>
-                  <td>{m.tipo}</td>
-                  <td>{m.monto}</td>
-                  <td>{m.motivo || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table columnas={['Tipo', 'Monto', 'Motivo']}>
+            {sesion.movimientos.length === 0 && <TablaVacia colSpan={3} mensaje="Sin movimientos todavía." />}
+            {sesion.movimientos.map((m) => (
+              <Fila key={m.id}>
+                <Celda><Badge tono={TONO_MOVIMIENTO[m.tipo] || 'gray'}>{m.tipo}</Badge></Celda>
+                <Celda>{formatoMoneda(m.monto)}</Celda>
+                <Celda>{m.motivo || '—'}</Celda>
+              </Fila>
+            ))}
+          </Table>
 
-          <form
-            onSubmit={handleMovimiento}
-            style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', marginBottom: '1.5rem' }}
-          >
-            <select value={movTipo} onChange={(e) => setMovTipo(e.target.value)}>
+          <form onSubmit={handleMovimiento} className="mt-5 flex flex-wrap items-end gap-3">
+            <Select id="movTipo" label="Tipo" value={movTipo} onChange={(e) => setMovTipo(e.target.value)}>
               <option value="INGRESO">Ingreso</option>
               <option value="RETIRO">Retiro</option>
-            </select>
-            <input
+            </Select>
+            <Input
+              id="movMonto"
+              label="Monto"
               type="number"
               step="0.01"
               min="0"
-              placeholder="Monto"
               value={movMonto}
               onChange={(e) => setMovMonto(e.target.value)}
+              className="w-32"
               required
             />
-            <input placeholder="Motivo (opcional)" value={movMotivo} onChange={(e) => setMovMotivo(e.target.value)} />
-            <button type="submit">Registrar</button>
+            <Input
+              id="movMotivo"
+              label="Motivo (opcional)"
+              value={movMotivo}
+              onChange={(e) => setMovMotivo(e.target.value)}
+            />
+            <Button type="submit" variant="secondary">Registrar</Button>
           </form>
 
-          <form onSubmit={handleCerrar} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <label>
-              Saldo real al cerrar
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={saldoReal}
-                onChange={(e) => setSaldoReal(e.target.value)}
-                required
-              />
-            </label>
-            <button type="submit">Cerrar sesión</button>
+          <hr className="my-5 border-gray-100" />
+
+          <form onSubmit={handleCerrar} className="flex flex-wrap items-end gap-3">
+            <Input
+              id="saldoReal"
+              label="Saldo real al cerrar"
+              type="number"
+              step="0.01"
+              min="0"
+              value={saldoReal}
+              onChange={(e) => setSaldoReal(e.target.value)}
+              className="w-40"
+              required
+            />
+            <Button type="submit" variant="danger">Cerrar sesión</Button>
           </form>
-        </div>
+        </Card>
       )}
     </div>
   );
