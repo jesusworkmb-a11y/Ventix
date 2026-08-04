@@ -727,6 +727,26 @@ PDF generado (mismo truco que Cotizaciones/Empresa): una compra `CONFIRMADA` (fo
 proveedor y total correctos, sin marca de cancelada) y una `CANCELADA` (mismos datos más
 "COMPRA CANCELADA" presente). Sin datos de prueba generados — solo lectura.
 
+## Exportar Existencias a CSV/Excel (2026-08-04, sesión posterior)
+
+A pedido del usuario ("la consulta de existencia debe permitir exportar el reporte en
+excel"), nuevo `GET /inventario/existencias/exportar` en
+[existencias.controller.js](backend/src/modules/inventario/existencias/existencias.controller.js),
+mismo permiso que ver la lista (`inventario.ver`, no un permiso aparte de Herramientas) y
+mismo helper CSV que ya usaba Herramientas para Artículos/Clientes/Proveedores
+([shared/csv.js](backend/src/shared/csv.js) — CSV plano, sin dependencias, abre directo en
+Excel/Sheets). El armado del `where` de Prisma se factorizó a `construirWhere()` en
+[existencias.service.js](backend/src/modules/inventario/existencias/existencias.service.js),
+compartido entre `listar()` y el nuevo `exportarCsv()`, para que el CSV exportado sea siempre
+exactamente el reporte que se está viendo en pantalla (misma búsqueda/sucursal/solo-con-
+stock) y no un volcado completo aparte. Botón "Exportar CSV" nuevo junto al título de la
+tabla en [ExistenciasPage.jsx](frontend/src/modules/inventario/pages/ExistenciasPage.jsx).
+
+Verificado en producción interceptando `URL.createObjectURL` (mismo truco de siempre): con
+el buscador filtrado a "coca", el CSV descargado trae exactamente las 3 filas esperadas
+(Coca Cola 600ml en las 3 sucursales) con el encabezado correcto. Sin datos de prueba
+generados — solo lectura.
+
 ## Qué contiene
 
 ```text
@@ -809,14 +829,14 @@ ya se aplicó a las 22 pantallas (ver "Rediseño visual" arriba), y sus tres pen
 pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orden/paginación
 server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). Además,
 ya se agregaron documentos fuera del plan original: impresión de ticket de venta, PDF de
-cotización (con logo de empresa), PDF de compra y edición de nombre/logo de la empresa (ver
-"Documentos" y "PDF de compra" arriba), el buscador global de la barra superior ya está
-implementado (ver "Buscador global" arriba), y la paginación server-side ya se extendió a
-Usuarios, Existencias, Cotizaciones, Conteos, Transferencias y Ajustes (ver "Paginación
-server-side extendida" arriba) — de las pantallas con tabla que quedaban, solo Sucursales,
-Roles, Caja, Configuración de Catálogo, Herramientas y Reportes se dejaron sin paginar a
-propósito (no son buen fit, ver esa misma sección para el porqué de cada una). **No queda
-ningún pendiente abierto.** A elección:
+cotización (con logo de empresa), PDF de compra, exportar Existencias a CSV/Excel y edición
+de nombre/logo de la empresa (ver "Documentos", "PDF de compra" y "Exportar Existencias"
+arriba), el buscador global de la barra superior ya está implementado (ver "Buscador global"
+arriba), y la paginación server-side ya se extendió a Usuarios, Existencias, Cotizaciones,
+Conteos, Transferencias y Ajustes (ver "Paginación server-side extendida" arriba) — de las
+pantallas con tabla que quedaban, solo Sucursales, Roles, Caja, Configuración de Catálogo,
+Herramientas y Reportes se dejaron sin paginar a propósito (no son buen fit, ver esa misma
+sección para el porqué de cada una). **No queda ningún pendiente abierto.** A elección:
 - Una segunda ronda de QA más profunda sobre algún módulo.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
