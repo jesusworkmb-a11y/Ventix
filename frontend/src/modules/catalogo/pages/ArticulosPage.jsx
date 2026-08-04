@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import {
   listarArticulos,
@@ -60,13 +60,16 @@ function articuloAForm(a) {
 }
 
 function ArticulosPage() {
+  const location = useLocation();
   const [articulos, setArticulos] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [marcas, setMarcas] = useState([]);
   const [unidades, setUnidades] = useState([]);
   const [impuestos, setImpuestos] = useState([]);
   const [listasPrecio, setListasPrecio] = useState([]);
-  const [buscar, setBuscar] = useState('');
+  // Prefil con el término que trajo el buscador global de la barra superior (TopBar.jsx),
+  // si se llegó a esta pantalla haciendo clic en un resultado de esa categoría.
+  const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
   const [form, setForm] = useState(FORM_VACIO);

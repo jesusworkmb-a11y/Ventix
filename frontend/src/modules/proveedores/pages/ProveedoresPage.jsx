@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { listarProveedores, crearProveedor, actualizarProveedor } from '../api/proveedores.api';
 import Card from '../../../shared/ui/Card';
@@ -31,8 +32,11 @@ function proveedorAForm(p) {
 }
 
 function ProveedoresPage() {
+  const location = useLocation();
   const [proveedores, setProveedores] = useState([]);
-  const [buscar, setBuscar] = useState('');
+  // Prefil con el término del buscador global de la barra superior (TopBar.jsx), si se
+  // llegó acá desde un resultado de esa categoría.
+  const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
   const [form, setForm] = useState(FORM_VACIO);

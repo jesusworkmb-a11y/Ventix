@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Search, Trash2, Printer } from 'lucide-react';
 import { listarVentas, cancelarVenta, obtenerVenta } from '../api/ventas.api';
 import { crearDevolucion } from '../api/devoluciones.api';
@@ -29,9 +29,12 @@ const MOTIVOS_DEVOLUCION = ['Producto defectuoso', 'Error de venta', 'Cliente ca
 const ESTADO_TONO = { CONFIRMADA: 'success', CANCELADA: 'gray' };
 
 function VentasHistorialPage() {
+  const location = useLocation();
   const [ventas, setVentas] = useState([]);
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
-  const [busqueda, setBusqueda] = useState('');
+  // Prefil con el término del buscador global de la barra superior (TopBar.jsx), si se
+  // llegó acá desde un resultado de esa categoría.
+  const [busqueda, setBusqueda] = useState(() => location.state?.buscar || '');
   const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
   const [usuarios, setUsuarios] = useState([]);
   const [cajas, setCajas] = useState([]);

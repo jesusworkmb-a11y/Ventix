@@ -16,6 +16,7 @@ const cajaRoutes = require('./modules/caja/caja.routes');
 const ventasRoutes = require('./modules/ventas/ventas.routes');
 const reportesRoutes = require('./modules/reportes/reportes.routes');
 const herramientasRoutes = require('./modules/herramientas/herramientas.routes');
+const busquedaRoutes = require('./modules/busqueda/busqueda.routes');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use('/api/caja', cajaRoutes);
 app.use('/api/ventas', ventasRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/herramientas', herramientasRoutes);
+app.use('/api/busqueda', busquedaRoutes);
 
 // Manejador de errores centralizado — traduce errores técnicos a mensajes
 // en lenguaje del usuario antes de responder (§33.2, "no mostrar errores técnicos crudos").

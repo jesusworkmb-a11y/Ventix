@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { listarClientes, crearCliente, actualizarCliente } from '../api/clientes.api';
 import { listarListasPrecio } from '../../catalogo/api/catalogo.api';
@@ -35,9 +36,12 @@ function clienteAForm(c) {
 }
 
 function ClientesPage() {
+  const location = useLocation();
   const [clientes, setClientes] = useState([]);
   const [listasPrecio, setListasPrecio] = useState([]);
-  const [buscar, setBuscar] = useState('');
+  // Prefil con el término del buscador global de la barra superior (TopBar.jsx), si se
+  // llegó acá desde un resultado de esa categoría.
+  const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
   const [form, setForm] = useState(FORM_VACIO);
