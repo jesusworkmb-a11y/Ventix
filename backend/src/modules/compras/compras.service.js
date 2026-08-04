@@ -52,7 +52,7 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
 async function obtener({ empresaId, compraId }) {
   const compra = await prisma.compra.findFirst({
     where: { id: compraId, empresaId },
-    include: { detalles: true },
+    include: { detalles: true, proveedor: true, sucursal: true },
   });
   if (!compra) throw new AppError(404, 'Compra no encontrada.');
 

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Search } from 'lucide-react';
-import { listarCompras, crearCompra, cancelarCompra } from '../api/compras.api';
+import { Search, FileDown } from 'lucide-react';
+import { listarCompras, obtenerCompra, crearCompra, cancelarCompra } from '../api/compras.api';
 import { listarProveedores } from '../../proveedores/api/proveedores.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos, listarUnidades } from '../../catalogo/api/catalogo.api';
+import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -34,7 +35,9 @@ const COLUMNAS = [
 ];
 
 function ComprasPage() {
+  const { empresa } = useAuth();
   const [compras, setCompras] = useState([]);
+  const [errorPdf, setErrorPdf] = useState('');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [busqueda, setBusqueda] = useState('');
   const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
@@ -81,6 +84,21 @@ function ComprasPage() {
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  // jsPDF (+ sus dependencias, ~250kB gzip) solo se descarga cuando alguien realmente pide un
+  // PDF, vía import() dinámico, mismo criterio que CotizacionesPage#descargarPdf.
+  async function descargarPdf(compraId) {
+    setErrorPdf('');
+    try {
+      const [detalle, { generarPdfCompra }] = await Promise.all([
+        obtenerCompra(compraId),
+        import('../pdf/compraPdf'),
+      ]);
+      generarPdfCompra(detalle, empresa);
+    } catch (err) {
+      setErrorPdf('No se pudo generar el PDF de la compra.');
+    }
   }
 
   async function handleCancelar(compraId) {
@@ -139,6 +157,7 @@ function ComprasPage() {
       </Card>
 
       <Card title="Compras recientes">
+        {errorPdf && <p className="mb-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorPdf}</p>}
         <Table
           columnas={COLUMNAS}
           ordenarPor={orden.ordenarPor}
@@ -162,11 +181,21 @@ function ComprasPage() {
               <Celda>{formatoMoneda(c.total)}</Celda>
               <Celda><Badge tono={ESTADO_TONO[c.estado] || 'gray'}>{c.estado}</Badge></Celda>
               <Celda className="text-right">
-                {c.estado === 'CONFIRMADA' && (
-                  <button type="button" onClick={() => handleCancelar(c.id)} className="text-sm text-danger-600 hover:underline">
-                    Cancelar
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => descargarPdf(c.id)}
+                    className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 hover:underline"
+                    title="Descargar PDF"
+                  >
+                    <FileDown size={14} /> PDF
                   </button>
-                )}
+                  {c.estado === 'CONFIRMADA' && (
+                    <button type="button" onClick={() => handleCancelar(c.id)} className="text-sm text-danger-600 hover:underline">
+                      Cancelar
+                    </button>
+                  )}
+                </div>
               </Celda>
             </Fila>
           ))}
