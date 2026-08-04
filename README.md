@@ -664,6 +664,48 @@ pedido del usuario:
   `main` y probando contra `https://ventix-frontend.onrender.com` ya desplegado, patrón ya
   establecido en sesiones anteriores.
 
+## Paginación server-side extendida (2026-08-04, sesión posterior)
+
+A pedido del usuario, se extendió el patrón de búsqueda+orden+paginación server-side (ver
+"Búsqueda/orden/paginación server-side" en "Pulido post-rediseño" arriba) a 6 pantallas más:
+**Usuarios, Existencias, Cotizaciones, Conteos físicos, Transferencias y Ajustes**.
+
+Antes de implementar se relevaron las 12 pantallas con tabla que quedaban sin migrar y se
+acordó el alcance con el usuario. Quedaron **sin cambios** (a propósito): Sucursales y Roles
+(catálogos chicos y acotados, reusados como dropdown en varias pantallas — paginar agregaría
+complejidad para listas que casi nunca superan una página), Caja (la única tabla que muestra
+son los movimientos de la sesión abierta actual, no una lista navegable),
+[ConfiguracionCatalogoPage](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx)
+(ni siquiera usa `<Table>`, son catálogos chicos) y Herramientas/Reportes (Herramientas no
+tiene una lista persistida — solo el resultado de la última importación — y Reportes son
+tablas de resultados agregados, no colecciones CRUD).
+
+- **Usuarios y Existencias quedaron en modo dual** (mismo criterio que Artículos/Clientes/
+  Proveedores: sin `pagina` en el query devuelven el array completo de siempre) porque otras
+  pantallas dependen de esa lista sin paginar: `listarUsuarios` lo usan también
+  VentasHistorialPage/AuditoriaPage/AjustesPage (filtros/dropdowns) y `listarExistencias` lo
+  usan VentasPage (lookup de stock del POS) y `useDashboardData.js`. Usuarios además vive en
+  una join table (`UsuarioEmpresa`), no en `Usuario` directo, así que ordenar/buscar es sobre
+  campos anidados (`usuario.nombre`, `rol.nombre`).
+- **Existencias era la única de las seis sin ningún `take`** — antes totalmente sin límite,
+  la colección que más crece de las seis (sucursales × artículos). De paso se expusieron en
+  la UI los filtros de sucursal y "solo con stock" que el backend ya soportaba
+  (`filtros.sucursalId`/`filtros.soloConStock`) pero ninguna pantalla usaba.
+- **Cotizaciones, Conteos, Transferencias y Ajustes no necesitan modo dual** salvo Ajustes
+  (consumido también por `useDashboardData.js` para el feed de movimientos recientes) —
+  reemplazan el `take: 200` fijo de siempre por paginación real. Conteos físicos no tiene
+  ningún campo de texto libre (a diferencia de los otros tres, que sí tienen `folio`), así
+  que en vez de un buscador de texto tiene un filtro exacto por sucursal.
+- Verificado en vivo contra producción con clics reales en las 6 pantallas: búsqueda,
+  filtros, orden por columna y paginación en cada una, más los consumidores dual-mode
+  (dropdown de artículos en Ajustes/Transferencias/Cotizaciones que sigue usando la lista sin
+  paginar de Existencias no aplica ahí, pero sí el selector "Autoriza" de Ajustes con la lista
+  completa de Usuarios). No se generaron datos de prueba (solo lectura/filtrado), nada que
+  limpiar.
+- **Mismo gotcha de siempre:** backend local no pudo levantar contra Supabase (sin salida
+  IPv6), se verificó pusheando a `main` y probando contra
+  `https://ventix-frontend.onrender.com` ya desplegado.
+
 ## Qué contiene
 
 ```text
@@ -747,10 +789,13 @@ pulido (UX de captura de Ventas tipo POS, responsive mobile real, búsqueda/orde
 server-side en las listas grandes) ya se cerraron (ver "Pulido post-rediseño" arriba). Además,
 ya se agregaron documentos fuera del plan original: impresión de ticket de venta, PDF de
 cotización (con logo de empresa) y edición de nombre/logo de la empresa (ver "Documentos"
-arriba), y el buscador global de la barra superior ya está implementado (ver "Buscador
-global" arriba). **No queda ningún pendiente abierto.** A elección:
-- Extender la paginación server-side al resto de las tablas (hoy solo la tienen Ventas
-  recientes, Compras, Artículos, Clientes, Proveedores, Auditoría).
+arriba), el buscador global de la barra superior ya está implementado (ver "Buscador
+global" arriba), y la paginación server-side ya se extendió a Usuarios, Existencias,
+Cotizaciones, Conteos, Transferencias y Ajustes (ver "Paginación server-side extendida"
+arriba) — de las pantallas con tabla que quedaban, solo Sucursales, Roles, Caja,
+Configuración de Catálogo, Herramientas y Reportes se dejaron sin paginar a propósito (no
+son buen fit, ver esa misma sección para el porqué de cada una). **No queda ningún
+pendiente abierto.** A elección:
 - Una segunda ronda de QA más profunda sobre algún módulo.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
