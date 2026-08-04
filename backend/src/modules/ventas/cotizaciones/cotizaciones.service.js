@@ -12,6 +12,10 @@ async function listar({ empresaId }) {
   return prisma.cotizacion.findMany({ where: { empresaId }, orderBy: { creadoEn: 'desc' }, take: 200 });
 }
 
+// Cotizacion no declara relaciones de Prisma hacia Cliente/Sucursal (solo guarda los IDs
+// crudos), a diferencia de Venta — por eso cliente/sucursal/artículos se resuelven acá con
+// consultas manuales en vez de un `include`, mismo patrón que ya usaba esta función para
+// artículos.
 async function obtener({ empresaId, cotizacionId }) {
   const cotizacion = await prisma.cotizacion.findFirst({
     where: { id: cotizacionId, empresaId },
@@ -20,14 +24,20 @@ async function obtener({ empresaId, cotizacionId }) {
   if (!cotizacion) throw new AppError(404, 'Cotización no encontrada.');
 
   const articuloIds = [...new Set(cotizacion.detalles.map((d) => d.articuloId))];
-  const articulos = await prisma.articulo.findMany({
-    where: { id: { in: articuloIds } },
-    select: { id: true, nombre: true, sku: true },
-  });
+  const [cliente, sucursal, articulos] = await Promise.all([
+    prisma.cliente.findUnique({ where: { id: cotizacion.clienteId } }),
+    prisma.sucursal.findUnique({ where: { id: cotizacion.sucursalId } }),
+    prisma.articulo.findMany({
+      where: { id: { in: articuloIds } },
+      select: { id: true, nombre: true, sku: true },
+    }),
+  ]);
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
 
   return {
     ...cotizacion,
+    cliente,
+    sucursal,
     detalles: cotizacion.detalles.map((d) => ({ ...d, articulo: articuloPorId.get(d.articuloId) || null })),
   };
 }

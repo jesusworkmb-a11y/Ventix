@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2 } from 'lucide-react';
+import { Trash2, FileDown } from 'lucide-react';
 import { listarCotizaciones, obtenerCotizacion, crearCotizacion, convertirCotizacion } from '../api/cotizaciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
+import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -15,6 +16,7 @@ import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
 
 function CotizacionesPage() {
+  const { empresa } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [clienteId, setClienteId] = useState('');
   const [articulos, setArticulos] = useState([]);
@@ -58,6 +60,22 @@ function CotizacionesPage() {
 
   function cargarCotizaciones() {
     listarCotizaciones().then(setCotizaciones).catch(() => {});
+  }
+
+  // jsPDF (+ sus dependencias, ~250kB gzip) solo se descarga cuando alguien realmente pide un
+  // PDF, vía import() dinámico, para no engordar el bundle inicial de toda la app por una
+  // función que se usa solo en esta pantalla.
+  async function descargarPdf(cotizacionId) {
+    setError('');
+    try {
+      const [detalle, { generarPdfCotizacion }] = await Promise.all([
+        obtenerCotizacion(cotizacionId),
+        import('../pdf/cotizacionPdf'),
+      ]);
+      generarPdfCotizacion(detalle, empresa, articulos);
+    } catch (err) {
+      setError('No se pudo generar el PDF de la cotización.');
+    }
   }
 
   async function verificarSesion(id) {
@@ -189,9 +207,16 @@ function CotizacionesPage() {
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
       {creada && (
-        <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
-          Cotización {creada.folio} creada. Total: {formatoMoneda(creada.total)}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
+          <p>Cotización {creada.folio} creada. Total: {formatoMoneda(creada.total)}</p>
+          <button
+            type="button"
+            onClick={() => descargarPdf(creada.id)}
+            className="inline-flex items-center gap-1.5 font-medium text-success-800 hover:underline"
+          >
+            <FileDown size={15} /> Descargar PDF
+          </button>
+        </div>
       )}
 
       <Card title="Nueva cotización">
@@ -285,11 +310,21 @@ function CotizacionesPage() {
                 </Badge>
               </Celda>
               <Celda className="text-right">
-                {!c.convertidaEnVentaId && (
-                  <button type="button" onClick={() => abrirConversion(c.id)} className="text-sm text-primary-600 hover:underline">
-                    Convertir en venta
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => descargarPdf(c.id)}
+                    className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 hover:underline"
+                    title="Descargar PDF"
+                  >
+                    <FileDown size={14} /> PDF
                   </button>
-                )}
+                  {!c.convertidaEnVentaId && (
+                    <button type="button" onClick={() => abrirConversion(c.id)} className="text-sm text-primary-600 hover:underline">
+                      Convertir en venta
+                    </button>
+                  )}
+                </div>
               </Celda>
             </Fila>
           ))}
