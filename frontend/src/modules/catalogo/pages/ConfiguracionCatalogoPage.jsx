@@ -314,6 +314,18 @@ const TIPOS_DESCUENTO = [
   { value: 'MONTO_FIJO', label: 'Monto fijo' },
 ];
 
+// Los <select> de tipo/alcance muestran una opción por defecto apenas se renderizan (ver el
+// `??` en su `value` más abajo), pero eso es solo visual: si el usuario nunca toca el
+// desplegable, el estado del formulario nunca guarda ese valor y se manda "" al backend, que
+// lo rechaza por ser un campo obligatorio ("Datos de descuento/promoción inválidos"). Por eso
+// el formulario se inicializa (y se resetea tras crear) con estos valores reales en el estado,
+// no solo mostrados en pantalla.
+function valoresInicialesFormulario(esPromocion) {
+  return esPromocion
+    ? { alcance: 'ARTICULO' }
+    : { tipo: 'PORCENTAJE', alcance: 'TODOS' };
+}
+
 function describirAlcance(item, categorias, articulos) {
   if (item.alcance === 'TODOS') return 'Todos los artículos';
   if (item.alcance === 'CATEGORIA') {
@@ -487,7 +499,7 @@ function SeccionDescuentosPromociones({ esPromocion }) {
   const [items, setItems] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [articulos, setArticulos] = useState([]);
-  const [form, setForm] = useState({});
+  const [form, setForm] = useState(() => valoresInicialesFormulario(esPromocion));
   const [error, setError] = useState('');
 
   const [editandoId, setEditandoId] = useState(null);
@@ -515,7 +527,7 @@ function SeccionDescuentosPromociones({ esPromocion }) {
     setError('');
     try {
       await crear(limpiarPayload(form));
-      setForm({});
+      setForm(valoresInicialesFormulario(esPromocion));
       recargar();
     } catch (err) {
       setError(err.response?.data?.error || `No se pudo crear ${esPromocion ? 'la promoción' : 'el descuento'}.`);
