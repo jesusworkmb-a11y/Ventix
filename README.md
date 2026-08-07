@@ -894,6 +894,58 @@ autorización rechazada/aceptada según permiso, ticket y resumen mostrando el d
 datos de prueba limpiados (ventas canceladas, descuento/promoción de prueba desactivados con el
 sufijo "(ignorar)") después de cada corrida.
 
+## Descuento manual en Cotizaciones (2026-08-07)
+
+A pedido del usuario, se extendieron descuentos/promociones a Cotizaciones — con un alcance
+más chico que en Ventas, definido explícitamente por el usuario antes de implementar:
+
+- Cotizaciones **no** consume el catálogo de Descuentos/Promociones en absoluto (ni activos ni
+  inactivos, sin aplicación automática). Solo se puede capturar un **descuento manual** por
+  línea — porcentaje o monto fijo — directo en la cotización, con el mismo mini-formulario
+  (ícono %) que ya existía en Ventas.
+- **No pide permiso para crearse** (a diferencia del ícono de descuento manual en Ventas, que
+  exige `venta.aplicar_descuento`) — cualquiera puede cargarlo en una cotización.
+- **Sí exige autorización de Supervisor al convertir la cotización en venta** — reusa el
+  mecanismo ya existente (`venta.autorizar_descuento`), sin duplicar la validación: el backend
+  reconstruye el descuento manual congelado como `descuentoManual: {tipo: 'MONTO_FIJO', valor}`
+  al armar la venta, y dejará que
+  [ventas.service.js#crear](backend/src/modules/ventas/ventas/ventas.service.js) exija
+  `autorizadoPorId` porque un descuento manual siempre resuelve `requiereAprobacion: true`.
+- **Modelo de datos**: un único campo nuevo, `CotizacionDetalle.descuentoMonto` (mismo patrón
+  minimalista que `VentaDetalle.descuentoMonto` — solo se persiste el monto ya calculado, no el
+  tipo/valor original; la etiqueta "Descuento manual" es puramente de UI). Sin relaciones a
+  `Descuento`/`Promocion`, sin enums nuevos — la migración es la más chica de las que tocaron
+  schema hasta ahora.
+- **Backend**: `descuentoManualSchema` (ya existía en
+  [ventas.validators.js](backend/src/modules/ventas/ventas/ventas.validators.js)) se exportó y
+  se reusa en
+  [cotizaciones.validators.js](backend/src/modules/ventas/cotizaciones/cotizaciones.validators.js).
+  `cotizaciones.service.js#crear` calcula el monto con un helper local (mismo cálculo que la
+  rama manual de `resolverDescuentoLinea`, sin los mapas de catálogo que acá no aplican, sin
+  chequeo de permiso). `convertir()` ahora acepta `autorizadoPorId` y lo reenvía a
+  `ventasService.crear()`.
+- **Frontend**: [CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx)
+  — ícono % por línea del carrito (mismo mini-formulario que `VentasPage`, portado sin gating
+  de permiso), fila "Descuento" en el resumen de totales, y el modal "Convertir cotización en
+  venta" ahora muestra un selector "Autoriza" cuando la cotización tiene algún descuento
+  manual — la conversión se bloquea del lado del cliente si no se elige antes de confirmar (el
+  backend igual la re-valida). El PDF de cotización
+  ([cotizacionPdf.js](frontend/src/modules/ventas/pdf/cotizacionPdf.js)) también neta el
+  descuento por línea y agrega la fila "Descuento" al bloque de totales.
+- Antes de implementar se usó plan mode + `AskUserQuestion` para acordar el alcance con el
+  usuario (¿solo catálogo automático como en Ventas, o también descuento manual?) — se optó por
+  algo más simple que lo de Ventas: nada de catálogo, solo el descuento manual con autorización
+  diferida a la conversión.
+
+Verificado en vivo contra el backend local (misma base que producción): cotización con línea al
+10% y otra con $5 de descuento fijo (totales netos correctos en la UI y en el PDF, confirmado
+interceptando `URL.createObjectURL` para leer el PDF crudo); conversión rechazada sin
+autorizador elegido (validación de cliente) y con un autorizador sin el permiso
+`venta.autorizar_descuento` (403 del backend); conversión exitosa con un autorizador válido,
+`Venta`/`VentaDetalle` resultante con el mismo `descuentoMonto` y `autorizadoPorId` correctos;
+y una cotización sin ningún descuento se sigue convirtiendo exactamente igual que antes (sin
+pedir autorizador). Ventas de prueba generadas por las conversiones, canceladas al terminar.
+
 ## Qué contiene
 
 ```text
@@ -989,11 +1041,10 @@ ver esa misma sección para el porqué de cada una; Herramientas no tenía nada 
 Reportes ya tiene su propio export CSV en vez de paginación, que no aplicaba ahí). Por último,
 ya se agregaron descuentos y promociones en Catálogo con aplicación automática en Ventas,
 descuento manual con aprobación forzada de Supervisor, y su visibilidad en el resumen de venta
-y el ticket (ver "Descuentos y promociones" arriba). **No queda ningún pendiente abierto.** A
-elección:
+y el ticket (ver "Descuentos y promociones" arriba) — y ese descuento manual ya se extendió
+también a Cotizaciones, con autorización diferida a cuando se convierten en venta (ver
+"Descuento manual en Cotizaciones" arriba). **No queda ningún pendiente abierto.** A elección:
 - Una segunda ronda de QA más profunda sobre algún módulo.
-- Extender descuentos/promociones a Cotizaciones (por ahora solo Ventas, mismo criterio ya
-  usado con Listas de precio).
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
   desde la UI por ahora).

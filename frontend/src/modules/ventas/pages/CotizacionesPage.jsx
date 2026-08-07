@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2, FileDown, Search } from 'lucide-react';
+import { Trash2, FileDown, Search, Percent } from 'lucide-react';
 import { listarCotizaciones, obtenerCotizacion, crearCotizacion, convertirCotizacion } from '../api/cotizaciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
+import { listarUsuarios } from '../../core/api/core.api';
 import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
@@ -23,6 +24,16 @@ const COLUMNAS_COTIZACIONES = [
   { label: '', clave: null },
 ];
 
+// Cotizaciones no consume el catálogo de Descuentos/Promociones (a diferencia de Ventas) —
+// solo un descuento manual por línea, %/monto fijo, sin permiso para cargarse (ver
+// cotizaciones.service.js#calcularDescuentoManual, mismo cálculo del lado del backend).
+function calcularDescuentoLinea(linea) {
+  if (!linea.descuentoManual) return 0;
+  const { tipo, valor } = linea.descuentoManual;
+  const bruto = linea.cantidad * linea.precio;
+  return tipo === 'PORCENTAJE' ? bruto * (Number(valor) / 100) : Math.min(Number(valor), bruto);
+}
+
 function CotizacionesPage() {
   const { empresa } = useAuth();
   const [clientes, setClientes] = useState([]);
@@ -38,12 +49,19 @@ function CotizacionesPage() {
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
 
+  // Mini-formulario inline de descuento manual por línea — mismo patrón que VentasPage.
+  const [manualEditIndex, setManualEditIndex] = useState(null);
+  const [manualForm, setManualForm] = useState({ tipo: 'PORCENTAJE', valor: '' });
+
   const [cajas, setCajas] = useState([]);
   const [cajaId, setCajaId] = useState('');
   const [sesion, setSesion] = useState(null);
+  const [usuarios, setUsuarios] = useState([]);
   const [convirtiendoId, setConvirtiendoId] = useState(null);
   const [convTotal, setConvTotal] = useState(null);
   const [convMetodoPago, setConvMetodoPago] = useState('EFECTIVO');
+  const [convRequiereAutorizacion, setConvRequiereAutorizacion] = useState(false);
+  const [convAutorizadoPorId, setConvAutorizadoPorId] = useState('');
   const [convError, setConvError] = useState('');
 
   useEffect(() => {
@@ -61,6 +79,7 @@ function CotizacionesPage() {
         if (data.length) setCajaId((actual) => actual || data[0].id);
       })
       .catch(() => {});
+    listarUsuarios().then(setUsuarios).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -137,17 +156,60 @@ function CotizacionesPage() {
     if (!articulo) return;
     setCarrito((c) => [
       ...c,
-      { articuloId, nombre: articulo.nombre, cantidad: Number(cantidad), precio: precioEfectivo(articulo) },
+      { articuloId, nombre: articulo.nombre, cantidad: Number(cantidad), precio: precioEfectivo(articulo), descuentoManual: null },
     ]);
     setArticuloId('');
     setCantidad('1');
   }
 
-  function quitarLinea(index) {
-    setCarrito((c) => c.filter((_, i) => i !== index));
+  // Si borrar una línea corre los índices, el mini-formulario de descuento manual (identificado
+  // por índice) tiene que seguir a la línea correcta — mismo criterio que VentasPage.
+  function reindexarDescuentoManual(indexEliminado) {
+    setManualEditIndex((idx) => {
+      if (idx === null) return idx;
+      if (idx === indexEliminado) return null;
+      if (idx > indexEliminado) return idx - 1;
+      return idx;
+    });
   }
 
-  const total = Math.round(carrito.reduce((acc, l) => acc + l.cantidad * l.precio, 0) * 100) / 100;
+  function quitarLinea(index) {
+    setCarrito((c) => c.filter((_, i) => i !== index));
+    reindexarDescuentoManual(index);
+  }
+
+  function abrirDescuentoManual(index) {
+    const linea = carrito[index];
+    setManualForm(linea.descuentoManual ? { ...linea.descuentoManual } : { tipo: 'PORCENTAJE', valor: '' });
+    setManualEditIndex(index);
+  }
+
+  function cerrarDescuentoManual() {
+    setManualEditIndex(null);
+  }
+
+  function aplicarDescuentoManual() {
+    const valor = Number(manualForm.valor);
+    if (!valor || valor <= 0) return;
+    setCarrito((c) => {
+      const copia = [...c];
+      copia[manualEditIndex] = { ...copia[manualEditIndex], descuentoManual: { tipo: manualForm.tipo, valor } };
+      return copia;
+    });
+    setManualEditIndex(null);
+  }
+
+  function quitarDescuentoManual(index) {
+    setCarrito((c) => {
+      const copia = [...c];
+      copia[index] = { ...copia[index], descuentoManual: null };
+      return copia;
+    });
+  }
+
+  const carritoCalc = carrito.map((l) => ({ ...l, descuentoMonto: calcularDescuentoLinea(l) }));
+  const descuentoTotal = carritoCalc.reduce((acc, l) => acc + l.descuentoMonto, 0);
+  const total = Math.round(carritoCalc.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0) * 100) / 100;
 
   async function confirmarCotizacion(e) {
     e.preventDefault();
@@ -166,10 +228,15 @@ function CotizacionesPage() {
       const cotizacion = await crearCotizacion({
         sucursalId: caja.sucursalId,
         clienteId,
-        detalles: carrito.map((l) => ({ articuloId: l.articuloId, cantidad: l.cantidad })),
+        detalles: carritoCalc.map((l) => ({
+          articuloId: l.articuloId,
+          cantidad: l.cantidad,
+          ...(l.descuentoManual && { descuentoManual: { tipo: l.descuentoManual.tipo, valor: Number(l.descuentoManual.valor) } }),
+        })),
       });
       setCreada(cotizacion);
       setCarrito([]);
+      setManualEditIndex(null);
       cargarCotizaciones(1);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear la cotización.');
@@ -180,18 +247,24 @@ function CotizacionesPage() {
   // el impuesto se calcula recién al convertir, con la tasa vigente en ese momento (igual que
   // ventasService.crear). Hay que recalcularlo aquí con el mismo criterio para saber cuánto
   // cobrar antes de convertir, o la suma de pagos no coincide con el total real de la venta.
+  // También hay que restar el descuento manual de cada línea antes de aplicar la tasa.
   async function abrirConversion(cotizacionId) {
     setConvError('');
     setConvTotal(null);
+    setConvAutorizadoPorId('');
     setConvirtiendoId(cotizacionId);
     try {
       const detalle = await obtenerCotizacion(cotizacionId);
       const totalConImpuesto = detalle.detalles.reduce((acc, d) => {
         const articulo = articulos.find((a) => a.id === d.articuloId);
         const tasa = articulo?.impuesto ? Number(articulo.impuesto.tasa) : 0;
-        return acc + Number(d.cantidad) * Number(d.precio) * (1 + tasa);
+        const neto = Number(d.cantidad) * Number(d.precio) - Number(d.descuentoMonto || 0);
+        return acc + neto * (1 + tasa);
       }, 0);
       setConvTotal(Math.round(totalConImpuesto * 100) / 100);
+      // Cualquier descuento en una cotización es manual (sin catálogo), y un descuento manual
+      // siempre exige autorización de Supervisor al convertir (ver resolverDescuentoLinea).
+      setConvRequiereAutorizacion(detalle.detalles.some((d) => Number(d.descuentoMonto) > 0));
     } catch (err) {
       setConvError('No se pudo calcular el total a cobrar.');
     }
@@ -209,10 +282,15 @@ function CotizacionesPage() {
       return;
     }
     if (convTotal === null) return;
+    if (convRequiereAutorizacion && !convAutorizadoPorId) {
+      setConvError('Esta cotización tiene un descuento manual — selecciona quién autoriza.');
+      return;
+    }
     try {
       await convertirCotizacion(cotizacion.id, {
         sesionCajaId: sesion.id,
         pagos: [{ metodo: convMetodoPago, monto: convTotal }],
+        ...(convAutorizadoPorId && { autorizadoPorId: convAutorizadoPorId }),
       });
       setConvirtiendoId(null);
       cargarCotizaciones(paginacion.pagina);
@@ -289,12 +367,59 @@ function CotizacionesPage() {
 
         {carrito.length > 0 && (
           <div className="mt-4">
-            <Table columnas={['Artículo', 'Cantidad', 'Precio', '']}>
-              {carrito.map((l, i) => (
+            <Table columnas={['Artículo', 'Cantidad', 'Precio', 'Descuento', '']}>
+              {carritoCalc.map((l, i) => (
                 <Fila key={i}>
                   <Celda>{l.nombre}</Celda>
                   <Celda>{l.cantidad}</Celda>
                   <Celda>{formatoMoneda(l.precio)}</Celda>
+                  <Celda>
+                    {manualEditIndex === i ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={manualForm.tipo}
+                          onChange={(e) => setManualForm((f) => ({ ...f, tipo: e.target.value }))}
+                          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                        >
+                          <option value="PORCENTAJE">%</option>
+                          <option value="MONTO_FIJO">$</option>
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          autoFocus
+                          value={manualForm.valor}
+                          onChange={(e) => setManualForm((f) => ({ ...f, valor: e.target.value }))}
+                          className="w-20 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-900"
+                        />
+                        <button type="button" onClick={aplicarDescuentoManual} className="rounded-md bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700">
+                          Aplicar
+                        </button>
+                        <button type="button" onClick={cerrarDescuentoManual} className="text-xs font-medium text-gray-400 hover:text-gray-600">
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {l.descuentoMonto > 0 ? (
+                          <>
+                            <span className="text-xs font-medium text-success-700">-{formatoMoneda(l.descuentoMonto)}</span>
+                            <button type="button" onClick={() => abrirDescuentoManual(i)} title="Editar descuento" className="text-primary-600 hover:text-primary-700">
+                              <Percent size={14} />
+                            </button>
+                            <button type="button" onClick={() => quitarDescuentoManual(i)} title="Quitar descuento" className="text-gray-400 hover:text-danger-600">
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        ) : (
+                          <button type="button" onClick={() => abrirDescuentoManual(i)} title="Agregar descuento" className="text-gray-300 hover:text-primary-600">
+                            <Percent size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </Celda>
                   <Celda className="text-right">
                     <button type="button" onClick={() => quitarLinea(i)} className="text-gray-400 hover:text-danger-600">
                       <Trash2 size={16} />
@@ -306,8 +431,16 @@ function CotizacionesPage() {
           </div>
         )}
 
-        <div className="mt-4 flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
-          <span className="text-base font-semibold text-gray-900">Total: {formatoMoneda(total)}</span>
+        <div className="mt-4 space-y-1 rounded-lg bg-gray-50 px-4 py-3">
+          {descuentoTotal > 0 && (
+            <div className="flex items-center justify-between text-sm text-gray-500">
+              <span>Descuento</span>
+              <span className="font-medium text-success-700">-{formatoMoneda(descuentoTotal)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-base font-semibold text-gray-900">Total: {formatoMoneda(total)}</span>
+          </div>
         </div>
 
         <form onSubmit={confirmarCotizacion} className="mt-4">
@@ -407,6 +540,25 @@ function CotizacionesPage() {
           <p className="text-sm font-medium text-gray-700">
             Total a cobrar: {convTotal === null ? 'calculando…' : formatoMoneda(convTotal)}
           </p>
+          {convRequiereAutorizacion && (
+            <>
+              <p className="rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-700">
+                Esta cotización incluye un descuento manual — requiere autorización de un
+                Supervisor para convertirse en venta.
+              </p>
+              <Select
+                id="convAutorizadoPorId"
+                label="Autoriza"
+                value={convAutorizadoPorId}
+                onChange={(e) => setConvAutorizadoPorId(e.target.value)}
+              >
+                <option value="">Selecciona quién autoriza</option>
+                {usuarios.map((u) => (
+                  <option key={u.id} value={u.id}>{u.nombre}</option>
+                ))}
+              </Select>
+            </>
+          )}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={cerrarConversion}>Cancelar</Button>
             <Button type="submit" disabled={convTotal === null}>Confirmar conversión</Button>

@@ -16,25 +16,29 @@ function calcularTotales(cotizacion, articulosCompletos) {
   const articuloPorId = new Map(articulosCompletos.map((a) => [a.id, a]));
   let subtotal = 0;
   let impuestos = 0;
+  let descuentoTotal = 0;
   const lineas = cotizacion.detalles.map((d) => {
     const cantidad = Number(d.cantidad);
     const precio = Number(d.precio);
-    const importe = cantidad * precio;
+    const descuentoMonto = Number(d.descuentoMonto || 0);
+    const importe = cantidad * precio - descuentoMonto;
     const tasa = articuloPorId.get(d.articuloId)?.impuesto ? Number(articuloPorId.get(d.articuloId).impuesto.tasa) : 0;
     subtotal += importe;
     impuestos += importe * tasa;
+    descuentoTotal += descuentoMonto;
     return { nombre: d.articulo?.nombre || d.articuloId, cantidad, precio, importe };
   });
   subtotal = Math.round(subtotal * 100) / 100;
   impuestos = Math.round(impuestos * 100) / 100;
+  descuentoTotal = Math.round(descuentoTotal * 100) / 100;
   const total = Math.round((subtotal + impuestos) * 100) / 100;
-  return { lineas, subtotal, impuestos, total };
+  return { lineas, subtotal, impuestos, descuentoTotal, total };
 }
 
 const ALTO_LOGO = 16; // mm — ancho se deriva de la proporción real de la imagen
 
 export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
-  const { lineas, subtotal, impuestos, total } = calcularTotales(cotizacion, articulosCompletos);
+  const { lineas, subtotal, impuestos, descuentoTotal, total } = calcularTotales(cotizacion, articulosCompletos);
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   let y = 20;
   let xTexto = MARGEN_X;
@@ -112,6 +116,11 @@ export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
 
   let finalY = doc.lastAutoTable.finalY + 8;
   doc.setFontSize(10);
+  if (descuentoTotal > 0) {
+    doc.text('Descuento', 150, finalY);
+    doc.text(`-${formatoMoneda(descuentoTotal)}`, DERECHA, finalY, { align: 'right' });
+    finalY += 6;
+  }
   doc.text('Subtotal', 150, finalY);
   doc.text(formatoMoneda(subtotal), DERECHA, finalY, { align: 'right' });
   finalY += 6;

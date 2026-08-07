@@ -51,4 +51,4 @@ const crearVentaSchema = z.object({
   autorizadoPorId: z.string().min(1).optional(),
 });
 
-module.exports = { crearVentaSchema };
+module.exports = { crearVentaSchema, descuentoManualSchema };

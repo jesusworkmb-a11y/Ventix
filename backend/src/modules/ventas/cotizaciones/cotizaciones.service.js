@@ -60,10 +60,22 @@ async function obtener({ empresaId, cotizacionId }) {
   };
 }
 
+// Descuento manual por línea (sin catálogo, a diferencia de Ventas) — mismo cálculo que la
+// rama `descuentoManual` de `resolverDescuentoLinea` en ventas.service.js, pero sin los mapas
+// de descuentos/promociones de catálogo que acá no aplican. Sin chequeo de permiso: cargar un
+// descuento manual en una cotización no lo exige (solo convertirla en venta, ver convertir()).
+function calcularDescuentoManual(cantidad, precio, descuentoManual) {
+  if (!descuentoManual) return 0;
+  const { tipo, valor } = descuentoManual;
+  const bruto = cantidad * precio;
+  return tipo === 'PORCENTAJE' ? bruto * (Number(valor) / 100) : Math.min(Number(valor), bruto);
+}
+
 // Sin movimiento de stock ni de caja — es un borrador. El precio de línea no exige permisos
 // especiales aquí (no es dinero real todavía); si se manda uno distinto al de catálogo, el
 // chequeo de venta.modificar_precio/aplicar_descuento se aplica al convertir (ver abajo),
-// que es el momento en que el precio sí se vuelve una transacción real.
+// que es el momento en que el precio sí se vuelve una transacción real. Mismo criterio para el
+// descuento manual por línea.
 async function crear({ empresaId, usuarioId, sucursalId, clienteId, detalles }) {
   const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, empresaId } });
   if (!sucursal) throw new AppError(400, 'La sucursal indicada no pertenece a esta empresa.');
@@ -88,13 +100,15 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, detalles }) 
     const precioCatalogo = preciosLista.has(d.articuloId)
       ? preciosLista.get(d.articuloId)
       : Number(articuloPorId.get(d.articuloId).precio);
+    const precio = d.precio !== undefined ? d.precio : precioCatalogo;
     return {
       articuloId: d.articuloId,
       cantidad: d.cantidad,
-      precio: d.precio !== undefined ? d.precio : precioCatalogo,
+      precio,
+      descuentoMonto: calcularDescuentoManual(d.cantidad, precio, d.descuentoManual),
     };
   });
-  const total = redondear(lineas.reduce((acc, l) => acc + l.cantidad * l.precio, 0));
+  const total = redondear(lineas.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0));
 
   return prisma.$transaction(async (tx) => {
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId, tipoDocumento: 'COT' });
@@ -109,6 +123,7 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, detalles }) 
         articuloId: l.articuloId,
         cantidad: l.cantidad,
         precio: l.precio,
+        descuentoMonto: l.descuentoMonto,
       })),
     });
 
@@ -138,7 +153,7 @@ const RESERVADO = 'RESERVADO';
 // y caja duplicados). Se reclama la cotización con un UPDATE...WHERE convertidaEnVentaId IS NULL
 // (Postgres serializa esa fila) antes de crear la venta; si el conteo da 0, alguien más ya la
 // reclamó. Si la creación de la venta falla, se libera el candado.
-async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCajaId, pagos }) {
+async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCajaId, pagos, autorizadoPorId }) {
   const cotizacion = await prisma.cotizacion.findFirst({
     where: { id: cotizacionId, empresaId },
     include: { detalles: true },
@@ -165,8 +180,16 @@ async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCaja
         articuloId: d.articuloId,
         cantidad: Number(d.cantidad),
         precio: Number(d.precio),
+        // El descuento de la cotización solo puede ser manual (sin catálogo) — se reconstruye
+        // como MONTO_FIJO con el monto ya congelado; determinístico porque cantidad/precio no
+        // cambian, así que Math.min(descuentoMonto, bruto) en resolverDescuentoLinea reproduce
+        // el mismo monto exacto.
+        ...(Number(d.descuentoMonto) > 0 && {
+          descuentoManual: { tipo: 'MONTO_FIJO', valor: Number(d.descuentoMonto) },
+        }),
       })),
       pagos,
+      autorizadoPorId,
     });
   } catch (error) {
     await prisma.cotizacion.update({ where: { id: cotizacionId }, data: { convertidaEnVentaId: null } });

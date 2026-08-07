@@ -859,11 +859,12 @@ model Cotizacion {
 }
 
 model CotizacionDetalle {
-  id           String  @id @default(uuid())
-  cotizacionId String  @map("cotizacion_id")
-  articuloId   String  @map("articulo_id")
-  cantidad     Decimal
-  precio       Decimal
+  id             String  @id @default(uuid())
+  cotizacionId   String  @map("cotizacion_id")
+  articuloId     String  @map("articulo_id")
+  cantidad       Decimal
+  precio         Decimal
+  descuentoMonto Decimal @default(0) @map("descuento_monto") // solo descuento manual (%/monto), sin catálogo — ver ventas.service.js#resolverDescuentoLinea (rama descuentoManual)
 
   cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id])
 
