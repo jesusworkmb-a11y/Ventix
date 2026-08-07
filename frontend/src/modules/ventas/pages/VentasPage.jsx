@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Trash2, Search, Plus, Minus, Package, UserPlus, CreditCard,
-  ArrowLeftRight, Layers, Banknote, Printer,
+  ArrowLeftRight, Layers, Banknote, Printer, Percent, X,
 } from 'lucide-react';
 import { crearVenta, obtenerVenta } from '../api/ventas.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
@@ -787,37 +787,41 @@ function VentasPage() {
                           <span className="w-16 text-right font-semibold text-gray-900">
                             {formatoMoneda(l.cantidad * l.precio - l.descuentoMonto)}
                           </span>
+                          {puedeAplicarDescuento && (
+                            <button
+                              type="button"
+                              onClick={() => (manualEditIndex === i ? cerrarDescuentoManual() : abrirDescuentoManual(i))}
+                              title={l.descuentoManual ? 'Editar descuento manual' : 'Agregar descuento manual'}
+                              className={l.descuentoManual ? 'text-primary-600 hover:text-primary-700' : 'text-gray-300 hover:text-primary-600'}
+                            >
+                              <Percent size={15} />
+                            </button>
+                          )}
                           <button type="button" onClick={() => quitarLinea(i)} className="text-gray-300 hover:text-danger-600">
                             <Trash2 size={15} />
                           </button>
                         </div>
 
                         {/* Descuento/promoción de catálogo: se aplica solo, sin selector — es
-                            informativo. Un descuento manual (si lo hay) lo reemplaza. */}
+                            informativo. Un descuento manual (si lo hay) lo reemplaza; se quita
+                            con el ícono X, mismo criterio visual que el tacho de la línea. */}
                         {l.descuentoMonto > 0 && (
-                          <p className="mt-1 text-xs text-success-700">
-                            {l.descuentoNombre}: -{formatoMoneda(l.descuentoMonto)}
-                            {l.requiereAprobacion ? ' (requiere aprobación)' : ''}
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-success-700">
+                            <span>
+                              {l.descuentoNombre}: -{formatoMoneda(l.descuentoMonto)}
+                              {l.requiereAprobacion ? ' (requiere aprobación)' : ''}
+                            </span>
+                            {puedeAplicarDescuento && l.descuentoManual && manualEditIndex !== i && (
+                              <button
+                                type="button"
+                                onClick={() => quitarDescuentoManual(i)}
+                                title="Quitar descuento manual"
+                                className="text-gray-400 hover:text-danger-600"
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
                           </p>
-                        )}
-
-                        {puedeAplicarDescuento && manualEditIndex !== i && (
-                          <button
-                            type="button"
-                            onClick={() => abrirDescuentoManual(i)}
-                            className="mt-1 text-xs font-medium text-primary-600 hover:underline"
-                          >
-                            {l.descuentoManual ? 'Editar descuento manual' : '+ Descuento manual'}
-                          </button>
-                        )}
-                        {puedeAplicarDescuento && l.descuentoManual && manualEditIndex !== i && (
-                          <button
-                            type="button"
-                            onClick={() => quitarDescuentoManual(i)}
-                            className="ml-3 mt-1 text-xs font-medium text-gray-400 hover:text-danger-600"
-                          >
-                            Quitar
-                          </button>
                         )}
 
                         {manualEditIndex === i && (
