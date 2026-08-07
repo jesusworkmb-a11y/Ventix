@@ -945,6 +945,10 @@ autorizador elegido (validación de cliente) y con un autorizador sin el permiso
 `Venta`/`VentaDetalle` resultante con el mismo `descuentoMonto` y `autorizadoPorId` correctos;
 y una cotización sin ningún descuento se sigue convirtiendo exactamente igual que antes (sin
 pedir autorizador). Ventas de prueba generadas por las conversiones, canceladas al terminar.
+Repetido después contra `https://ventix-frontend.onrender.com` ya con el deploy de Render
+terminado: cotización con 20% de descuento → total neto correcto devuelto por el backend de
+producción (prueba de que el código nuevo ya estaba en vivo), conversión con autorización
+exitosa. Venta de prueba cancelada al terminar.
 
 ## Qué contiene
 
