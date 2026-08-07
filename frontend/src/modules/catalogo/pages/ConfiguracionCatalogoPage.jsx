@@ -18,9 +18,11 @@ import {
   listarDescuentos,
   crearDescuento,
   actualizarDescuento,
+  eliminarDescuento,
   listarPromociones,
   crearPromocion,
   actualizarPromocion,
+  eliminarPromocion,
 } from '../api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
@@ -492,11 +494,64 @@ function FormularioDescuentoPromocion({ valores, onChange, categorias, articulos
   );
 }
 
+// Un descuento/promoción "activo" solo cuenta para la advertencia de solape si además está
+// dentro de su vigencia (uno ya vencido o que arranca en el futuro no compite con nada hoy).
+function estaVigente(item) {
+  if (!item.activo) return false;
+  const ahora = new Date();
+  if (item.vigenciaDesde && new Date(item.vigenciaDesde) > ahora) return false;
+  if (item.vigenciaHasta && new Date(item.vigenciaHasta) < ahora) return false;
+  return true;
+}
+
+function articuloEnCategoria(articuloId, categoriaId, articulos) {
+  return articulos.find((a) => a.id === articuloId)?.categoriaId === categoriaId;
+}
+
+// Dos alcances "compiten" por el mismo producto si TODOS está de cualquiera de los dos lados,
+// si apuntan a la misma categoría/artículo, o si un artículo pertenece a la categoría del otro.
+function seSolapan(valores, existente, articulos) {
+  if (valores.alcance === 'TODOS' || existente.alcance === 'TODOS') return true;
+  if (valores.alcance === 'CATEGORIA') {
+    if (existente.alcance === 'CATEGORIA') return existente.categoriaId === valores.categoriaId;
+    return articuloEnCategoria(existente.articuloId, valores.categoriaId, articulos);
+  }
+  if (valores.alcance === 'ARTICULO') {
+    if (existente.alcance === 'ARTICULO') return existente.articuloId === valores.articuloId;
+    return articuloEnCategoria(valores.articuloId, existente.categoriaId, articulos);
+  }
+  return false;
+}
+
+// Busca, entre descuentos Y promociones ya activos (combinados, sin importar cuál de las dos
+// secciones se está editando), cuáles aplicarían al mismo producto que el formulario actual —
+// para advertir antes de apilar rebajas que puedan dejar una línea de venta en 0 o negativo.
+function itemsQueSolapan(valores, combinados, articulos, excluirId) {
+  if (!valores.alcance) return [];
+  if (valores.alcance === 'CATEGORIA' && !valores.categoriaId) return [];
+  if (valores.alcance === 'ARTICULO' && !valores.articuloId) return [];
+  return combinados.filter(
+    (it) => it.id !== excluirId && estaVigente(it) && seSolapan(valores, it, articulos)
+  );
+}
+
+function AdvertenciaSolape({ solapados }) {
+  if (solapados.length === 0) return null;
+  return (
+    <p className="rounded-lg bg-warning-50 px-3 py-2 text-sm text-warning-700">
+      ⚠ Este producto ya tiene {solapados.length === 1 ? 'una rebaja activa' : 'rebajas activas'}:{' '}
+      {solapados.map((it) => `"${it.nombre}" (${it._tipo})`).join(', ')}. Combinarlas podría dejar
+      el precio en 0 o negativo — revisa antes de guardar.
+    </p>
+  );
+}
+
 function SeccionDescuentosPromociones({ esPromocion }) {
   const { permisos } = useAuth();
   const puedeGestionar = permisos?.includes('catalogo.descuentos.gestionar');
 
   const [items, setItems] = useState([]);
+  const [otros, setOtros] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [articulos, setArticulos] = useState([]);
   const [form, setForm] = useState(() => valoresInicialesFormulario(esPromocion));
@@ -506,9 +561,13 @@ function SeccionDescuentosPromociones({ esPromocion }) {
   const [editForm, setEditForm] = useState({});
   const [errorEdit, setErrorEdit] = useState('');
 
+  const [eliminandoError, setEliminandoError] = useState({ id: null, mensaje: '' });
+
   const listar = esPromocion ? listarPromociones : listarDescuentos;
+  const listarOtros = esPromocion ? listarDescuentos : listarPromociones;
   const crear = esPromocion ? crearPromocion : crearDescuento;
   const actualizar = esPromocion ? actualizarPromocion : actualizarDescuento;
+  const eliminar = esPromocion ? eliminarPromocion : eliminarDescuento;
   const titulo = esPromocion ? 'Promociones' : 'Descuentos';
 
   function recargar() {
@@ -517,10 +576,18 @@ function SeccionDescuentosPromociones({ esPromocion }) {
 
   useEffect(() => {
     recargar();
+    listarOtros().then(setOtros).catch(() => {});
     listarCategorias().then(setCategorias).catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Para la advertencia de solape no importa si el otro lado es descuento o promoción, así que
+  // se combinan ambas listas etiquetando de qué tipo es cada una (para el texto del mensaje).
+  const combinados = [
+    ...items.map((it) => ({ ...it, _tipo: esPromocion ? 'promoción' : 'descuento' })),
+    ...otros.map((it) => ({ ...it, _tipo: esPromocion ? 'descuento' : 'promoción' })),
+  ];
 
   async function agregar(e) {
     e.preventDefault();
@@ -562,6 +629,19 @@ function SeccionDescuentosPromociones({ esPromocion }) {
     }
   }
 
+  async function handleEliminar(item) {
+    setEliminandoError({ id: null, mensaje: '' });
+    try {
+      await eliminar(item.id);
+      recargar();
+    } catch (err) {
+      setEliminandoError({
+        id: item.id,
+        mensaje: err.response?.data?.error || `No se pudo eliminar ${esPromocion ? 'la promoción' : 'el descuento'}.`,
+      });
+    }
+  }
+
   return (
     <Card title={titulo}>
       {esPromocion && (
@@ -583,6 +663,7 @@ function SeccionDescuentosPromociones({ esPromocion }) {
                   esPromocion={esPromocion}
                   idPrefijo={`${titulo}-edit-${item.id}`}
                 />
+                <AdvertenciaSolape solapados={itemsQueSolapan(editForm, combinados, articulos, item.id)} />
                 <div className="flex items-center gap-3">
                   <Button type="submit" variant="secondary">Guardar</Button>
                   <Button type="button" variant="ghost" onClick={cancelarEdicion}>Cancelar</Button>
@@ -601,11 +682,19 @@ function SeccionDescuentosPromociones({ esPromocion }) {
                   {describirAlcance(item, categorias, articulos)}
                   {item.requiereAprobacion && <Badge tono="warning">requiere aprobación</Badge>}
                   {!item.activo && <Badge tono="gray">inactivo</Badge>}
+                  {eliminandoError.id === item.id && (
+                    <p className="mt-1 text-xs text-danger-600">{eliminandoError.mensaje}</p>
+                  )}
                 </div>
                 {puedeGestionar && (
-                  <button type="button" onClick={() => iniciarEdicion(item)} className="shrink-0 text-sm text-primary-600 hover:underline">
-                    Editar
-                  </button>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button type="button" onClick={() => iniciarEdicion(item)} className="text-sm text-primary-600 hover:underline">
+                      Editar
+                    </button>
+                    <button type="button" onClick={() => handleEliminar(item)} className="text-sm text-danger-600 hover:underline">
+                      Eliminar
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -623,6 +712,7 @@ function SeccionDescuentosPromociones({ esPromocion }) {
             esPromocion={esPromocion}
             idPrefijo={`${titulo}-nuevo`}
           />
+          <AdvertenciaSolape solapados={itemsQueSolapan(form, combinados, articulos, null)} />
           <div>
             <Button type="submit" variant="secondary">Agregar</Button>
           </div>

@@ -41,4 +41,26 @@ async function actualizar({ empresaId, usuarioEjecutorId, promocionId, datos }) 
   });
 }
 
-module.exports = { listar, crear, actualizar };
+async function eliminar({ empresaId, usuarioEjecutorId, promocionId }) {
+  const promocion = await prisma.promocion.findFirst({ where: { id: promocionId, empresaId } });
+  if (!promocion) throw new AppError(404, 'Promoción no encontrada.');
+
+  const usos = await prisma.ventaDetalle.count({ where: { promocionId } });
+  if (usos > 0) {
+    throw new AppError(409, 'No se puede eliminar: ya se aplicó en ventas. Desactívala en su lugar.');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.promocion.delete({ where: { id: promocionId } });
+    await registrarAuditoria(tx, {
+      empresaId,
+      usuarioEjecutorId,
+      accion: 'ELIMINAR',
+      entidad: 'Promocion',
+      entidadId: promocionId,
+      valoresAntes: toJson(promocion),
+    });
+  });
+}
+
+module.exports = { listar, crear, actualizar, eliminar };

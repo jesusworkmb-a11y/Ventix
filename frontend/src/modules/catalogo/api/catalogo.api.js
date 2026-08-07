@@ -70,6 +70,9 @@ export function crearDescuento(datos) {
 export function actualizarDescuento(id, datos) {
   return api.patch(`/catalogo/descuentos/${id}`, datos).then((res) => res.data);
 }
+export function eliminarDescuento(id) {
+  return api.delete(`/catalogo/descuentos/${id}`).then((res) => res.data);
+}
 
 export function listarPromociones() {
   return api.get('/catalogo/promociones').then((res) => res.data);
@@ -79,4 +82,7 @@ export function crearPromocion(datos) {
 }
 export function actualizarPromocion(id, datos) {
   return api.patch(`/catalogo/promociones/${id}`, datos).then((res) => res.data);
+}
+export function eliminarPromocion(id) {
+  return api.delete(`/catalogo/promociones/${id}`).then((res) => res.data);
 }

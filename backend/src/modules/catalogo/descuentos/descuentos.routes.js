@@ -13,5 +13,6 @@ router.use(auth);
 router.get('/', requierePermiso('catalogo.articulos.ver'), asyncHandler(controller.listar));
 router.post('/', requierePermiso('catalogo.descuentos.gestionar'), asyncHandler(controller.crear));
 router.patch('/:id', requierePermiso('catalogo.descuentos.gestionar'), asyncHandler(controller.actualizar));
+router.delete('/:id', requierePermiso('catalogo.descuentos.gestionar'), asyncHandler(controller.eliminar));
 
 module.exports = router;

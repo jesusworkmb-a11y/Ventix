@@ -30,4 +30,13 @@ async function actualizar(req, res) {
   res.json(descuento);
 }
 
-module.exports = { listar, crear, actualizar };
+async function eliminar(req, res) {
+  await service.eliminar({
+    empresaId: req.auth.empresaId,
+    usuarioEjecutorId: req.auth.usuarioId,
+    descuentoId: req.params.id,
+  });
+  res.status(204).send();
+}
+
+module.exports = { listar, crear, actualizar, eliminar };
