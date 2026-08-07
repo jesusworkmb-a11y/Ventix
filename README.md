@@ -823,6 +823,77 @@ filas de método de pago y montos exactos; "Inventario valorizado" → CSV con l
 y valores exactos, y confirmado que el botón de "Stock bajo" (0 filas ese día) queda
 deshabilitado. Sin datos de prueba generados — solo lectura.
 
+## Descuentos y promociones en Catálogo, con aprobación de Supervisor en Ventas (2026-08-06, sesión posterior)
+
+Funcionalidad nueva fuera del plan original, a pedido del usuario. Antes de implementar se
+usó plan mode (exploración del schema/permisos existentes + `AskUserQuestion` para acordar el
+diseño) porque tocaba varias decisiones no triviales; el diseño final terminó revisándose dos
+veces más a partir de feedback del usuario ya con la primera versión funcionando en producción.
+
+- **Modelo de datos**, sin migración adicional después de la primera: nuevos modelos
+  [`Descuento`](backend/prisma/schema.prisma) (nombre, `tipo` PORCENTAJE/MONTO_FIJO, `valor`,
+  `alcance` TODOS/CATEGORIA/ARTICULO, vigencia opcional, `requiereAprobacion`) y `Promocion`
+  (mismo alcance salvo TODOS, `cantidadRequerida`/`cantidadGratis` para reglas tipo "2x1"/"3x2").
+  `VentaDetalle` ganó `descuentoId`/`promocionId`/`descuentoMonto`; `Venta` ganó
+  `autorizadoPorId` (mismo patrón opcional que `Ajuste`/`MovimientoCaja`). Primera migración de
+  schema desde que se cerró el plan original — todo lo anterior reutilizaba columnas existentes.
+- **Permisos nuevos**: `catalogo.descuentos.gestionar` (alta/edición en Catálogo) y
+  `venta.autorizar_descuento` (quién puede figurar como autorizador) — ambos Administrador +
+  Supervisor por defecto. Reutiliza `venta.aplicar_descuento`, que ya existía en el catálogo de
+  permisos sin ningún punto de la app que lo usara.
+- **Backend**: módulos CRUD [`catalogo/descuentos`](backend/src/modules/catalogo/descuentos) y
+  [`catalogo/promociones`](backend/src/modules/catalogo/promociones), mismo patrón que
+  `listasPrecio` salvo que el GET va con `catalogo.articulos.ver` (no con
+  `catalogo.descuentos.gestionar`): cualquier cajero necesita poder listarlos para que se le
+  apliquen solos, aunque no pueda gestionarlos. `ventas.service.js#crear` resuelve el
+  descuento/promoción de cada línea (`resolverDescuentoLinea`), valida alcance/vigencia, y si
+  alguno tiene `requiereAprobacion=true` exige un `autorizadoPorId` con permiso
+  `venta.autorizar_descuento` antes de confirmar.
+- **Aplicación automática, no manual** (cambio de diseño pedido después de la primera versión):
+  un descuento/promoción de catálogo ya no se elige de una lista en Ventas — se aplica solo
+  apenas el artículo/cantidad de la línea califica, sin gatear el permiso
+  `venta.aplicar_descuento` (se considera "pre-aprobado" por existir en el catálogo). Si más de
+  uno califica para la misma línea, gana el de alcance más específico (artículo > categoría >
+  todos) y, en empate, el que dé mayor descuento (`resolverAutomatico` en
+  [VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx), misma fórmula reflejada
+  en el backend).
+- **Descuento manual** (agregado también a pedido, tras la versión automática): ícono de
+  porcentaje por línea del carrito (junto al de eliminar, mismo criterio visual) para cargar un
+  %/monto directo en la venta, sin pasar por catálogo. Reemplaza cualquier descuento automático
+  de esa línea y **siempre** exige autorización de Supervisor — a diferencia de los de catálogo,
+  si requiere el permiso `venta.aplicar_descuento` (es la acción discrecional del cajero). No
+  generó campos nuevos: viaja como `descuentoManual: {tipo, valor}` en el request y se persiste
+  en los mismos `descuentoMonto`/`autorizadoPorId` ya existentes, sin ligar a un registro de
+  catálogo (`descuentoId`/`promocionId` quedan `null`; se etiqueta "Descuento manual" en el
+  ticket/resumen cuando no hay nombre de catálogo que mostrar).
+- **Visibilidad**: el total de descuento aparece como renglón propio ("Descuento -$X") en el
+  resumen de Subtotal/Impuestos/Total del carrito y en el
+  [ticket de venta](frontend/src/modules/ventas/components/TicketVenta.jsx), además del detalle
+  ya existente por línea.
+
+Dos bugs reales encontrados y corregidos durante la verificación en vivo (no en el desarrollo
+inicial, sino probando contra producción):
+- **Cobrar directo con Tarjeta/Transferencia mandaba la venta sin el autorizador recién
+  elegido.** `setAutorizadoPorId()` es asíncrono; la acción pendiente se disparaba en el mismo
+  instante con el estado todavía viejo. El backend rechazaba correctamente (nunca llegó a crear
+  una venta mal autorizada), pero la UX quedaba rota. Efectivo/Mixto no tenían el bug porque
+  abren un modal aparte, con un render de por medio antes de confirmar. Fix: la acción
+  pendiente ahora recibe el id del autorizador como argumento en vez de leer el estado.
+- **"Datos de descuento inválidos" al crear un descuento dejando Tipo en "Porcentaje".** El
+  `<select>` de Tipo/Alcance mostraba una opción por defecto solo visualmente (`?? 'PORCENTAJE'`
+  en el `value`), pero el estado del formulario nunca la guardaba si el usuario no tocaba el
+  desplegable a mano — el campo viajaba vacío y Zod lo rechazaba por ser obligatorio. Fix: el
+  formulario de alta en
+  [ConfiguracionCatalogoPage.jsx](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx)
+  se inicializa (y se resetea tras crear) con esos valores reales en el estado, no solo
+  mostrados en pantalla.
+
+Verificado en vivo contra producción en cada iteración (creación de descuento/promoción de
+prueba, venta con aplicación automática, reemplazo por descuento manual forzando aprobación,
+autorización rechazada/aceptada según permiso, ticket y resumen mostrando el descuento) —
+datos de prueba limpiados (ventas canceladas, descuento/promoción de prueba desactivados con el
+sufijo "(ignorar)") después de cada corrida.
+
 ## Qué contiene
 
 ```text
@@ -915,9 +986,14 @@ a Usuarios, Existencias, Cotizaciones, Conteos, Transferencias y Ajustes (ver "P
 server-side extendida" arriba) — de las pantallas con tabla que quedaban, solo Sucursales,
 Roles, Caja y Configuración de Catálogo se dejaron sin paginar a propósito (catálogos chicos,
 ver esa misma sección para el porqué de cada una; Herramientas no tenía nada que paginar y
-Reportes ya tiene su propio export CSV en vez de paginación, que no aplicaba ahí). **No queda
-ningún pendiente abierto.** A elección:
+Reportes ya tiene su propio export CSV en vez de paginación, que no aplicaba ahí). Por último,
+ya se agregaron descuentos y promociones en Catálogo con aplicación automática en Ventas,
+descuento manual con aprobación forzada de Supervisor, y su visibilidad en el resumen de venta
+y el ticket (ver "Descuentos y promociones" arriba). **No queda ningún pendiente abierto.** A
+elección:
 - Una segunda ronda de QA más profunda sobre algún módulo.
+- Extender descuentos/promociones a Cotizaciones (por ahora solo Ventas, mismo criterio ya
+  usado con Listas de precio).
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
   desde la UI por ahora).
