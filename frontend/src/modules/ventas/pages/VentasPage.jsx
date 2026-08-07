@@ -305,6 +305,9 @@ function VentasPage() {
   // Envuelve una acción de cobro: si el carrito tiene un descuento/promoción que requiere
   // aprobación y todavía no se eligió un autorizador, abre el modal "Autorizar" y guarda la
   // acción para retomarla apenas se confirme; si no hace falta, la ejecuta directo.
+  // La acción recibe el id del autorizador como argumento en vez de depender del estado
+  // `autorizadoPorId`: setAutorizadoPorId es asíncrono, así que una acción que cobra en el
+  // mismo instante (Tarjeta/Transferencia) todavía vería el valor viejo si leyera el estado.
   function conAutorizacionSiHaceFalta(accion) {
     if (requiereAutorizacion && !autorizadoPorId) {
       accionPendienteRef.current = accion;
@@ -313,7 +316,7 @@ function VentasPage() {
       setAutorizarAbierto(true);
       return;
     }
-    accion();
+    accion(autorizadoPorId);
   }
 
   function confirmarAutorizar(e) {
@@ -326,13 +329,13 @@ function VentasPage() {
     setAutorizarAbierto(false);
     const accion = accionPendienteRef.current;
     accionPendienteRef.current = null;
-    if (accion) accion();
+    if (accion) accion(autorizarSeleccion);
   }
 
   // Cobrar en un clic: cada botón de método de pago llama esto directo con el monto total,
   // sin paso intermedio de "seleccionar método" + "confirmar". Efectivo pasa antes por el
   // modal de "Recibido" (para calcular cambio) y Mixto por confirmarPagoMixto más abajo.
-  async function cobrar(metodo, cambio = null) {
+  async function cobrar(metodo, cambio = null, autorizadorOverride = null) {
     setError('');
     setConfirmada(null);
     setUltimoCambio(null);
@@ -347,6 +350,7 @@ function VentasPage() {
     if (procesando) return false;
     setProcesando(true);
     const caja = cajas.find((c) => c.id === cajaId);
+    const autorizadorFinal = autorizadorOverride || autorizadoPorId;
     try {
       const venta = await crearVenta({
         sucursalId: caja.sucursalId,
@@ -359,7 +363,7 @@ function VentasPage() {
           ...(l.promocionId && { promocionId: l.promocionId }),
         })),
         pagos: [{ metodo, monto: total }],
-        ...(autorizadoPorId && { autorizadoPorId }),
+        ...(autorizadorFinal && { autorizadoPorId: autorizadorFinal }),
       });
       setConfirmada(venta);
       setUltimoCambio(cambio);
@@ -781,7 +785,7 @@ function VentasPage() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => conAutorizacionSiHaceFalta(() => cobrar('TARJETA'))}
+                      onClick={() => conAutorizacionSiHaceFalta((idAutorizador) => cobrar('TARJETA', null, idAutorizador))}
                       disabled={carrito.length === 0 || procesando}
                       className="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-white py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
                     >
@@ -789,7 +793,7 @@ function VentasPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => conAutorizacionSiHaceFalta(() => cobrar('TRANSFERENCIA'))}
+                      onClick={() => conAutorizacionSiHaceFalta((idAutorizador) => cobrar('TRANSFERENCIA', null, idAutorizador))}
                       disabled={carrito.length === 0 || procesando}
                       className="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-white py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
                     >
