@@ -19,32 +19,79 @@ import TicketVenta from '../components/TicketVenta';
 import { formatoMoneda } from '../../../shared/format';
 import { useAuth } from '../../../shared/context/AuthContext';
 
-// Recalcula el descuento/promoción de una línea a partir de su selección (descuentoId o
-// promocionId) — misma fórmula que resolverDescuentoLinea en el backend (ventas.service.js),
-// para que el total mostrado en el carrito ya sea el que el backend va a confirmar.
-function calcularDescuentoLinea(linea, descuentosPorId, promocionesPorId) {
-  if (linea.descuentoId) {
-    const d = descuentosPorId.get(linea.descuentoId);
-    if (!d) return { descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
-    const bruto = linea.cantidad * linea.precio;
-    const monto = d.tipo === 'PORCENTAJE' ? bruto * (Number(d.valor) / 100) : Math.min(Number(d.valor), bruto);
-    return { descuentoMonto: monto, requiereAprobacion: d.requiereAprobacion, descuentoNombre: d.nombre };
-  }
-  if (linea.promocionId) {
-    const p = promocionesPorId.get(linea.promocionId);
-    if (!p) return { descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
-    const grupos = Math.floor(linea.cantidad / p.cantidadRequerida);
-    const monto = grupos * p.cantidadGratis * linea.precio;
-    return { descuentoMonto: monto, requiereAprobacion: p.requiereAprobacion, descuentoNombre: p.nombre };
-  }
-  return { descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
-}
-
 function vigente(item) {
   const ahora = new Date();
   if (item.vigenciaDesde && ahora < new Date(item.vigenciaDesde)) return false;
   if (item.vigenciaHasta && ahora > new Date(item.vigenciaHasta)) return false;
   return true;
+}
+
+function elegibleParaArticulo(item, articulo) {
+  if (!item.activo || !vigente(item)) return false;
+  if (item.alcance === 'CATEGORIA') return item.categoriaId === articulo.categoriaId;
+  if (item.alcance === 'ARTICULO') return item.articuloId === articulo.id;
+  return true; // TODOS
+}
+
+const ESPECIFICIDAD_ALCANCE = { ARTICULO: 2, CATEGORIA: 1, TODOS: 0 };
+
+// Descuentos/promociones de catálogo se aplican solos (sin que el cajero elija nada) apenas
+// el artículo/cantidad de la línea califica — ya se consideran "pre-aprobados" por existir en
+// el catálogo. Si más de uno califica para la misma línea, gana el de alcance más específico
+// (artículo > categoría > todos) y, en empate, el que dé mayor descuento.
+function resolverAutomatico(linea, articulo, descuentos, promociones) {
+  const candidatos = [];
+  const bruto = linea.cantidad * linea.precio;
+
+  for (const d of descuentos) {
+    if (!elegibleParaArticulo(d, articulo)) continue;
+    const monto = d.tipo === 'PORCENTAJE' ? bruto * (Number(d.valor) / 100) : Math.min(Number(d.valor), bruto);
+    if (monto <= 0) continue;
+    candidatos.push({
+      descuentoId: d.id,
+      promocionId: null,
+      descuentoMonto: monto,
+      requiereAprobacion: d.requiereAprobacion,
+      descuentoNombre: d.nombre,
+      especificidad: ESPECIFICIDAD_ALCANCE[d.alcance],
+    });
+  }
+  for (const p of promociones) {
+    if (!elegibleParaArticulo(p, articulo) || linea.cantidad < p.cantidadRequerida) continue;
+    const grupos = Math.floor(linea.cantidad / p.cantidadRequerida);
+    const monto = grupos * p.cantidadGratis * linea.precio;
+    if (monto <= 0) continue;
+    candidatos.push({
+      descuentoId: null,
+      promocionId: p.id,
+      descuentoMonto: monto,
+      requiereAprobacion: p.requiereAprobacion,
+      descuentoNombre: p.nombre,
+      especificidad: ESPECIFICIDAD_ALCANCE[p.alcance],
+    });
+  }
+  if (candidatos.length === 0) {
+    return { descuentoId: null, promocionId: null, descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
+  }
+  candidatos.sort((a, b) => b.especificidad - a.especificidad || b.descuentoMonto - a.descuentoMonto);
+  const { especificidad, ...ganador } = candidatos[0];
+  return ganador;
+}
+
+// Un descuento manual (cargado directo en la venta, no ligado a catálogo) reemplaza cualquier
+// descuento/promoción automático de esa línea y siempre exige aprobación de supervisor — a
+// diferencia de los de catálogo, que ya vienen pre-aprobados por existir ahí.
+function calcularDescuentoLinea(linea, articulo, descuentos, promociones) {
+  if (linea.descuentoManual) {
+    const { tipo, valor } = linea.descuentoManual;
+    const bruto = linea.cantidad * linea.precio;
+    const monto = tipo === 'PORCENTAJE' ? bruto * (Number(valor) / 100) : Math.min(Number(valor), bruto);
+    return { descuentoId: null, promocionId: null, descuentoMonto: monto, requiereAprobacion: true, descuentoNombre: 'Descuento manual' };
+  }
+  if (!articulo) {
+    return { descuentoId: null, promocionId: null, descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
+  }
+  return resolverAutomatico(linea, articulo, descuentos, promociones);
 }
 
 function VentasPage() {
@@ -78,6 +125,11 @@ function VentasPage() {
   const [autorizarSeleccion, setAutorizarSeleccion] = useState('');
   const [autorizarError, setAutorizarError] = useState('');
   const accionPendienteRef = useRef(null);
+
+  // Mini-formulario inline para cargar un descuento manual en una línea del carrito (ver
+  // abrirDescuentoManual). manualEditIndex === null significa que no hay ninguno abierto.
+  const [manualEditIndex, setManualEditIndex] = useState(null);
+  const [manualForm, setManualForm] = useState({ tipo: 'PORCENTAJE', valor: '' });
 
   const [ticketVenta, setTicketVenta] = useState(null);
   const [ticketAbierto, setTicketAbierto] = useState(false);
@@ -113,10 +165,10 @@ function VentasPage() {
       })
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
-    if (puedeAplicarDescuento) {
-      listarDescuentos().then(setDescuentos).catch(() => {});
-      listarPromociones().then(setPromociones).catch(() => {});
-    }
+    // Se cargan siempre (no solo si puedeAplicarDescuento): los de catálogo se aplican solos
+    // para cualquier cajero, el permiso solo gatea el botón de descuento manual.
+    listarDescuentos().then(setDescuentos).catch(() => {});
+    listarPromociones().then(setPromociones).catch(() => {});
     listarUsuarios().then(setUsuarios).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -179,14 +231,25 @@ function VentasPage() {
           cantidad: 1,
           precio: precioEfectivo(articulo),
           impuestoTasa,
-          descuentoId: null,
-          promocionId: null,
+          descuentoManual: null,
         },
       ];
     });
   }
 
+  // Si borrar/vaciar una línea corre los índices, el mini-formulario de descuento manual
+  // (identificado por índice, ver manualEditIndex) tiene que seguir a la línea correcta.
+  function reindexarDescuentoManual(indexEliminado) {
+    setManualEditIndex((idx) => {
+      if (idx === null) return idx;
+      if (idx === indexEliminado) return null;
+      if (idx > indexEliminado) return idx - 1;
+      return idx;
+    });
+  }
+
   function cambiarCantidadLinea(index, delta) {
+    const seEliminaria = carrito[index].cantidad + delta <= 0;
     setCarrito((c) => {
       const linea = c[index];
       const nueva = linea.cantidad + delta;
@@ -195,55 +258,44 @@ function VentasPage() {
       copia[index] = { ...linea, cantidad: nueva };
       return copia;
     });
+    if (seEliminaria) reindexarDescuentoManual(index);
   }
 
   function quitarLinea(index) {
     setCarrito((c) => c.filter((_, i) => i !== index));
+    reindexarDescuentoManual(index);
   }
 
-  // value viene del <select> de la línea: "" (sin descuento), "descuento:<id>" o "promocion:<id>".
-  function cambiarDescuentoLinea(index, value) {
-    const [tipo, id] = value.split(':');
+  // Descuento manual: cargado directo en la venta (no ligado a catálogo), siempre exige
+  // aprobación de supervisor al confirmar (ver calcularDescuentoLinea). Reemplaza cualquier
+  // descuento/promoción automático que hubiera en esa línea.
+  function abrirDescuentoManual(index) {
+    const linea = carrito[index];
+    setManualForm(linea.descuentoManual ? { ...linea.descuentoManual } : { tipo: 'PORCENTAJE', valor: '' });
+    setManualEditIndex(index);
+  }
+
+  function cerrarDescuentoManual() {
+    setManualEditIndex(null);
+  }
+
+  function aplicarDescuentoManual() {
+    const valor = Number(manualForm.valor);
+    if (!valor || valor <= 0) return;
     setCarrito((c) => {
       const copia = [...c];
-      copia[index] = {
-        ...copia[index],
-        descuentoId: tipo === 'descuento' ? id : null,
-        promocionId: tipo === 'promocion' ? id : null,
-      };
+      copia[manualEditIndex] = { ...copia[manualEditIndex], descuentoManual: { tipo: manualForm.tipo, valor } };
       return copia;
     });
+    setManualEditIndex(null);
   }
 
-  // Descuentos/promociones cuyo alcance (todos/categoría/artículo) matchea el artículo de la
-  // línea y que están activos y vigentes — mismas reglas que resolverDescuentoLinea en el backend.
-  function opcionesDescuentoParaLinea(linea) {
-    const articulo = articulos.find((a) => a.id === linea.articuloId);
-    if (!articulo) return [];
-    const aplica = (item) => {
-      if (!item.activo || !vigente(item)) return false;
-      if (item.alcance === 'CATEGORIA') return item.categoriaId === articulo.categoriaId;
-      if (item.alcance === 'ARTICULO') return item.articuloId === articulo.id;
-      return true; // TODOS
-    };
-    const opciones = [];
-    for (const d of descuentos) {
-      if (aplica(d)) {
-        opciones.push({
-          value: `descuento:${d.id}`,
-          label: `${d.nombre} (${d.tipo === 'PORCENTAJE' ? `${Number(d.valor)}%` : formatoMoneda(d.valor)})`,
-        });
-      }
-    }
-    for (const p of promociones) {
-      if (aplica(p)) {
-        opciones.push({
-          value: `promocion:${p.id}`,
-          label: `${p.nombre} (lleva ${p.cantidadRequerida}, paga ${p.cantidadRequerida - p.cantidadGratis})`,
-        });
-      }
-    }
-    return opciones;
+  function quitarDescuentoManual(index) {
+    setCarrito((c) => {
+      const copia = [...c];
+      copia[index] = { ...copia[index], descuentoManual: null };
+      return copia;
+    });
   }
 
   function limpiarVenta() {
@@ -251,6 +303,7 @@ function VentasPage() {
     setError('');
     setConfirmada(null);
     setAutorizadoPorId('');
+    setManualEditIndex(null);
   }
 
   const categorias = [...new Map(
@@ -290,9 +343,10 @@ function VentasPage() {
     }
   }
 
-  const descuentosPorId = new Map(descuentos.map((d) => [d.id, d]));
-  const promocionesPorId = new Map(promociones.map((p) => [p.id, p]));
-  const carritoCalc = carrito.map((l) => ({ ...l, ...calcularDescuentoLinea(l, descuentosPorId, promocionesPorId) }));
+  const carritoCalc = carrito.map((l) => {
+    const articulo = articulos.find((a) => a.id === l.articuloId);
+    return { ...l, ...calcularDescuentoLinea(l, articulo, descuentos, promociones) };
+  });
 
   const subtotal = carritoCalc.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0);
   const impuestos = carritoCalc.reduce(
@@ -300,6 +354,7 @@ function VentasPage() {
     0,
   );
   const total = Math.round((subtotal + impuestos) * 100) / 100;
+  const descuentoTotal = carritoCalc.reduce((acc, l) => acc + l.descuentoMonto, 0);
   const requiereAutorizacion = carritoCalc.some((l) => l.requiereAprobacion);
 
   // Envuelve una acción de cobro: si el carrito tiene un descuento/promoción que requiere
@@ -356,11 +411,16 @@ function VentasPage() {
         sucursalId: caja.sucursalId,
         clienteId,
         sesionCajaId: sesion.id,
-        detalles: carrito.map((l) => ({
+        detalles: carritoCalc.map((l) => ({
           articuloId: l.articuloId,
           cantidad: l.cantidad,
-          ...(l.descuentoId && { descuentoId: l.descuentoId }),
-          ...(l.promocionId && { promocionId: l.promocionId }),
+          ...(l.descuentoManual
+            ? { descuentoManual: { tipo: l.descuentoManual.tipo, valor: Number(l.descuentoManual.valor) } }
+            : l.descuentoId
+              ? { descuentoId: l.descuentoId }
+              : l.promocionId
+                ? { promocionId: l.promocionId }
+                : {}),
         })),
         pagos: [{ metodo, monto: total }],
         ...(autorizadorFinal && { autorizadoPorId: autorizadorFinal }),
@@ -454,11 +514,16 @@ function VentasPage() {
         sucursalId: caja.sucursalId,
         clienteId,
         sesionCajaId: sesion.id,
-        detalles: carrito.map((l) => ({
+        detalles: carritoCalc.map((l) => ({
           articuloId: l.articuloId,
           cantidad: l.cantidad,
-          ...(l.descuentoId && { descuentoId: l.descuentoId }),
-          ...(l.promocionId && { promocionId: l.promocionId }),
+          ...(l.descuentoManual
+            ? { descuentoManual: { tipo: l.descuentoManual.tipo, valor: Number(l.descuentoManual.valor) } }
+            : l.descuentoId
+              ? { descuentoId: l.descuentoId }
+              : l.promocionId
+                ? { promocionId: l.promocionId }
+                : {}),
         })),
         pagos: pagosValidos.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) })),
         ...(autorizadoPorId && { autorizadoPorId }),
@@ -703,55 +768,104 @@ function VentasPage() {
                     {carrito.length === 0 && (
                       <p className="py-6 text-center text-sm text-gray-400">Escanea o selecciona un producto para empezar.</p>
                     )}
-                    {carritoCalc.map((l, i) => {
-                      const opcionesDescuento = puedeAplicarDescuento ? opcionesDescuentoParaLinea(l) : [];
-                      return (
-                        <div key={i} className="rounded-lg bg-white p-2 text-sm">
-                          <div className="flex items-center gap-2">
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium text-gray-800">{l.nombre}</p>
-                              <p className="text-xs text-gray-400">{formatoMoneda(l.precio)} c/u</p>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button type="button" onClick={() => cambiarCantidadLinea(i, -1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
-                                <Minus size={14} />
-                              </button>
-                              <span className="w-6 text-center font-medium text-gray-800">{l.cantidad}</span>
-                              <button type="button" onClick={() => cambiarCantidadLinea(i, 1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
-                                <Plus size={14} />
-                              </button>
-                            </div>
-                            <span className="w-16 text-right font-semibold text-gray-900">
-                              {formatoMoneda(l.cantidad * l.precio - l.descuentoMonto)}
-                            </span>
-                            <button type="button" onClick={() => quitarLinea(i)} className="text-gray-300 hover:text-danger-600">
-                              <Trash2 size={15} />
+                    {carritoCalc.map((l, i) => (
+                      <div key={i} className="rounded-lg bg-white p-2 text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-gray-800">{l.nombre}</p>
+                            <p className="text-xs text-gray-400">{formatoMoneda(l.precio)} c/u</p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => cambiarCantidadLinea(i, -1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                              <Minus size={14} />
+                            </button>
+                            <span className="w-6 text-center font-medium text-gray-800">{l.cantidad}</span>
+                            <button type="button" onClick={() => cambiarCantidadLinea(i, 1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                              <Plus size={14} />
                             </button>
                           </div>
-                          {opcionesDescuento.length > 0 && (
-                            <select
-                              value={l.descuentoId ? `descuento:${l.descuentoId}` : l.promocionId ? `promocion:${l.promocionId}` : ''}
-                              onChange={(e) => cambiarDescuentoLinea(i, e.target.value)}
-                              className="mt-1.5 w-full rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                            >
-                              <option value="">Sin descuento/promoción</option>
-                              {opcionesDescuento.map((o) => (
-                                <option key={o.value} value={o.value}>{o.label}</option>
-                              ))}
-                            </select>
-                          )}
-                          {l.descuentoMonto > 0 && (
-                            <p className="mt-1 text-xs text-success-700">
-                              {l.descuentoNombre}: -{formatoMoneda(l.descuentoMonto)}
-                              {l.requiereAprobacion ? ' (requiere aprobación)' : ''}
-                            </p>
-                          )}
+                          <span className="w-16 text-right font-semibold text-gray-900">
+                            {formatoMoneda(l.cantidad * l.precio - l.descuentoMonto)}
+                          </span>
+                          <button type="button" onClick={() => quitarLinea(i)} className="text-gray-300 hover:text-danger-600">
+                            <Trash2 size={15} />
+                          </button>
                         </div>
-                      );
-                    })}
+
+                        {/* Descuento/promoción de catálogo: se aplica solo, sin selector — es
+                            informativo. Un descuento manual (si lo hay) lo reemplaza. */}
+                        {l.descuentoMonto > 0 && (
+                          <p className="mt-1 text-xs text-success-700">
+                            {l.descuentoNombre}: -{formatoMoneda(l.descuentoMonto)}
+                            {l.requiereAprobacion ? ' (requiere aprobación)' : ''}
+                          </p>
+                        )}
+
+                        {puedeAplicarDescuento && manualEditIndex !== i && (
+                          <button
+                            type="button"
+                            onClick={() => abrirDescuentoManual(i)}
+                            className="mt-1 text-xs font-medium text-primary-600 hover:underline"
+                          >
+                            {l.descuentoManual ? 'Editar descuento manual' : '+ Descuento manual'}
+                          </button>
+                        )}
+                        {puedeAplicarDescuento && l.descuentoManual && manualEditIndex !== i && (
+                          <button
+                            type="button"
+                            onClick={() => quitarDescuentoManual(i)}
+                            className="ml-3 mt-1 text-xs font-medium text-gray-400 hover:text-danger-600"
+                          >
+                            Quitar
+                          </button>
+                        )}
+
+                        {manualEditIndex === i && (
+                          <div className="mt-2 flex flex-wrap items-end gap-2 rounded-md bg-gray-50 p-2">
+                            <select
+                              value={manualForm.tipo}
+                              onChange={(e) => setManualForm((f) => ({ ...f, tipo: e.target.value }))}
+                              className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                            >
+                              <option value="PORCENTAJE">%</option>
+                              <option value="MONTO_FIJO">$</option>
+                            </select>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              autoFocus
+                              value={manualForm.valor}
+                              onChange={(e) => setManualForm((f) => ({ ...f, valor: e.target.value }))}
+                              className="w-20 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-900"
+                            />
+                            <button
+                              type="button"
+                              onClick={aplicarDescuentoManual}
+                              className="rounded-md bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700"
+                            >
+                              Aplicar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cerrarDescuentoManual}
+                              className="text-xs font-medium text-gray-400 hover:text-gray-600"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
 
                   <div className="space-y-1 border-t border-gray-200 pt-3 text-sm">
+                    {descuentoTotal > 0 && (
+                      <div className="flex justify-between text-gray-500">
+                        <span>Descuento</span>
+                        <span className="font-medium text-success-700">-{formatoMoneda(descuentoTotal)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-gray-500">
                       <span>Subtotal</span>
                       <span>{formatoMoneda(subtotal)}</span>

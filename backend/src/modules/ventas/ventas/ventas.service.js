@@ -97,6 +97,17 @@ async function obtener({ empresaId, ventaId }) {
 function resolverDescuentoLinea({ detalle, articulo, cantidad, precio, descuentoPorId, promocionPorId }) {
   const ahora = new Date();
 
+  // Descuento cargado directo en la venta (no ligado a catalogo.descuentos) — sin chequeos de
+  // alcance/vigencia porque no hay registro de catálogo detrás; SIEMPRE exige aprobación de
+  // supervisor, a diferencia de descuentoId/promocionId, que ya vienen "pre-aprobados" por
+  // existir en el catálogo (ver crear() más abajo).
+  if (detalle.descuentoManual) {
+    const { tipo, valor } = detalle.descuentoManual;
+    const bruto = cantidad * precio;
+    const monto = tipo === 'PORCENTAJE' ? bruto * (Number(valor) / 100) : Math.min(Number(valor), bruto);
+    return { descuentoId: null, promocionId: null, descuentoMonto: monto, requiereAprobacion: true };
+  }
+
   if (detalle.descuentoId) {
     const descuento = descuentoPorId.get(detalle.descuentoId);
     if (!descuento) throw new AppError(400, 'El descuento indicado no existe o no pertenece a esta empresa.');
@@ -220,9 +231,21 @@ async function crear({
     }
 
     let descuentoInfo = { descuentoId: null, promocionId: null, descuentoMonto: 0, requiereAprobacion: false };
-    if (detalle.descuentoId || detalle.promocionId) {
+    if (detalle.descuentoManual) {
+      // Solo el descuento manual (no ligado a catálogo) exige el permiso venta.aplicar_descuento
+      // — es la acción discrecional del cajero. Un descuentoId/promocionId de catálogo se aplica
+      // solo (ver más abajo), sin gating de permiso, porque ya fue aprobado al configurarse.
       const tienePermiso = await usuarioTienePermiso({ usuarioId, rolId, clave: 'venta.aplicar_descuento' });
-      if (!tienePermiso) throw new AppError(403, 'No tienes permiso para aplicar descuentos o promociones.');
+      if (!tienePermiso) throw new AppError(403, 'No tienes permiso para aplicar descuentos.');
+      descuentoInfo = resolverDescuentoLinea({
+        detalle,
+        articulo,
+        cantidad: detalle.cantidad,
+        precio,
+        descuentoPorId,
+        promocionPorId,
+      });
+    } else if (detalle.descuentoId || detalle.promocionId) {
       descuentoInfo = resolverDescuentoLinea({
         detalle,
         articulo,
@@ -234,7 +257,11 @@ async function crear({
     }
 
     const impuestoTasa = articulo.impuesto ? Number(articulo.impuesto.tasa) : 0;
-    const descuentoNombre = descuentoInfo.descuentoId ? descuentoPorId.get(descuentoInfo.descuentoId)?.nombre : null;
+    const descuentoNombre = detalle.descuentoManual
+      ? 'Descuento manual'
+      : descuentoInfo.descuentoId
+        ? descuentoPorId.get(descuentoInfo.descuentoId)?.nombre
+        : null;
     const promocionNombre = descuentoInfo.promocionId ? promocionPorId.get(descuentoInfo.promocionId)?.nombre : null;
     lineas.push({
       articuloId: detalle.articuloId,
