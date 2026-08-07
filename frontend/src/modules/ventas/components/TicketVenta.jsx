@@ -31,15 +31,25 @@ function TicketVenta({ venta, cambio }) {
 
       <div className="my-2 border-t border-dashed border-gray-500" />
 
-      {venta.detalles?.map((d) => (
-        <div key={d.id || d.articuloId} className="mb-1">
-          <p className="truncate">{d.articulo?.nombre || d.articuloId}</p>
-          <div className="flex justify-between">
-            <span>{Number(d.cantidad)} x {formatoMoneda(d.precio)}</span>
-            <span>{formatoMoneda(Number(d.cantidad) * Number(d.precio))}</span>
+      {venta.detalles?.map((d) => {
+        const descuentoMonto = Number(d.descuentoMonto || 0);
+        const nombreDescuento = d.descuento?.nombre || d.promocion?.nombre || d.descuentoNombre || d.promocionNombre;
+        return (
+          <div key={d.id || d.articuloId} className="mb-1">
+            <p className="truncate">{d.articulo?.nombre || d.articuloId}</p>
+            <div className="flex justify-between">
+              <span>{Number(d.cantidad)} x {formatoMoneda(d.precio)}</span>
+              <span>{formatoMoneda(Number(d.cantidad) * Number(d.precio) - descuentoMonto)}</span>
+            </div>
+            {descuentoMonto > 0 && (
+              <div className="flex justify-between text-[10px] text-gray-600">
+                <span>Descuento: {nombreDescuento}</span>
+                <span>-{formatoMoneda(descuentoMonto)}</span>
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       <div className="my-2 border-t border-dashed border-gray-500" />
 

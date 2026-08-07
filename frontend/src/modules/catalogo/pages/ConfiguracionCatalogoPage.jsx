@@ -14,12 +14,20 @@ import {
   actualizarImpuesto,
   listarListasPrecio,
   crearListaPrecio,
+  listarArticulos,
+  listarDescuentos,
+  crearDescuento,
+  actualizarDescuento,
+  listarPromociones,
+  crearPromocion,
+  actualizarPromocion,
 } from '../api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
+import { useAuth } from '../../../shared/context/AuthContext';
 
 // Categorías tiene lógica propia (padre + límite de 2 niveles), por eso no usa SeccionSimple.
 function SeccionCategorias() {
@@ -301,12 +309,326 @@ function SeccionListasPrecio() {
   );
 }
 
+const TIPOS_DESCUENTO = [
+  { value: 'PORCENTAJE', label: 'Porcentaje' },
+  { value: 'MONTO_FIJO', label: 'Monto fijo' },
+];
+
+function describirAlcance(item, categorias, articulos) {
+  if (item.alcance === 'TODOS') return 'Todos los artículos';
+  if (item.alcance === 'CATEGORIA') {
+    return `Categoría: ${categorias.find((c) => c.id === item.categoriaId)?.nombre || '—'}`;
+  }
+  return `Artículo: ${articulos.find((a) => a.id === item.articuloId)?.nombre || '—'}`;
+}
+
+// Quita claves con string vacío (para no mandar "" donde el backend espera un valor válido u
+// omitido) y convierte '' a null en los campos que sí se pueden despejar al editar.
+function limpiarPayload(datos, campoNulleables = []) {
+  const limpio = {};
+  for (const [clave, valor] of Object.entries(datos)) {
+    if (valor === '' || valor === undefined) {
+      if (campoNulleables.includes(clave)) limpio[clave] = null;
+      continue;
+    }
+    limpio[clave] = valor;
+  }
+  return limpio;
+}
+
+// Descuento (nombre + %/monto fijo) y Promoción (NxM, ej. 2x1) comparten alcance
+// (todos/categoría/artículo), vigencia opcional y el checkbox de aprobación de supervisor —
+// por eso comparten este formulario, con `esPromocion` cambiando los campos específicos.
+function FormularioDescuentoPromocion({ valores, onChange, categorias, articulos, esPromocion, idPrefijo }) {
+  return (
+    <div className="flex flex-wrap items-end gap-3">
+      <Input
+        id={`${idPrefijo}-nombre`}
+        label="Nombre"
+        value={valores.nombre ?? ''}
+        onChange={(e) => onChange({ ...valores, nombre: e.target.value })}
+        required
+        className="w-48"
+      />
+      {esPromocion ? (
+        <>
+          <Input
+            id={`${idPrefijo}-cantidadRequerida`}
+            label="Lleva (unidades)"
+            type="number"
+            min="1"
+            value={valores.cantidadRequerida ?? ''}
+            onChange={(e) => onChange({ ...valores, cantidadRequerida: e.target.value })}
+            required
+            className="w-32"
+          />
+          <Input
+            id={`${idPrefijo}-cantidadGratis`}
+            label="Paga menos (unidades gratis)"
+            type="number"
+            min="1"
+            value={valores.cantidadGratis ?? ''}
+            onChange={(e) => onChange({ ...valores, cantidadGratis: e.target.value })}
+            required
+            className="w-32"
+          />
+        </>
+      ) : (
+        <>
+          <Select
+            id={`${idPrefijo}-tipo`}
+            label="Tipo"
+            value={valores.tipo ?? 'PORCENTAJE'}
+            onChange={(e) => onChange({ ...valores, tipo: e.target.value })}
+            className="w-36"
+          >
+            {TIPOS_DESCUENTO.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </Select>
+          <Input
+            id={`${idPrefijo}-valor`}
+            label={valores.tipo === 'MONTO_FIJO' ? 'Monto' : 'Porcentaje'}
+            type="number"
+            step="0.01"
+            min="0"
+            value={valores.valor ?? ''}
+            onChange={(e) => onChange({ ...valores, valor: e.target.value })}
+            required
+            className="w-28"
+          />
+        </>
+      )}
+      <Select
+        id={`${idPrefijo}-alcance`}
+        label="Alcance"
+        value={valores.alcance ?? (esPromocion ? 'ARTICULO' : 'TODOS')}
+        onChange={(e) => onChange({ ...valores, alcance: e.target.value, categoriaId: '', articuloId: '' })}
+        className="w-40"
+      >
+        {!esPromocion && <option value="TODOS">Todos los artículos</option>}
+        <option value="CATEGORIA">Una categoría</option>
+        <option value="ARTICULO">Un artículo</option>
+      </Select>
+      {valores.alcance === 'CATEGORIA' && (
+        <Select
+          id={`${idPrefijo}-categoriaId`}
+          label="Categoría"
+          value={valores.categoriaId ?? ''}
+          onChange={(e) => onChange({ ...valores, categoriaId: e.target.value })}
+          required
+          className="w-44"
+        >
+          <option value="">Selecciona una categoría</option>
+          {categorias.map((c) => (
+            <option key={c.id} value={c.id}>{c.nombre}</option>
+          ))}
+        </Select>
+      )}
+      {valores.alcance === 'ARTICULO' && (
+        <Select
+          id={`${idPrefijo}-articuloId`}
+          label="Artículo"
+          value={valores.articuloId ?? ''}
+          onChange={(e) => onChange({ ...valores, articuloId: e.target.value })}
+          required
+          className="w-44"
+        >
+          <option value="">Selecciona un artículo</option>
+          {articulos.map((a) => (
+            <option key={a.id} value={a.id}>{a.nombre}</option>
+          ))}
+        </Select>
+      )}
+      <Input
+        id={`${idPrefijo}-vigenciaDesde`}
+        label="Vigente desde"
+        type="date"
+        value={valores.vigenciaDesde ?? ''}
+        onChange={(e) => onChange({ ...valores, vigenciaDesde: e.target.value })}
+        className="w-40"
+      />
+      <Input
+        id={`${idPrefijo}-vigenciaHasta`}
+        label="Vigente hasta"
+        type="date"
+        value={valores.vigenciaHasta ?? ''}
+        onChange={(e) => onChange({ ...valores, vigenciaHasta: e.target.value })}
+        className="w-40"
+      />
+      <label className="flex items-center gap-2 pb-2 text-sm text-gray-600">
+        <input
+          type="checkbox"
+          checked={Boolean(valores.requiereAprobacion)}
+          onChange={(e) => onChange({ ...valores, requiereAprobacion: e.target.checked })}
+          className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+        />
+        Requiere aprobación de Supervisor
+      </label>
+      {'activo' in valores && (
+        <label className="flex items-center gap-2 pb-2 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={Boolean(valores.activo)}
+            onChange={(e) => onChange({ ...valores, activo: e.target.checked })}
+            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          Activo
+        </label>
+      )}
+    </div>
+  );
+}
+
+function SeccionDescuentosPromociones({ esPromocion }) {
+  const { permisos } = useAuth();
+  const puedeGestionar = permisos?.includes('catalogo.descuentos.gestionar');
+
+  const [items, setItems] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [articulos, setArticulos] = useState([]);
+  const [form, setForm] = useState({});
+  const [error, setError] = useState('');
+
+  const [editandoId, setEditandoId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [errorEdit, setErrorEdit] = useState('');
+
+  const listar = esPromocion ? listarPromociones : listarDescuentos;
+  const crear = esPromocion ? crearPromocion : crearDescuento;
+  const actualizar = esPromocion ? actualizarPromocion : actualizarDescuento;
+  const titulo = esPromocion ? 'Promociones' : 'Descuentos';
+
+  function recargar() {
+    listar().then(setItems).catch(() => {});
+  }
+
+  useEffect(() => {
+    recargar();
+    listarCategorias().then(setCategorias).catch(() => {});
+    listarArticulos().then(setArticulos).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function agregar(e) {
+    e.preventDefault();
+    setError('');
+    try {
+      await crear(limpiarPayload(form));
+      setForm({});
+      recargar();
+    } catch (err) {
+      setError(err.response?.data?.error || `No se pudo crear ${esPromocion ? 'la promoción' : 'el descuento'}.`);
+    }
+  }
+
+  function iniciarEdicion(item) {
+    setErrorEdit('');
+    setEditandoId(item.id);
+    setEditForm({
+      ...item,
+      valor: item.valor ?? '',
+      vigenciaDesde: item.vigenciaDesde ? item.vigenciaDesde.slice(0, 10) : '',
+      vigenciaHasta: item.vigenciaHasta ? item.vigenciaHasta.slice(0, 10) : '',
+    });
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null);
+    setErrorEdit('');
+  }
+
+  async function guardarEdicion(e) {
+    e.preventDefault();
+    setErrorEdit('');
+    try {
+      await actualizar(editandoId, limpiarPayload(editForm, ['categoriaId', 'articuloId', 'vigenciaDesde', 'vigenciaHasta']));
+      setEditandoId(null);
+      recargar();
+    } catch (err) {
+      setErrorEdit(err.response?.data?.error || `No se pudo actualizar ${esPromocion ? 'la promoción' : 'el descuento'}.`);
+    }
+  }
+
+  return (
+    <Card title={titulo}>
+      {esPromocion && (
+        <p className="mb-4 text-sm text-gray-500">
+          Regla tipo &quot;2x1&quot;: el cajero elige la promoción en el carrito y, si el artículo
+          alcanza la cantidad requerida, descuenta el equivalente a las unidades gratis.
+        </p>
+      )}
+      <ul className="divide-y divide-gray-100">
+        {items.map((item) => (
+          <li key={item.id} className="py-2.5">
+            {editandoId === item.id ? (
+              <form onSubmit={guardarEdicion} className="flex flex-col gap-3">
+                <FormularioDescuentoPromocion
+                  valores={editForm}
+                  onChange={setEditForm}
+                  categorias={categorias}
+                  articulos={articulos}
+                  esPromocion={esPromocion}
+                  idPrefijo={`${titulo}-edit-${item.id}`}
+                />
+                <div className="flex items-center gap-3">
+                  <Button type="submit" variant="secondary">Guardar</Button>
+                  <Button type="button" variant="ghost" onClick={cancelarEdicion}>Cancelar</Button>
+                </div>
+                {errorEdit && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
+              </form>
+            ) : (
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm text-gray-700">
+                  <span className="font-medium">{item.nombre}</span>
+                  {' — '}
+                  {esPromocion
+                    ? `Lleva ${item.cantidadRequerida}, paga ${item.cantidadRequerida - item.cantidadGratis}`
+                    : item.tipo === 'PORCENTAJE' ? `${Number(item.valor)}%` : `$${Number(item.valor).toFixed(2)}`}
+                  {' · '}
+                  {describirAlcance(item, categorias, articulos)}
+                  {item.requiereAprobacion && <Badge tono="warning">requiere aprobación</Badge>}
+                  {!item.activo && <Badge tono="gray">inactivo</Badge>}
+                </div>
+                {puedeGestionar && (
+                  <button type="button" onClick={() => iniciarEdicion(item)} className="shrink-0 text-sm text-primary-600 hover:underline">
+                    Editar
+                  </button>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+        {items.length === 0 && <li className="py-2.5 text-sm text-gray-500">Todavía no hay {titulo.toLowerCase()}.</li>}
+      </ul>
+      {puedeGestionar && (
+        <form onSubmit={agregar} className="mt-4 flex flex-col gap-3 border-t border-gray-100 pt-4">
+          <FormularioDescuentoPromocion
+            valores={form}
+            onChange={setForm}
+            categorias={categorias}
+            articulos={articulos}
+            esPromocion={esPromocion}
+            idPrefijo={`${titulo}-nuevo`}
+          />
+          <div>
+            <Button type="submit" variant="secondary">Agregar</Button>
+          </div>
+          {error && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+        </form>
+      )}
+    </Card>
+  );
+}
+
 function ConfiguracionCatalogoPage() {
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Configuración de catálogo</h1>
-        <p className="text-sm text-gray-500">Categorías, marcas, unidades, impuestos y listas de precio.</p>
+        <p className="text-sm text-gray-500">
+          Categorías, marcas, unidades, impuestos, listas de precio, descuentos y promociones.
+        </p>
       </div>
       <SeccionCategorias />
       <SeccionSimple
@@ -340,6 +662,8 @@ function ConfiguracionCatalogoPage() {
         renderItem={(i) => `${i.nombre} — ${(Number(i.tasa) * 100).toFixed(0)}%`}
       />
       <SeccionListasPrecio />
+      <SeccionDescuentosPromociones esPromocion={false} />
+      <SeccionDescuentosPromociones esPromocion />
     </div>
   );
 }

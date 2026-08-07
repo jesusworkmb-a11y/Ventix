@@ -7,7 +7,8 @@ import {
 import { crearVenta, obtenerVenta } from '../api/ventas.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes, crearCliente } from '../../clientes/api/clientes.api';
-import { listarArticulos } from '../../catalogo/api/catalogo.api';
+import { listarArticulos, listarDescuentos, listarPromociones } from '../../catalogo/api/catalogo.api';
+import { listarUsuarios } from '../../core/api/core.api';
 import { listarExistencias } from '../../inventario/api/inventario.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
@@ -16,8 +17,40 @@ import Select from '../../../shared/ui/Select';
 import Modal from '../../../shared/ui/Modal';
 import TicketVenta from '../components/TicketVenta';
 import { formatoMoneda } from '../../../shared/format';
+import { useAuth } from '../../../shared/context/AuthContext';
+
+// Recalcula el descuento/promoción de una línea a partir de su selección (descuentoId o
+// promocionId) — misma fórmula que resolverDescuentoLinea en el backend (ventas.service.js),
+// para que el total mostrado en el carrito ya sea el que el backend va a confirmar.
+function calcularDescuentoLinea(linea, descuentosPorId, promocionesPorId) {
+  if (linea.descuentoId) {
+    const d = descuentosPorId.get(linea.descuentoId);
+    if (!d) return { descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
+    const bruto = linea.cantidad * linea.precio;
+    const monto = d.tipo === 'PORCENTAJE' ? bruto * (Number(d.valor) / 100) : Math.min(Number(d.valor), bruto);
+    return { descuentoMonto: monto, requiereAprobacion: d.requiereAprobacion, descuentoNombre: d.nombre };
+  }
+  if (linea.promocionId) {
+    const p = promocionesPorId.get(linea.promocionId);
+    if (!p) return { descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
+    const grupos = Math.floor(linea.cantidad / p.cantidadRequerida);
+    const monto = grupos * p.cantidadGratis * linea.precio;
+    return { descuentoMonto: monto, requiereAprobacion: p.requiereAprobacion, descuentoNombre: p.nombre };
+  }
+  return { descuentoMonto: 0, requiereAprobacion: false, descuentoNombre: null };
+}
+
+function vigente(item) {
+  const ahora = new Date();
+  if (item.vigenciaDesde && ahora < new Date(item.vigenciaDesde)) return false;
+  if (item.vigenciaHasta && ahora > new Date(item.vigenciaHasta)) return false;
+  return true;
+}
 
 function VentasPage() {
+  const { permisos } = useAuth();
+  const puedeAplicarDescuento = permisos?.includes('venta.aplicar_descuento');
+
   const [cajas, setCajas] = useState([]);
   const [cajaId, setCajaId] = useState('');
   const [sesion, setSesion] = useState(null);
@@ -25,6 +58,9 @@ function VentasPage() {
   const [clienteId, setClienteId] = useState('');
   const [articulos, setArticulos] = useState([]);
   const [existencias, setExistencias] = useState({});
+  const [descuentos, setDescuentos] = useState([]);
+  const [promociones, setPromociones] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
   const [busqueda, setBusqueda] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const [carrito, setCarrito] = useState([]);
@@ -33,6 +69,15 @@ function VentasPage() {
   const [ultimoCambio, setUltimoCambio] = useState(null);
   const [procesando, setProcesando] = useState(false);
   const busquedaRef = useRef(null);
+
+  // Autorización de Supervisor: se pide una sola vez por venta si algún descuento/promoción
+  // del carrito lo requiere (ver requiereAprobacion en descuentos/promociones); se recuerda
+  // qué acción se quería hacer (cobrar en efectivo, tarjeta, etc.) para retomarla al confirmar.
+  const [autorizadoPorId, setAutorizadoPorId] = useState('');
+  const [autorizarAbierto, setAutorizarAbierto] = useState(false);
+  const [autorizarSeleccion, setAutorizarSeleccion] = useState('');
+  const [autorizarError, setAutorizarError] = useState('');
+  const accionPendienteRef = useRef(null);
 
   const [ticketVenta, setTicketVenta] = useState(null);
   const [ticketAbierto, setTicketAbierto] = useState(false);
@@ -68,6 +113,12 @@ function VentasPage() {
       })
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
+    if (puedeAplicarDescuento) {
+      listarDescuentos().then(setDescuentos).catch(() => {});
+      listarPromociones().then(setPromociones).catch(() => {});
+    }
+    listarUsuarios().then(setUsuarios).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -128,6 +179,8 @@ function VentasPage() {
           cantidad: 1,
           precio: precioEfectivo(articulo),
           impuestoTasa,
+          descuentoId: null,
+          promocionId: null,
         },
       ];
     });
@@ -148,10 +201,56 @@ function VentasPage() {
     setCarrito((c) => c.filter((_, i) => i !== index));
   }
 
+  // value viene del <select> de la línea: "" (sin descuento), "descuento:<id>" o "promocion:<id>".
+  function cambiarDescuentoLinea(index, value) {
+    const [tipo, id] = value.split(':');
+    setCarrito((c) => {
+      const copia = [...c];
+      copia[index] = {
+        ...copia[index],
+        descuentoId: tipo === 'descuento' ? id : null,
+        promocionId: tipo === 'promocion' ? id : null,
+      };
+      return copia;
+    });
+  }
+
+  // Descuentos/promociones cuyo alcance (todos/categoría/artículo) matchea el artículo de la
+  // línea y que están activos y vigentes — mismas reglas que resolverDescuentoLinea en el backend.
+  function opcionesDescuentoParaLinea(linea) {
+    const articulo = articulos.find((a) => a.id === linea.articuloId);
+    if (!articulo) return [];
+    const aplica = (item) => {
+      if (!item.activo || !vigente(item)) return false;
+      if (item.alcance === 'CATEGORIA') return item.categoriaId === articulo.categoriaId;
+      if (item.alcance === 'ARTICULO') return item.articuloId === articulo.id;
+      return true; // TODOS
+    };
+    const opciones = [];
+    for (const d of descuentos) {
+      if (aplica(d)) {
+        opciones.push({
+          value: `descuento:${d.id}`,
+          label: `${d.nombre} (${d.tipo === 'PORCENTAJE' ? `${Number(d.valor)}%` : formatoMoneda(d.valor)})`,
+        });
+      }
+    }
+    for (const p of promociones) {
+      if (aplica(p)) {
+        opciones.push({
+          value: `promocion:${p.id}`,
+          label: `${p.nombre} (lleva ${p.cantidadRequerida}, paga ${p.cantidadRequerida - p.cantidadGratis})`,
+        });
+      }
+    }
+    return opciones;
+  }
+
   function limpiarVenta() {
     setCarrito([]);
     setError('');
     setConfirmada(null);
+    setAutorizadoPorId('');
   }
 
   const categorias = [...new Map(
@@ -191,9 +290,44 @@ function VentasPage() {
     }
   }
 
-  const subtotal = carrito.reduce((acc, l) => acc + l.cantidad * l.precio, 0);
-  const impuestos = carrito.reduce((acc, l) => acc + l.cantidad * l.precio * l.impuestoTasa, 0);
+  const descuentosPorId = new Map(descuentos.map((d) => [d.id, d]));
+  const promocionesPorId = new Map(promociones.map((p) => [p.id, p]));
+  const carritoCalc = carrito.map((l) => ({ ...l, ...calcularDescuentoLinea(l, descuentosPorId, promocionesPorId) }));
+
+  const subtotal = carritoCalc.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0);
+  const impuestos = carritoCalc.reduce(
+    (acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto) * l.impuestoTasa,
+    0,
+  );
   const total = Math.round((subtotal + impuestos) * 100) / 100;
+  const requiereAutorizacion = carritoCalc.some((l) => l.requiereAprobacion);
+
+  // Envuelve una acción de cobro: si el carrito tiene un descuento/promoción que requiere
+  // aprobación y todavía no se eligió un autorizador, abre el modal "Autorizar" y guarda la
+  // acción para retomarla apenas se confirme; si no hace falta, la ejecuta directo.
+  function conAutorizacionSiHaceFalta(accion) {
+    if (requiereAutorizacion && !autorizadoPorId) {
+      accionPendienteRef.current = accion;
+      setAutorizarError('');
+      setAutorizarSeleccion('');
+      setAutorizarAbierto(true);
+      return;
+    }
+    accion();
+  }
+
+  function confirmarAutorizar(e) {
+    e.preventDefault();
+    if (!autorizarSeleccion) {
+      setAutorizarError('Selecciona quién autoriza.');
+      return;
+    }
+    setAutorizadoPorId(autorizarSeleccion);
+    setAutorizarAbierto(false);
+    const accion = accionPendienteRef.current;
+    accionPendienteRef.current = null;
+    if (accion) accion();
+  }
 
   // Cobrar en un clic: cada botón de método de pago llama esto directo con el monto total,
   // sin paso intermedio de "seleccionar método" + "confirmar". Efectivo pasa antes por el
@@ -218,14 +352,21 @@ function VentasPage() {
         sucursalId: caja.sucursalId,
         clienteId,
         sesionCajaId: sesion.id,
-        detalles: carrito.map((l) => ({ articuloId: l.articuloId, cantidad: l.cantidad })),
+        detalles: carrito.map((l) => ({
+          articuloId: l.articuloId,
+          cantidad: l.cantidad,
+          ...(l.descuentoId && { descuentoId: l.descuentoId }),
+          ...(l.promocionId && { promocionId: l.promocionId }),
+        })),
         pagos: [{ metodo, monto: total }],
+        ...(autorizadoPorId && { autorizadoPorId }),
       });
       setConfirmada(venta);
       setUltimoCambio(cambio);
       setTicketVenta(null);
       obtenerVenta(venta.id).then(setTicketVenta).catch(() => {});
       setCarrito([]);
+      setAutorizadoPorId('');
       return true;
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo registrar la venta.');
@@ -309,14 +450,21 @@ function VentasPage() {
         sucursalId: caja.sucursalId,
         clienteId,
         sesionCajaId: sesion.id,
-        detalles: carrito.map((l) => ({ articuloId: l.articuloId, cantidad: l.cantidad })),
+        detalles: carrito.map((l) => ({
+          articuloId: l.articuloId,
+          cantidad: l.cantidad,
+          ...(l.descuentoId && { descuentoId: l.descuentoId }),
+          ...(l.promocionId && { promocionId: l.promocionId }),
+        })),
         pagos: pagosValidos.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) })),
+        ...(autorizadoPorId && { autorizadoPorId }),
       });
       setConfirmada(venta);
       setUltimoCambio(null);
       setTicketVenta(null);
       obtenerVenta(venta.id).then(setTicketVenta).catch(() => {});
       setCarrito([]);
+      setAutorizadoPorId('');
       setMixtoAbierto(false);
     } catch (err) {
       setMixtoError(err.response?.data?.error || 'No se pudo registrar la venta.');
@@ -352,13 +500,13 @@ function VentasPage() {
     }
   }
 
-  const hayModalAbierto = nuevoClienteAbierto || mixtoAbierto || efectivoAbierto;
+  const hayModalAbierto = nuevoClienteAbierto || mixtoAbierto || efectivoAbierto || autorizarAbierto;
 
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === 'F1') {
         e.preventDefault();
-        if (!hayModalAbierto) abrirEfectivo();
+        if (!hayModalAbierto) conAutorizacionSiHaceFalta(abrirEfectivo);
         return;
       }
       if (e.key === 'F2') {
@@ -382,7 +530,7 @@ function VentasPage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hayModalAbierto, busqueda, carrito, sesion, cajaId, clienteId, total, procesando]);
+  }, [hayModalAbierto, busqueda, carrito, sesion, cajaId, clienteId, total, procesando, requiereAutorizacion, autorizadoPorId]);
 
   return (
     <div className="space-y-6">
@@ -551,27 +699,52 @@ function VentasPage() {
                     {carrito.length === 0 && (
                       <p className="py-6 text-center text-sm text-gray-400">Escanea o selecciona un producto para empezar.</p>
                     )}
-                    {carrito.map((l, i) => (
-                      <div key={i} className="flex items-center gap-2 rounded-lg bg-white p-2 text-sm">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium text-gray-800">{l.nombre}</p>
-                          <p className="text-xs text-gray-400">{formatoMoneda(l.precio)} c/u</p>
+                    {carritoCalc.map((l, i) => {
+                      const opcionesDescuento = puedeAplicarDescuento ? opcionesDescuentoParaLinea(l) : [];
+                      return (
+                        <div key={i} className="rounded-lg bg-white p-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium text-gray-800">{l.nombre}</p>
+                              <p className="text-xs text-gray-400">{formatoMoneda(l.precio)} c/u</p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button type="button" onClick={() => cambiarCantidadLinea(i, -1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                                <Minus size={14} />
+                              </button>
+                              <span className="w-6 text-center font-medium text-gray-800">{l.cantidad}</span>
+                              <button type="button" onClick={() => cambiarCantidadLinea(i, 1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                            <span className="w-16 text-right font-semibold text-gray-900">
+                              {formatoMoneda(l.cantidad * l.precio - l.descuentoMonto)}
+                            </span>
+                            <button type="button" onClick={() => quitarLinea(i)} className="text-gray-300 hover:text-danger-600">
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                          {opcionesDescuento.length > 0 && (
+                            <select
+                              value={l.descuentoId ? `descuento:${l.descuentoId}` : l.promocionId ? `promocion:${l.promocionId}` : ''}
+                              onChange={(e) => cambiarDescuentoLinea(i, e.target.value)}
+                              className="mt-1.5 w-full rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            >
+                              <option value="">Sin descuento/promoción</option>
+                              {opcionesDescuento.map((o) => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                              ))}
+                            </select>
+                          )}
+                          {l.descuentoMonto > 0 && (
+                            <p className="mt-1 text-xs text-success-700">
+                              {l.descuentoNombre}: -{formatoMoneda(l.descuentoMonto)}
+                              {l.requiereAprobacion ? ' (requiere aprobación)' : ''}
+                            </p>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1">
-                          <button type="button" onClick={() => cambiarCantidadLinea(i, -1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
-                            <Minus size={14} />
-                          </button>
-                          <span className="w-6 text-center font-medium text-gray-800">{l.cantidad}</span>
-                          <button type="button" onClick={() => cambiarCantidadLinea(i, 1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
-                            <Plus size={14} />
-                          </button>
-                        </div>
-                        <span className="w-16 text-right font-semibold text-gray-900">{formatoMoneda(l.cantidad * l.precio)}</span>
-                        <button type="button" onClick={() => quitarLinea(i)} className="text-gray-300 hover:text-danger-600">
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <div className="space-y-1 border-t border-gray-200 pt-3 text-sm">
@@ -589,9 +762,16 @@ function VentasPage() {
                     </div>
                   </div>
 
+                  {requiereAutorizacion && (
+                    <p className="rounded-lg bg-warning-50 px-3 py-2 text-xs text-warning-700">
+                      Esta venta incluye un descuento/promoción que requiere autorización de un
+                      Supervisor{autorizadoPorId ? ` — autorizada por ${usuarios.find((u) => u.id === autorizadoPorId)?.nombre || ''}.` : ' antes de confirmar.'}
+                    </p>
+                  )}
+
                   <Button
                     type="button"
-                    onClick={abrirEfectivo}
+                    onClick={() => conAutorizacionSiHaceFalta(abrirEfectivo)}
                     disabled={carrito.length === 0 || procesando}
                     className="w-full py-3 text-base"
                   >
@@ -601,7 +781,7 @@ function VentasPage() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => cobrar('TARJETA')}
+                      onClick={() => conAutorizacionSiHaceFalta(() => cobrar('TARJETA'))}
                       disabled={carrito.length === 0 || procesando}
                       className="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-white py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
                     >
@@ -609,7 +789,7 @@ function VentasPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => cobrar('TRANSFERENCIA')}
+                      onClick={() => conAutorizacionSiHaceFalta(() => cobrar('TRANSFERENCIA'))}
                       disabled={carrito.length === 0 || procesando}
                       className="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-white py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
                     >
@@ -617,7 +797,7 @@ function VentasPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={abrirMixto}
+                      onClick={() => conAutorizacionSiHaceFalta(abrirMixto)}
                       disabled={carrito.length === 0 || procesando}
                       className="flex flex-col items-center gap-1 rounded-lg border border-gray-200 bg-white py-2 text-xs font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
                     >
@@ -730,6 +910,32 @@ function VentasPage() {
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setMixtoAbierto(false)}>Cancelar</Button>
             <Button type="submit" disabled={procesando}>Confirmar venta</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal abierto={autorizarAbierto} onCerrar={() => setAutorizarAbierto(false)} titulo="Autorización de Supervisor">
+        <form onSubmit={confirmarAutorizar} className="space-y-4">
+          {autorizarError && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{autorizarError}</p>}
+          <p className="text-sm text-gray-500">
+            Esta venta incluye un descuento/promoción que requiere autorización de un Supervisor
+            antes de confirmarse.
+          </p>
+          <Select
+            id="autorizarSeleccion"
+            label="Autoriza"
+            value={autorizarSeleccion}
+            onChange={(e) => setAutorizarSeleccion(e.target.value)}
+            autoFocus
+          >
+            <option value="">Selecciona quién autoriza</option>
+            {usuarios.map((u) => (
+              <option key={u.id} value={u.id}>{u.nombre}</option>
+            ))}
+          </Select>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setAutorizarAbierto(false)}>Cancelar</Button>
+            <Button type="submit">Confirmar autorización</Button>
           </div>
         </form>
       </Modal>

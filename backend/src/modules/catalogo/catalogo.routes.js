@@ -8,6 +8,8 @@ const unidadesRoutes = require('./unidades/unidades.routes');
 const impuestosRoutes = require('./impuestos/impuestos.routes');
 const articulosRoutes = require('./articulos/articulos.routes');
 const listasPrecioRoutes = require('./listasPrecio/listasPrecio.routes');
+const descuentosRoutes = require('./descuentos/descuentos.routes');
+const promocionesRoutes = require('./promociones/promociones.routes');
 
 const router = express.Router();
 
@@ -17,5 +19,7 @@ router.use('/unidades', unidadesRoutes);
 router.use('/impuestos', impuestosRoutes);
 router.use('/articulos', articulosRoutes);
 router.use('/listas-precio', listasPrecioRoutes);
+router.use('/descuentos', descuentosRoutes);
+router.use('/promociones', promocionesRoutes);
 
 module.exports = router;

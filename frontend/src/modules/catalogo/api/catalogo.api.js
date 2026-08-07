@@ -60,3 +60,23 @@ export function crearListaPrecio(datos) {
 export function actualizarPreciosArticulo(articuloId, precios) {
   return api.put(`/catalogo/articulos/${articuloId}/precios`, { precios }).then((res) => res.data);
 }
+
+export function listarDescuentos() {
+  return api.get('/catalogo/descuentos').then((res) => res.data);
+}
+export function crearDescuento(datos) {
+  return api.post('/catalogo/descuentos', datos).then((res) => res.data);
+}
+export function actualizarDescuento(id, datos) {
+  return api.patch(`/catalogo/descuentos/${id}`, datos).then((res) => res.data);
+}
+
+export function listarPromociones() {
+  return api.get('/catalogo/promociones').then((res) => res.data);
+}
+export function crearPromocion(datos) {
+  return api.post('/catalogo/promociones', datos).then((res) => res.data);
+}
+export function actualizarPromocion(id, datos) {
+  return api.patch(`/catalogo/promociones/${id}`, datos).then((res) => res.data);
+}
