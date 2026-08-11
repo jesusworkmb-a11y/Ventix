@@ -24,6 +24,11 @@ async function exportar(req, res) {
   res.send(csv);
 }
 
+async function alertas(req, res) {
+  const resultado = await service.alertas({ empresaId: req.auth.empresaId });
+  res.json(resultado);
+}
+
 async function establecerInicial(req, res) {
   const parsed = existenciaInicialSchema.safeParse(req.body);
   if (!parsed.success) throw new AppError(400, 'Datos de existencia inicial inválidos.');
@@ -35,4 +40,4 @@ async function establecerInicial(req, res) {
   res.status(201).json(resultado);
 }
 
-module.exports = { listar, exportar, establecerInicial };
+module.exports = { listar, exportar, alertas, establecerInicial };

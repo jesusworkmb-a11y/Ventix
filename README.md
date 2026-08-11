@@ -1032,6 +1032,38 @@ más). Pusheado a `main` en un solo commit (13 archivos) con permiso explícito 
 verificado también contra `https://ventix-backend-yjgv.onrender.com` ya con el deploy
 terminado (login-lockout reprobado en producción, mismo resultado que en local).
 
+## Alertas de stock (mínimo/máximo) en la barra superior (2026-08-11, sesión posterior)
+
+A pedido del usuario, nuevo ícono de notificaciones (campana) en el `TopBar`, junto al menú de
+usuario, para avisar cuando un artículo llega a su límite de stock mínimo o máximo configurado
+(`Articulo.stockMinimo`/`stockMaximo`, expuestos en el frontend desde "Stock mínimo/máximo
+opcional en Artículos" — ver arriba).
+
+- **Backend**: nuevo `GET /api/inventario/existencias/alertas` en
+  [existencias.service.js](backend/src/modules/inventario/existencias/existencias.service.js),
+  mismo permiso que el resto del módulo (`inventario.ver`). Trae las existencias de la empresa
+  cuyo artículo esté activo y tenga al menos un límite configurado, y compara en JS (no se puede
+  expresar en el `where` de Prisma una comparación entre dos columnas de tablas distintas, mismo
+  motivo por el que `reportes.service.js#reporteInventarioValorizado` ya hacía esto mismo pero
+  solo para `stockMinimo`): `cantidad <= stockMinimo` → alerta `BAJO`, `cantidad >= stockMaximo`
+  → alerta `ALTO`. El stock se lleva por sucursal, así que un mismo artículo puede generar una
+  alerta distinta por cada sucursal.
+- **Frontend**: [TopBar.jsx](frontend/src/shared/layout/TopBar.jsx) — la campana solo se muestra
+  si el usuario tiene el permiso `inventario.ver` (mismo criterio que oculta secciones enteras del
+  Sidebar); hace polling cada 60s (sin websockets). Badge rojo con el conteo (sin contar más de
+  "9+"); dropdown con la lista (ícono de flecha abajo en rojo para `BAJO`, flecha arriba en ámbar
+  para `ALTO`, artículo, sucursal, cantidad actual vs. límite). Clic en una alerta navega a
+  [ExistenciasPage](frontend/src/modules/inventario/pages/ExistenciasPage.jsx) con la búsqueda
+  pre-cargada por SKU/nombre del artículo — se le agregó a esa pantalla el mismo patrón
+  `location.state.buscar` que ya usan Artículos/Clientes/Proveedores/Ventas recientes desde el
+  buscador global, en vez de duplicar lógica. Link "Ver existencias" al pie del dropdown.
+- Verificado en vivo contra el backend local (misma base de Supabase que producción): se forzó
+  `stockMinimo`/`stockMaximo` de un artículo real (Sprite 600ml, con stock en dos sucursales) por
+  API para disparar ambos casos — la campana mostró badge "2", el dropdown listó las dos
+  sucursales con el texto correcto, y el clic navegó a Existencias con el SKU pre-cargado,
+  filtrando la tabla a esas 2 filas. Artículo revertido a sin límites al terminar (sin datos de
+  prueba que queden sucios).
+
 ## Qué contiene
 
 ```text
@@ -1135,7 +1167,9 @@ profunda sobre los 10 módulos (ver "Segunda ronda de QA" arriba): 5 bugs críti
 ventas y devoluciones sobre-aplicables por condición de carrera, reembolsos que ignoraban
 descuentos) más 5 adicionales (condiciones de carrera menores, un reporte que tampoco
 descontaba descuentos, e inyección de fórmulas en los exports CSV), todos verificados en vivo y
-ya desplegados en producción. **No queda ningún pendiente abierto.** A elección:
+ya desplegados en producción. Por último, se agregó un ícono de notificaciones (campana) en la
+barra superior que avisa cuando un artículo llega a su límite de stock mínimo o máximo por
+sucursal (ver "Alertas de stock" arriba). **No queda ningún pendiente abierto.** A elección:
 - Decidir si agregar restricción de nombre único a Categorías/Marcas/Unidades/Impuestos/Listas
   de precio (detectado en la segunda ronda de QA que no la tienen; no se tocó porque podría
   chocar con duplicados ya existentes en producción).

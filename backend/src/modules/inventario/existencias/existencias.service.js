@@ -118,6 +118,39 @@ async function establecerInicial({ empresaId, usuarioId, sucursalId, articuloId,
   }
 }
 
+// Solo artículos activos (uno descontinuado no necesita alertar) con al menos un límite
+// configurado. La comparación cantidad vs. límite no se puede expresar en el `where` de Prisma
+// (compara dos columnas de tablas distintas), así que se filtra en JS igual que
+// `reportes.service.js#reporteInventarioValorizado` (que ya hace lo mismo solo para stockMinimo).
+async function alertas({ empresaId }) {
+  const existencias = await prisma.existencia.findMany({
+    where: {
+      empresaId,
+      articulo: { activo: true, OR: [{ stockMinimo: { not: null } }, { stockMaximo: { not: null } }] },
+    },
+    include: {
+      articulo: { select: { id: true, nombre: true, sku: true, stockMinimo: true, stockMaximo: true } },
+      sucursal: { select: { id: true, nombre: true } },
+    },
+  });
+
+  const resultado = [];
+  for (const e of existencias) {
+    const cantidad = Number(e.cantidad);
+    const { stockMinimo, stockMaximo } = e.articulo;
+    if (stockMinimo !== null && cantidad <= Number(stockMinimo)) {
+      resultado.push({ tipo: 'BAJO', articulo: e.articulo, sucursal: e.sucursal, cantidad, limite: stockMinimo });
+    } else if (stockMaximo !== null && cantidad >= Number(stockMaximo)) {
+      resultado.push({ tipo: 'ALTO', articulo: e.articulo, sucursal: e.sucursal, cantidad, limite: stockMaximo });
+    }
+  }
+
+  return resultado.sort((a, b) => {
+    if (a.tipo !== b.tipo) return a.tipo === 'BAJO' ? -1 : 1;
+    return a.articulo.nombre.localeCompare(b.articulo.nombre);
+  });
+}
+
 const COLUMNAS_EXPORTAR = ['sucursal', 'articulo', 'sku', 'cantidad'];
 
 async function exportarCsv({ empresaId, filtros }) {
@@ -138,4 +171,4 @@ async function exportarCsv({ empresaId, filtros }) {
   return aCsv(filas, COLUMNAS_EXPORTAR);
 }
 
-module.exports = { listar, establecerInicial, exportarCsv };
+module.exports = { listar, establecerInicial, exportarCsv, alertas };

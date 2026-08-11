@@ -1,9 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Search, ChevronDown, LogOut, Package, Users, Truck, Receipt, Loader2 } from 'lucide-react';
+import {
+  Menu, Search, ChevronDown, LogOut, Package, Users, Truck, Receipt, Loader2,
+  Bell, ArrowDownCircle, ArrowUpCircle,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { buscarGlobal } from '../../modules/busqueda/api/busqueda.api';
+import { alertasExistencias } from '../../modules/inventario/api/inventario.api';
 import { formatoMoneda } from '../format';
+
+// Refresco periódico, no realtime — alcanza para un ícono de campana en la barra superior sin
+// sumar websockets ni polling agresivo.
+const INTERVALO_ALERTAS_MS = 60000;
 
 function iniciales(nombre) {
   if (!nombre) return '?';
@@ -55,7 +63,7 @@ const CATEGORIAS = [
 ];
 
 function TopBar({ onAbrirMenu }) {
-  const { usuario, rol, logout } = useAuth();
+  const { usuario, rol, permisos, logout } = useAuth();
   const navigate = useNavigate();
   const [menuAbierto, setMenuAbierto] = useState(false);
 
@@ -64,6 +72,24 @@ function TopBar({ onAbrirMenu }) {
   const [cargando, setCargando] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const contenedorRef = useRef(null);
+
+  const puedeVerInventario = permisos?.includes('inventario.ver');
+  const [alertas, setAlertas] = useState([]);
+  const [alertasAbierto, setAlertasAbierto] = useState(false);
+  const alertasRef = useRef(null);
+
+  useEffect(() => {
+    if (!puedeVerInventario) return undefined;
+    let cancelado = false;
+    function cargarAlertas() {
+      alertasExistencias()
+        .then((r) => { if (!cancelado) setAlertas(r); })
+        .catch(() => {});
+    }
+    cargarAlertas();
+    const intervalo = setInterval(cargarAlertas, INTERVALO_ALERTAS_MS);
+    return () => { cancelado = true; clearInterval(intervalo); };
+  }, [puedeVerInventario]);
 
   useEffect(() => {
     const termino = texto.trim();
@@ -85,6 +111,7 @@ function TopBar({ onAbrirMenu }) {
   useEffect(() => {
     function alClickAfuera(e) {
       if (contenedorRef.current && !contenedorRef.current.contains(e.target)) setAbierto(false);
+      if (alertasRef.current && !alertasRef.current.contains(e.target)) setAlertasAbierto(false);
     }
     document.addEventListener('mousedown', alClickAfuera);
     return () => document.removeEventListener('mousedown', alClickAfuera);
@@ -95,6 +122,11 @@ function TopBar({ onAbrirMenu }) {
     setTexto('');
     setResultados(null);
     navigate(categoria.ruta, { state: { buscar: categoria.termino(item) } });
+  }
+
+  function irAAlerta(alerta) {
+    setAlertasAbierto(false);
+    navigate('/inventario/existencias', { state: { buscar: alerta.articulo.sku || alerta.articulo.nombre } });
   }
 
   const hayResultados = resultados
@@ -168,6 +200,64 @@ function TopBar({ onAbrirMenu }) {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
+        {puedeVerInventario && (
+          <div ref={alertasRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setAlertasAbierto((v) => !v)}
+              className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+              aria-label="Alertas de stock"
+            >
+              <Bell size={20} />
+              {alertas.length > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-semibold leading-none text-white">
+                  {alertas.length > 9 ? '9+' : alertas.length}
+                </span>
+              )}
+            </button>
+
+            {alertasAbierto && (
+              <div className="absolute right-0 z-20 mt-1 w-80 max-h-96 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-card">
+                <p className="px-4 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Alertas de stock
+                </p>
+                {alertas.length === 0 && (
+                  <p className="px-4 pb-3 text-sm text-gray-400">Sin alertas de stock por ahora.</p>
+                )}
+                {alertas.slice(0, 8).map((a, i) => {
+                  const esBajo = a.tipo === 'BAJO';
+                  const Icono = esBajo ? ArrowDownCircle : ArrowUpCircle;
+                  return (
+                    <button
+                      key={`${a.articulo.id}-${a.sucursal.id}-${i}`}
+                      type="button"
+                      onClick={() => irAAlerta(a)}
+                      className="flex w-full items-start gap-3 px-4 py-2 text-left hover:bg-gray-50"
+                    >
+                      <Icono size={18} className={`mt-0.5 shrink-0 ${esBajo ? 'text-danger-600' : 'text-warning-600'}`} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-gray-900">{a.articulo.nombre}</span>
+                        <span className="block truncate text-xs text-gray-500">
+                          {a.sucursal.nombre} · {esBajo
+                            ? `${a.cantidad} uds. (mín. ${Number(a.limite)})`
+                            : `${a.cantidad} uds. (máx. ${Number(a.limite)})`}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => { setAlertasAbierto(false); navigate('/inventario/existencias'); }}
+                  className="mt-1 block w-full border-t border-gray-100 px-4 py-2 text-left text-sm font-medium text-primary-600 hover:bg-gray-50"
+                >
+                  Ver existencias
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="relative">
           <button
             type="button"

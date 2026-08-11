@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Search, Download } from 'lucide-react';
 import { listarExistencias, establecerExistenciaInicial, exportarExistencias } from '../api/inventario.api';
 import { listarSucursales } from '../../core/api/core.api';
@@ -21,12 +21,13 @@ const COLUMNAS_EXISTENCIAS = [
 ];
 
 function ExistenciasPage() {
+  const location = useLocation();
   const [existencias, setExistencias] = useState([]);
   const [sucursales, setSucursales] = useState([]);
   const [articulos, setArticulos] = useState([]);
   const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
-  const [buscar, setBuscar] = useState('');
+  const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
   const [filtroSucursalId, setFiltroSucursalId] = useState('');
   const [soloConStock, setSoloConStock] = useState(false);
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });

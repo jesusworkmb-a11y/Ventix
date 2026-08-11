@@ -9,6 +9,7 @@ router.use(auth);
 
 router.get('/', requierePermiso('inventario.ver'), asyncHandler(controller.listar));
 router.get('/exportar', requierePermiso('inventario.ver'), asyncHandler(controller.exportar));
+router.get('/alertas', requierePermiso('inventario.ver'), asyncHandler(controller.alertas));
 router.post('/inicial', requierePermiso('inventario.ajustar'), asyncHandler(controller.establecerInicial));
 
 module.exports = router;

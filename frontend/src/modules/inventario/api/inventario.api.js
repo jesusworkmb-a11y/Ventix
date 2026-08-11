@@ -6,6 +6,9 @@ export function listarExistencias(params) {
 export function establecerExistenciaInicial(datos) {
   return api.post('/inventario/existencias/inicial', datos).then((res) => res.data);
 }
+export function alertasExistencias() {
+  return api.get('/inventario/existencias/alertas').then((res) => res.data);
+}
 
 // Mismo criterio que Herramientas (shared/csv.js del backend, CSV plano que abre directo en
 // Excel/Sheets) — respeta los mismos filtros que la pantalla tiene aplicados en ese momento,
