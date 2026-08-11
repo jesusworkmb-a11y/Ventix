@@ -5,7 +5,7 @@ Generado a partir de:
 - `VENTIX_BASE_TECNICA_CONSOLIDADA_V1.md`
 - `VENTIX_PLAN_DE_TRABAJO_V1.md`
 
-## Estado actual (2026-08-03)
+## Estado actual (2026-08-11)
 
 Las 10 fases del plan original están completas, commiteadas y en GitHub
 (`https://github.com/jesusworkmb-a11y/Ventix`, rama `main`), **y desplegadas en producción en Render**.
@@ -73,7 +73,8 @@ Notas del despliegue:
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: no queda ningún pendiente abierto (10 módulos completos y en producción, dos
-   rondas de QA cerradas, rediseño visual + su pulido ya aplicados, documentos de venta ya
+   rondas de QA cerradas, rediseño visual + su pulido ya aplicados, documentos de venta,
+   descuentos/promociones, alertas de stock, y unidades alternas + variantes de producto ya
    implementados) — ver el detalle de opciones en "Qué sigue" al final de este README.
 
 ## QA de MOD-001 Core (2026-08-02)
