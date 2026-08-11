@@ -10,6 +10,7 @@ const articulosRoutes = require('./articulos/articulos.routes');
 const listasPrecioRoutes = require('./listasPrecio/listasPrecio.routes');
 const descuentosRoutes = require('./descuentos/descuentos.routes');
 const promocionesRoutes = require('./promociones/promociones.routes');
+const atributosRoutes = require('./atributos/atributos.routes');
 
 const router = express.Router();
 
@@ -21,5 +22,6 @@ router.use('/articulos', articulosRoutes);
 router.use('/listas-precio', listasPrecioRoutes);
 router.use('/descuentos', descuentosRoutes);
 router.use('/promociones', promocionesRoutes);
+router.use('/atributos', atributosRoutes);
 
 module.exports = router;

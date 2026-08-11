@@ -5,6 +5,7 @@ const {
   actualizarArticuloSchema,
   unidadesAlternasSchema,
   preciosSchema,
+  generarVariantesSchema,
 } = require('./articulos.validators');
 
 async function listar(req, res) {
@@ -75,4 +76,24 @@ async function actualizarPrecios(req, res) {
   res.json(resultado);
 }
 
-module.exports = { listar, obtener, crear, actualizar, actualizarUnidadesAlternas, actualizarPrecios };
+async function actualizarVariantes(req, res) {
+  const parsed = generarVariantesSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Datos de variantes inválidos.');
+  const resultado = await service.generarVariantes({
+    empresaId: req.auth.empresaId,
+    usuarioEjecutorId: req.auth.usuarioId,
+    articuloId: req.params.id,
+    valorIds: parsed.data.valorIds,
+  });
+  res.json(resultado);
+}
+
+module.exports = {
+  listar,
+  obtener,
+  crear,
+  actualizar,
+  actualizarUnidadesAlternas,
+  actualizarPrecios,
+  actualizarVariantes,
+};

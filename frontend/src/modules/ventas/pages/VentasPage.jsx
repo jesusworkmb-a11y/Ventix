@@ -110,6 +110,7 @@ function VentasPage() {
   const [usuarios, setUsuarios] = useState([]);
   const [busqueda, setBusqueda] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('');
+  const [varianteArticuloId, setVarianteArticuloId] = useState(null);
   const [carrito, setCarrito] = useState([]);
   const [error, setError] = useState('');
   const [confirmada, setConfirmada] = useState(null);
@@ -237,6 +238,16 @@ function VentasPage() {
     });
   }
 
+  // Un artículo con variantes (color/talla/etc.) no se agrega directo — abre el picker para
+  // elegir la combinación puntual, que sí es un articuloId propio y vendible.
+  function seleccionar(articulo) {
+    if (articulo._count?.variantes > 0) {
+      setVarianteArticuloId(articulo.id);
+      return;
+    }
+    agregarAlCarrito(articulo);
+  }
+
   // Si borrar/vaciar una línea corre los índices, el mini-formulario de descuento manual
   // (identificado por índice, ver manualEditIndex) tiene que seguir a la línea correcta.
   function reindexarDescuentoManual(indexEliminado) {
@@ -311,6 +322,7 @@ function VentasPage() {
   ).values()];
 
   const articulosFiltrados = articulos.filter((a) => {
+    if (a.articuloPadreId) return false; // las variantes solo se eligen desde el picker de su padre
     if (!a.activo) return false;
     if (categoriaFiltro && a.categoriaId !== categoriaFiltro) return false;
     if (!busqueda.trim()) return true;
@@ -338,7 +350,7 @@ function VentasPage() {
       return;
     }
     if (articulosFiltrados.length === 1) {
-      agregarAlCarrito(articulosFiltrados[0]);
+      seleccionar(articulosFiltrados[0]);
       setBusqueda('');
     }
   }
@@ -711,25 +723,34 @@ function VentasPage() {
                 )}
 
                 <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-                  {articulosFiltrados.map((a) => (
-                    <button
-                      type="button"
-                      key={a.id}
-                      onClick={() => agregarAlCarrito(a)}
-                      className="flex flex-col items-start rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-primary-400 hover:bg-primary-50"
-                    >
-                      <div className="mb-2 flex h-16 w-full items-center justify-center rounded-lg bg-gray-100">
-                        {a.imagenUrl ? (
-                          <img src={a.imagenUrl} alt="" className="h-full w-full rounded-lg object-cover" />
+                  {articulosFiltrados.map((a) => {
+                    const tieneVariantes = a._count?.variantes > 0;
+                    return (
+                      <button
+                        type="button"
+                        key={a.id}
+                        onClick={() => seleccionar(a)}
+                        className="flex flex-col items-start rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-primary-400 hover:bg-primary-50"
+                      >
+                        <div className="mb-2 flex h-16 w-full items-center justify-center rounded-lg bg-gray-100">
+                          {a.imagenUrl ? (
+                            <img src={a.imagenUrl} alt="" className="h-full w-full rounded-lg object-cover" />
+                          ) : (
+                            <Package size={22} className="text-gray-400" />
+                          )}
+                        </div>
+                        <span className="line-clamp-2 text-sm font-medium text-gray-800">{a.nombre}</span>
+                        {tieneVariantes ? (
+                          <span className="mt-1 text-sm font-semibold text-primary-700">Elegir variante ({a._count.variantes})</span>
                         ) : (
-                          <Package size={22} className="text-gray-400" />
+                          <>
+                            <span className="mt-1 text-sm font-semibold text-primary-700">{formatoMoneda(precioEfectivo(a))}</span>
+                            <span className="text-xs text-gray-400">Stock: {existencias[a.id] ?? 0}</span>
+                          </>
                         )}
-                      </div>
-                      <span className="line-clamp-2 text-sm font-medium text-gray-800">{a.nombre}</span>
-                      <span className="mt-1 text-sm font-semibold text-primary-700">{formatoMoneda(precioEfectivo(a))}</span>
-                      <span className="text-xs text-gray-400">Stock: {existencias[a.id] ?? 0}</span>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                   {articulosFiltrados.length === 0 && (
                     <p className="col-span-full py-8 text-center text-sm text-gray-400">No se encontraron productos.</p>
                   )}
@@ -1070,6 +1091,31 @@ function VentasPage() {
             <Printer size={16} /> Imprimir
           </Button>
         </div>
+      </Modal>
+
+      <Modal abierto={varianteArticuloId !== null} onCerrar={() => setVarianteArticuloId(null)} titulo="Elegí la variante">
+        <ul className="flex flex-col gap-2">
+          {articulos
+            .filter((v) => v.articuloPadreId === varianteArticuloId && v.activo)
+            .map((v) => (
+              <li key={v.id}>
+                <button
+                  type="button"
+                  onClick={() => { agregarAlCarrito(v); setVarianteArticuloId(null); }}
+                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left hover:border-primary-400 hover:bg-primary-50"
+                >
+                  <span className="text-sm font-medium text-gray-800">{v.nombre}</span>
+                  <span className="shrink-0 text-right text-sm">
+                    <span className="block font-semibold text-primary-700">{formatoMoneda(precioEfectivo(v))}</span>
+                    <span className="block text-xs text-gray-400">Stock: {existencias[v.id] ?? 0}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          {articulos.filter((v) => v.articuloPadreId === varianteArticuloId && v.activo).length === 0 && (
+            <p className="py-2 text-sm text-gray-400">Este producto todavía no tiene variantes activas.</p>
+          )}
+        </ul>
       </Modal>
     </div>
   );

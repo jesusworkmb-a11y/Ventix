@@ -11,6 +11,10 @@ import {
   listarImpuestos,
   listarListasPrecio,
   actualizarPreciosArticulo,
+  actualizarUnidadesAlternas,
+  listarAtributos,
+  obtenerArticulo,
+  generarVariantesArticulo,
 } from '../api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
@@ -71,6 +75,7 @@ function ArticulosPage() {
   const [unidades, setUnidades] = useState([]);
   const [impuestos, setImpuestos] = useState([]);
   const [listasPrecio, setListasPrecio] = useState([]);
+  const [atributos, setAtributos] = useState([]);
   // Prefil con el término que trajo el buscador global de la barra superior (TopBar.jsx),
   // si se llegó a esta pantalla haciendo clic en un resultado de esa categoría.
   const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
@@ -82,6 +87,16 @@ function ArticulosPage() {
   const [preciosArticuloId, setPreciosArticuloId] = useState(null);
   const [preciosForm, setPreciosForm] = useState({});
   const [preciosError, setPreciosError] = useState('');
+
+  const [unidadesArticuloId, setUnidadesArticuloId] = useState(null);
+  const [unidadesForm, setUnidadesForm] = useState({});
+  const [unidadesError, setUnidadesError] = useState('');
+
+  const [variantesArticuloId, setVariantesArticuloId] = useState(null);
+  const [variantesDetalle, setVariantesDetalle] = useState(null);
+  const [valorIdsSeleccionados, setValorIdsSeleccionados] = useState([]);
+  const [variantesError, setVariantesError] = useState('');
+  const [generandoVariantes, setGenerandoVariantes] = useState(false);
 
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState(FORM_VACIO);
@@ -114,6 +129,7 @@ function ArticulosPage() {
     listarUnidades().then(setUnidades).catch(() => {});
     listarImpuestos().then(setImpuestos).catch(() => {});
     listarListasPrecio().then(setListasPrecio).catch(() => {});
+    listarAtributos().then(setAtributos).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -124,6 +140,8 @@ function ArticulosPage() {
 
   function abrirPrecios(articulo) {
     cancelarEdicion();
+    cerrarUnidades();
+    cerrarVariantes();
     setPreciosError('');
     setPreciosArticuloId(articulo.id);
     const inicial = {};
@@ -151,12 +169,91 @@ function ArticulosPage() {
     }
   }
 
+  function abrirUnidades(articulo) {
+    cancelarEdicion();
+    cerrarPrecios();
+    cerrarVariantes();
+    setUnidadesError('');
+    setUnidadesArticuloId(articulo.id);
+    const inicial = {};
+    for (const u of articulo.unidadesAlternas || []) inicial[u.unidadId] = String(u.factor);
+    setUnidadesForm(inicial);
+  }
+
+  function cerrarUnidades() {
+    setUnidadesArticuloId(null);
+    setUnidadesForm({});
+  }
+
+  async function guardarUnidades(e) {
+    e.preventDefault();
+    setUnidadesError('');
+    const unidadesAlternas = Object.entries(unidadesForm)
+      .filter(([, valor]) => valor !== '')
+      .map(([unidadId, valor]) => ({ unidadId, factor: Number(valor) }));
+    try {
+      await actualizarUnidadesAlternas(unidadesArticuloId, unidadesAlternas);
+      cerrarUnidades();
+      cargarArticulos(paginacion.pagina);
+    } catch (err) {
+      setUnidadesError(err.response?.data?.error || 'No se pudieron guardar las unidades alternas.');
+    }
+  }
+
+  function abrirVariantes(articulo) {
+    cancelarEdicion();
+    cerrarPrecios();
+    cerrarUnidades();
+    setVariantesError('');
+    setValorIdsSeleccionados([]);
+    setVariantesArticuloId(articulo.id);
+    setVariantesDetalle(null);
+    obtenerArticulo(articulo.id).then(setVariantesDetalle).catch(() => {
+      setVariantesError('No se pudo cargar el detalle de variantes.');
+    });
+  }
+
+  function cerrarVariantes() {
+    setVariantesArticuloId(null);
+    setVariantesDetalle(null);
+    setValorIdsSeleccionados([]);
+    setVariantesError('');
+  }
+
+  function toggleValor(valorId) {
+    setValorIdsSeleccionados((sel) => (
+      sel.includes(valorId) ? sel.filter((id) => id !== valorId) : [...sel, valorId]
+    ));
+  }
+
+  async function handleGenerarVariantes(e) {
+    e.preventDefault();
+    setVariantesError('');
+    if (valorIdsSeleccionados.length === 0) {
+      setVariantesError('Selecciona al menos un valor de atributo.');
+      return;
+    }
+    setGenerandoVariantes(true);
+    try {
+      const actualizado = await generarVariantesArticulo(variantesArticuloId, valorIdsSeleccionados);
+      setVariantesDetalle(actualizado);
+      setValorIdsSeleccionados([]);
+      cargarArticulos(paginacion.pagina);
+    } catch (err) {
+      setVariantesError(err.response?.data?.error || 'No se pudieron generar las variantes.');
+    } finally {
+      setGenerandoVariantes(false);
+    }
+  }
+
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
   function iniciarEdicion(articulo) {
     cerrarPrecios();
+    cerrarUnidades();
+    cerrarVariantes();
     setErrorEdit('');
     setEditandoId(articulo.id);
     setEditForm(articuloAForm(articulo));
@@ -228,6 +325,7 @@ function ArticulosPage() {
   }
 
   const articuloEnPrecios = articulos.find((a) => a.id === preciosArticuloId);
+  const articuloEnUnidades = articulos.find((a) => a.id === unidadesArticuloId);
 
   return (
     <div className="space-y-6">
@@ -289,6 +387,16 @@ function ArticulosPage() {
                   {listasPrecio.length > 0 && (
                     <button type="button" onClick={() => abrirPrecios(a)} className="text-sm text-primary-600 hover:underline">
                       Precios
+                    </button>
+                  )}
+                  {unidades.length > 1 && (
+                    <button type="button" onClick={() => abrirUnidades(a)} className="text-sm text-primary-600 hover:underline">
+                      Unidades
+                    </button>
+                  )}
+                  {atributos.length > 0 && (
+                    <button type="button" onClick={() => abrirVariantes(a)} className="text-sm text-primary-600 hover:underline">
+                      Variantes{a._count?.variantes > 0 ? ` (${a._count.variantes})` : ''}
                     </button>
                   )}
                 </div>
@@ -452,6 +560,114 @@ function ArticulosPage() {
             <Button type="submit">Guardar precios</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal abierto={unidadesArticuloId !== null} onCerrar={cerrarUnidades} titulo="Unidades alternas">
+        <form onSubmit={guardarUnidades} className="flex flex-col gap-3">
+          <p className="text-sm text-gray-500">
+            Unidad base: <span className="font-medium text-gray-700">{articuloEnUnidades?.unidadBase?.nombre}</span>.
+            Definí cuántas unidades base equivalen a cada unidad alterna (ej. Caja = 12 si la base es Pieza).
+            Se usan al capturar una compra en esa unidad.
+          </p>
+          {unidades
+            .filter((u) => u.id !== articuloEnUnidades?.unidadBaseId)
+            .map((u) => (
+              <div key={u.id} className="flex items-center justify-between gap-3">
+                <span className="text-sm text-gray-700">{u.nombre}</span>
+                <Input
+                  id={`unidad-${u.id}`}
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="No aplica"
+                  value={unidadesForm[u.id] ?? ''}
+                  onChange={(e) => setUnidadesForm((f) => ({ ...f, [u.id]: e.target.value }))}
+                  className="w-32"
+                />
+              </div>
+            ))}
+          {unidadesError && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{unidadesError}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={cerrarUnidades}>Cancelar</Button>
+            <Button type="submit">Guardar unidades</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal abierto={variantesArticuloId !== null} onCerrar={cerrarVariantes} titulo="Variantes">
+        {!variantesDetalle && !variantesError && <p className="text-sm text-gray-500">Cargando...</p>}
+        {variantesDetalle && (
+          <div className="flex flex-col gap-4">
+            <form onSubmit={handleGenerarVariantes} className="flex flex-col gap-3">
+              <p className="text-sm text-gray-500">
+                Elegí los valores a combinar — cada combinación nueva genera una variante (artículo
+                propio, con su propio SKU/precio/stock). Las combinaciones ya generadas no se tocan.
+              </p>
+              {atributos.map((atr) => (
+                <div key={atr.id}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{atr.nombre}</p>
+                  <div className="mt-1 flex flex-wrap gap-3">
+                    {atr.valores.map((v) => (
+                      <label key={v.id} className="flex items-center gap-1.5 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={valorIdsSeleccionados.includes(v.id)}
+                          onChange={() => toggleValor(v.id)}
+                          className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        {v.valor}
+                      </label>
+                    ))}
+                    {atr.valores.length === 0 && <span className="text-xs text-gray-400">Sin valores todavía.</span>}
+                  </div>
+                </div>
+              ))}
+              {atributos.length === 0 && (
+                <p className="text-sm text-gray-400">
+                  No hay atributos configurados todavía — creá alguno en Configuración de catálogo.
+                </p>
+              )}
+              {variantesError && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{variantesError}</p>}
+              <div className="flex justify-end">
+                <Button type="submit" disabled={generandoVariantes}>
+                  {generandoVariantes ? 'Generando...' : 'Generar variantes'}
+                </Button>
+              </div>
+            </form>
+
+            <div className="border-t border-gray-100 pt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Variantes generadas ({variantesDetalle.variantes.length})
+              </p>
+              <ul className="divide-y divide-gray-100">
+                {variantesDetalle.variantes.map((v) => (
+                  <li key={v.id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm text-gray-800">{v.nombre}</p>
+                      <p className="text-xs text-gray-500">
+                        {v.sku || 'Sin SKU'} · {formatoMoneda(v.precio)}
+                        {!v.activo && <Badge tono="gray">inactivo</Badge>}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => iniciarEdicion(v)}
+                      className="shrink-0 text-sm text-primary-600 hover:underline"
+                    >
+                      Editar
+                    </button>
+                  </li>
+                ))}
+                {variantesDetalle.variantes.length === 0 && (
+                  <li className="py-2 text-sm text-gray-400">Todavía no se generó ninguna variante.</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        )}
+        {variantesError && !variantesDetalle && (
+          <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{variantesError}</p>
+        )}
       </Modal>
     </div>
   );

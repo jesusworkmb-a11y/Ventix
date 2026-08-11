@@ -43,11 +43,26 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
       { codigoBarras: { contains: filtros.buscar, mode: 'insensitive' } },
     ];
   }
-  const include = { categoria: true, marca: true, unidadBase: true, impuesto: true, precios: true };
+  const include = {
+    categoria: true,
+    marca: true,
+    unidadBase: true,
+    impuesto: true,
+    precios: true,
+    unidadesAlternas: { include: { unidad: true } },
+    _count: { select: { variantes: true } },
+  };
 
   if (!paginacion || paginacion.pagina === undefined) {
     return prisma.articulo.findMany({ where, include, orderBy: { nombre: 'asc' } });
   }
+
+  // Solo el modo paginado (hoy, únicamente ArticulosPage — es el único caller que manda
+  // `pagina`) excluye variantes de la tabla principal: se gestionan desde el panel "Variantes"
+  // del padre, no como filas sueltas. El modo array completo NO cambia — Ventas/Compras/
+  // Cotizaciones/Ajustes/Conteos/Transferencias siguen recibiendo TODO sin filtrar, porque esos
+  // flujos sí necesitan poder elegir/comprar/ajustar una variante puntual directamente.
+  where.articuloPadreId = null;
 
   const paginado = parsePaginacion(paginacion);
   const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { nombre: 'asc' });
@@ -70,6 +85,11 @@ async function obtener({ empresaId, articuloId }) {
       impuesto: true,
       unidadesAlternas: { include: { unidad: true } },
       precios: { include: { listaPrecio: true } },
+      _count: { select: { variantes: true } },
+      variantes: {
+        include: { valoresAtributo: { include: { valorAtributo: { include: { atributo: true } } } } },
+        orderBy: { nombre: 'asc' },
+      },
     },
   });
   if (!articulo) throw new AppError(404, 'Artículo no encontrado.');
@@ -230,4 +250,91 @@ async function setPrecios({ empresaId, usuarioEjecutorId, articuloId, precios })
   });
 }
 
-module.exports = { listar, obtener, crear, actualizar, setUnidadesAlternas, setPrecios };
+// Genera, para el artículo padre, un Articulo hijo (variante) por cada combinación nueva de los
+// valores de atributo indicados (producto cartesiano entre atributos distintos — ej. Color x
+// Talla). Aditiva e idempotente: combinaciones que ya existen como hijos se dejan intactas (no
+// se pisa precio/sku ya editado a mano), solo se crean las combinaciones faltantes. Cada
+// variante nace como copia de los campos "de catálogo" del padre (precio/costo/stock incluidos,
+// como punto de partida editable) pero con sku/código de barras en null — igual que cualquier
+// Articulo nuevo, el usuario los completa después vía "Editar" si los necesita.
+//
+// Sin SELECT...FOR UPDATE contra doble ejecución concurrente: es una acción de catálogo de baja
+// frecuencia (un admin generando variantes), no una transacción de venta/compra, mismo criterio
+// que asegurarClienteGeneral() en Clientes (documentado, no reforzado).
+async function generarVariantes({ empresaId, usuarioEjecutorId, articuloId, valorIds }) {
+  const padre = await prisma.articulo.findFirst({ where: { id: articuloId, empresaId } });
+  if (!padre) throw new AppError(404, 'Artículo no encontrado.');
+  if (padre.articuloPadreId) throw new AppError(400, 'Una variante no puede tener sus propias variantes.');
+  if (!valorIds.length) throw new AppError(400, 'Selecciona al menos un valor de atributo.');
+
+  const valores = await prisma.valorAtributo.findMany({
+    where: { id: { in: valorIds }, atributo: { empresaId } },
+  });
+  if (valores.length !== new Set(valorIds).size) {
+    throw new AppError(400, 'Algún valor indicado no pertenece a esta empresa o está repetido.');
+  }
+
+  const porAtributo = new Map();
+  for (const v of valores) {
+    if (!porAtributo.has(v.atributoId)) porAtributo.set(v.atributoId, []);
+    porAtributo.get(v.atributoId).push(v);
+  }
+
+  let combinaciones = [[]];
+  for (const grupo of porAtributo.values()) {
+    const siguiente = [];
+    for (const combo of combinaciones) {
+      for (const v of grupo) siguiente.push([...combo, v]);
+    }
+    combinaciones = siguiente;
+  }
+
+  const existentes = await prisma.articulo.findMany({
+    where: { articuloPadreId: articuloId },
+    include: { valoresAtributo: true },
+  });
+  const clavesExistentes = new Set(
+    existentes.map((e) => e.valoresAtributo.map((va) => va.valorAtributoId).sort().join('|')),
+  );
+  const combinacionesNuevas = combinaciones.filter(
+    (combo) => !clavesExistentes.has(combo.map((v) => v.id).sort().join('|')),
+  );
+
+  if (combinacionesNuevas.length) {
+    await prisma.$transaction(async (tx) => {
+      for (const combo of combinacionesNuevas) {
+        const variante = await tx.articulo.create({
+          data: {
+            empresaId,
+            tipo: padre.tipo,
+            nombre: `${padre.nombre} — ${combo.map((v) => v.valor).join(' / ')}`,
+            categoriaId: padre.categoriaId,
+            marcaId: padre.marcaId,
+            unidadBaseId: padre.unidadBaseId,
+            impuestoId: padre.impuestoId,
+            costo: padre.costo,
+            precio: padre.precio,
+            stockMinimo: padre.stockMinimo,
+            stockMaximo: padre.stockMaximo,
+            articuloPadreId: articuloId,
+          },
+        });
+        await tx.articuloValorAtributo.createMany({
+          data: combo.map((v) => ({ articuloId: variante.id, valorAtributoId: v.id })),
+        });
+      }
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'CREAR',
+        entidad: 'Articulo',
+        entidadId: articuloId,
+        valoresDespues: toJson({ variantesGeneradas: combinacionesNuevas.length }),
+      });
+    });
+  }
+
+  return obtener({ empresaId, articuloId });
+}
+
+module.exports = { listar, obtener, crear, actualizar, setUnidadesAlternas, setPrecios, generarVariantes };

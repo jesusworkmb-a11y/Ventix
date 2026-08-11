@@ -51,9 +51,14 @@ const preciosSchema = z.object({
   ),
 });
 
+const generarVariantesSchema = z.object({
+  valorIds: z.array(z.string().min(1)).min(1),
+});
+
 module.exports = {
   crearArticuloSchema,
   actualizarArticuloSchema,
   unidadesAlternasSchema,
   preciosSchema,
+  generarVariantesSchema,
 };

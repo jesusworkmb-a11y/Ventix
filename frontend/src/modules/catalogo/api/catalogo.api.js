@@ -9,6 +9,9 @@ export function crearArticulo(datos) {
 export function actualizarArticulo(id, datos) {
   return api.patch(`/catalogo/articulos/${id}`, datos).then((res) => res.data);
 }
+export function obtenerArticulo(id) {
+  return api.get(`/catalogo/articulos/${id}`).then((res) => res.data);
+}
 
 export function listarCategorias() {
   return api.get('/catalogo/categorias').then((res) => res.data);
@@ -59,6 +62,36 @@ export function crearListaPrecio(datos) {
 
 export function actualizarPreciosArticulo(articuloId, precios) {
   return api.put(`/catalogo/articulos/${articuloId}/precios`, { precios }).then((res) => res.data);
+}
+
+export function actualizarUnidadesAlternas(articuloId, unidadesAlternas) {
+  return api.put(`/catalogo/articulos/${articuloId}/unidades-alternas`, { unidadesAlternas }).then((res) => res.data);
+}
+
+export function generarVariantesArticulo(articuloId, valorIds) {
+  return api.put(`/catalogo/articulos/${articuloId}/variantes`, { valorIds }).then((res) => res.data);
+}
+
+export function listarAtributos() {
+  return api.get('/catalogo/atributos').then((res) => res.data);
+}
+export function crearAtributo(datos) {
+  return api.post('/catalogo/atributos', datos).then((res) => res.data);
+}
+export function actualizarAtributo(id, datos) {
+  return api.patch(`/catalogo/atributos/${id}`, datos).then((res) => res.data);
+}
+export function eliminarAtributo(id) {
+  return api.delete(`/catalogo/atributos/${id}`).then((res) => res.data);
+}
+export function agregarValorAtributo(atributoId, datos) {
+  return api.post(`/catalogo/atributos/${atributoId}/valores`, datos).then((res) => res.data);
+}
+export function actualizarValorAtributo(valorId, datos) {
+  return api.patch(`/catalogo/atributos/valores/${valorId}`, datos).then((res) => res.data);
+}
+export function eliminarValorAtributo(valorId) {
+  return api.delete(`/catalogo/atributos/valores/${valorId}`).then((res) => res.data);
 }
 
 export function listarDescuentos() {

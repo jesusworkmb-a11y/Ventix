@@ -23,6 +23,12 @@ import {
   crearPromocion,
   actualizarPromocion,
   eliminarPromocion,
+  listarAtributos,
+  crearAtributo,
+  actualizarAtributo,
+  eliminarAtributo,
+  agregarValorAtributo,
+  eliminarValorAtributo,
 } from '../api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
@@ -305,6 +311,169 @@ function SeccionListasPrecio() {
           Es base
         </label>
         <Button type="submit" variant="secondary">Agregar</Button>
+      </form>
+      {error && <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
+    </Card>
+  );
+}
+
+// Atributos (Color, Talla...) para generar variantes de artículo. Tiene lógica propia (lista
+// anidada de valores por atributo), por eso no usa SeccionSimple.
+function SeccionAtributos() {
+  const [atributos, setAtributos] = useState([]);
+  const [nombreNuevo, setNombreNuevo] = useState('');
+  const [error, setError] = useState('');
+
+  const [editandoId, setEditandoId] = useState(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [errorEdit, setErrorEdit] = useState('');
+
+  const [errorAtributo, setErrorAtributo] = useState({ id: null, mensaje: '' });
+  const [nuevoValorPorAtributo, setNuevoValorPorAtributo] = useState({});
+  const [errorValor, setErrorValor] = useState({ atributoId: null, mensaje: '' });
+
+  function cargar() {
+    listarAtributos().then(setAtributos).catch(() => {});
+  }
+
+  useEffect(() => {
+    cargar();
+  }, []);
+
+  async function agregar(e) {
+    e.preventDefault();
+    setError('');
+    try {
+      await crearAtributo({ nombre: nombreNuevo });
+      setNombreNuevo('');
+      cargar();
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo crear el atributo.');
+    }
+  }
+
+  function iniciarEdicion(atributo) {
+    setErrorEdit('');
+    setEditandoId(atributo.id);
+    setEditNombre(atributo.nombre);
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null);
+    setErrorEdit('');
+  }
+
+  async function guardarEdicion(e) {
+    e.preventDefault();
+    setErrorEdit('');
+    try {
+      await actualizarAtributo(editandoId, { nombre: editNombre });
+      setEditandoId(null);
+      cargar();
+    } catch (err) {
+      setErrorEdit(err.response?.data?.error || 'No se pudo actualizar el atributo.');
+    }
+  }
+
+  async function handleEliminarAtributo(atributo) {
+    setErrorAtributo({ id: null, mensaje: '' });
+    try {
+      await eliminarAtributo(atributo.id);
+      cargar();
+    } catch (err) {
+      setErrorAtributo({ id: atributo.id, mensaje: err.response?.data?.error || 'No se pudo eliminar el atributo.' });
+    }
+  }
+
+  async function handleAgregarValor(atributoId, e) {
+    e.preventDefault();
+    setErrorValor({ atributoId: null, mensaje: '' });
+    const valor = (nuevoValorPorAtributo[atributoId] || '').trim();
+    if (!valor) return;
+    try {
+      await agregarValorAtributo(atributoId, { valor });
+      setNuevoValorPorAtributo((f) => ({ ...f, [atributoId]: '' }));
+      cargar();
+    } catch (err) {
+      setErrorValor({ atributoId, mensaje: err.response?.data?.error || 'No se pudo agregar el valor.' });
+    }
+  }
+
+  async function handleEliminarValor(atributoId, valorId) {
+    setErrorValor({ atributoId: null, mensaje: '' });
+    try {
+      await eliminarValorAtributo(valorId);
+      cargar();
+    } catch (err) {
+      setErrorValor({ atributoId, mensaje: err.response?.data?.error || 'No se pudo eliminar el valor.' });
+    }
+  }
+
+  return (
+    <Card title="Atributos de variante">
+      <p className="mb-4 text-sm text-gray-500">
+        Definí atributos reusables (ej. Color, Talla) con sus valores posibles — se usan en{' '}
+        <em>Artículos</em> para generar automáticamente todas las combinaciones como variantes,
+        cada una con su propio SKU, precio y stock.
+      </p>
+      <ul className="divide-y divide-gray-100">
+        {atributos.map((a) => (
+          <li key={a.id} className="py-3">
+            {editandoId === a.id ? (
+              <form onSubmit={guardarEdicion} className="flex flex-wrap items-end gap-3">
+                <Input id={`atrNombre-${a.id}`} value={editNombre} onChange={(e) => setEditNombre(e.target.value)} required className="w-40" />
+                <Button type="submit" variant="secondary">Guardar</Button>
+                <Button type="button" variant="ghost" onClick={cancelarEdicion}>Cancelar</Button>
+                {errorEdit && <p className="w-full rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
+              </form>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">{a.nombre}</span>
+                <div className="flex shrink-0 items-center gap-3">
+                  <button type="button" onClick={() => iniciarEdicion(a)} className="text-sm text-primary-600 hover:underline">
+                    Editar
+                  </button>
+                  <button type="button" onClick={() => handleEliminarAtributo(a)} className="text-sm text-danger-600 hover:underline">
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            )}
+            {errorAtributo.id === a.id && <p className="mt-1 text-xs text-danger-600">{errorAtributo.mensaje}</p>}
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {a.valores.map((v) => (
+                <span key={v.id} className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-2 text-xs text-gray-700">
+                  {v.valor}
+                  <button
+                    type="button"
+                    onClick={() => handleEliminarValor(a.id, v.id)}
+                    className="text-gray-400 hover:text-danger-600"
+                    aria-label={`Eliminar valor ${v.valor}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <form onSubmit={(e) => handleAgregarValor(a.id, e)} className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  placeholder="Nuevo valor"
+                  value={nuevoValorPorAtributo[a.id] || ''}
+                  onChange={(e) => setNuevoValorPorAtributo((f) => ({ ...f, [a.id]: e.target.value }))}
+                  className="w-28 rounded-full border border-gray-200 px-3 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <button type="submit" className="text-xs text-primary-600 hover:underline">Agregar</button>
+              </form>
+            </div>
+            {errorValor.atributoId === a.id && <p className="mt-1 text-xs text-danger-600">{errorValor.mensaje}</p>}
+          </li>
+        ))}
+        {atributos.length === 0 && <li className="py-2.5 text-sm text-gray-500">Todavía no hay atributos.</li>}
+      </ul>
+      <form onSubmit={agregar} className="mt-4 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-4">
+        <Input id="atrNombreNuevo" label="Nombre" placeholder="ej. Color" value={nombreNuevo} onChange={(e) => setNombreNuevo(e.target.value)} required className="w-48" />
+        <Button type="submit" variant="secondary">Agregar atributo</Button>
       </form>
       {error && <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
     </Card>
@@ -729,7 +898,7 @@ function ConfiguracionCatalogoPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Configuración de catálogo</h1>
         <p className="text-sm text-gray-500">
-          Categorías, marcas, unidades, impuestos, listas de precio, descuentos y promociones.
+          Categorías, marcas, unidades, impuestos, listas de precio, atributos de variante, descuentos y promociones.
         </p>
       </div>
       <SeccionCategorias />
@@ -764,6 +933,7 @@ function ConfiguracionCatalogoPage() {
         renderItem={(i) => `${i.nombre} — ${(Number(i.tasa) * 100).toFixed(0)}%`}
       />
       <SeccionListasPrecio />
+      <SeccionAtributos />
       <SeccionDescuentosPromociones esPromocion={false} />
       <SeccionDescuentosPromociones esPromocion />
     </div>

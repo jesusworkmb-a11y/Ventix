@@ -64,6 +64,7 @@ model Empresa {
   listasPrecio    ListaPrecio[]
   descuentos      Descuento[]
   promociones     Promocion[]
+  atributos       Atributo[]
   clientes        Cliente[]
   proveedores     Proveedor[]
   compras         Compra[]
@@ -349,6 +350,9 @@ model Articulo {
   stockMaximo  Decimal?     @map("stock_maximo")
   imagenUrl    String?      @map("imagen_url")
   activo       Boolean      @default(true)
+  // Variantes (color/talla/etc.): una variante es otro Articulo, enlazado a su producto padre
+  // acá. null = artículo normal o producto padre; no-null = es una variante de ese padre.
+  articuloPadreId String?   @map("articulo_padre_id")
   creadoEn     DateTime     @default(now()) @map("creado_en")
 
   empresa    Empresa    @relation(fields: [empresaId], references: [id])
@@ -357,16 +361,59 @@ model Articulo {
   unidadBase Unidad     @relation("UnidadBase", fields: [unidadBaseId], references: [id])
   impuesto   Impuesto?  @relation(fields: [impuestoId], references: [id])
 
+  articuloPadre Articulo?  @relation("Variantes", fields: [articuloPadreId], references: [id])
+  variantes     Articulo[] @relation("Variantes")
+
   unidadesAlternas UnidadAlterna[]
   precios          PrecioArticulo[]
   existencias      Existencia[]
   proveedores      ArticuloProveedor[]
   descuentos       Descuento[]
   promociones      Promocion[]
+  valoresAtributo  ArticuloValorAtributo[]
 
   @@unique([empresaId, sku])
   @@unique([empresaId, codigoBarras])
   @@map("articulos")
+}
+
+// Catálogo reusable de atributos de variante (§ Variantes, agregado 2026-08-11): "Color",
+// "Talla"... cada valor puede asignarse a cualquier variante de cualquier artículo.
+model Atributo {
+  id        String @id @default(uuid())
+  empresaId String @map("empresa_id")
+  nombre    String // "Color", "Talla"
+
+  empresa Empresa         @relation(fields: [empresaId], references: [id])
+  valores ValorAtributo[]
+
+  @@unique([empresaId, nombre])
+  @@map("atributos")
+}
+
+model ValorAtributo {
+  id         String @id @default(uuid())
+  atributoId String @map("atributo_id")
+  valor      String // "Rojo", "M"
+
+  atributo Atributo                @relation(fields: [atributoId], references: [id])
+  usos     ArticuloValorAtributo[]
+
+  @@unique([atributoId, valor])
+  @@map("valores_atributo")
+}
+
+// Qué combinación de valores identifica a una variante (Articulo con articuloPadreId != null).
+model ArticuloValorAtributo {
+  id              String @id @default(uuid())
+  articuloId      String @map("articulo_id")
+  valorAtributoId String @map("valor_atributo_id")
+
+  articulo      Articulo      @relation(fields: [articuloId], references: [id])
+  valorAtributo ValorAtributo @relation(fields: [valorAtributoId], references: [id])
+
+  @@unique([articuloId, valorAtributoId])
+  @@map("articulo_valores_atributo")
 }
 
 model ListaPrecio {

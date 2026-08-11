@@ -17,5 +17,10 @@ router.put(
   asyncHandler(controller.actualizarUnidadesAlternas),
 );
 router.put('/:id/precios', requierePermiso('catalogo.precios.gestionar'), asyncHandler(controller.actualizarPrecios));
+router.put(
+  '/:id/variantes',
+  requierePermiso('catalogo.articulos.gestionar'),
+  asyncHandler(controller.actualizarVariantes),
+);
 
 module.exports = router;

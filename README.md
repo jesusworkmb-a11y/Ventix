@@ -1064,6 +1064,78 @@ opcional en Artículos" — ver arriba).
   filtrando la tabla a esas 2 filas. Artículo revertido a sin límites al terminar (sin datos de
   prueba que queden sucios).
 
+## Unidades alternas y variantes de producto (2026-08-11, sesión posterior)
+
+A pedido del usuario: (1) poder comprar en una unidad y llevar el stock/venta en otra (ej.
+entra por Caja, se vende por Pieza), y (2) poder generar variantes de un mismo producto por
+atributos (color, talla, etc.). Antes de implementar se usó plan mode (investigación del schema
++ `AskUserQuestion` para acordar diseño) porque tocaba una migración de schema no trivial.
+
+**Unidades alternas — resultó ser un gap, no una funcionalidad nueva.** El modelo
+`UnidadAlterna` y la conversión automática en Compras
+([compras.service.js#resolverFactor](backend/src/modules/compras/compras.service.js)) ya
+existían desde Fase 2, pero no había ninguna pantalla para configurarlas ni el selector de
+Compras las filtraba — en la práctica, inusable. Cerrado:
+- Nuevo panel "Unidades alternas" en
+  [ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx) (mismo patrón Modal
+  que "Precios por lista"): un input de factor opcional por cada unidad de la empresa distinta a
+  la base del artículo.
+- El selector de "Unidad" en
+  [ComprasPage.jsx](frontend/src/modules/compras/pages/ComprasPage.jsx) ahora solo muestra la
+  unidad base + las alternas configuradas del artículo elegido, con el factor en la etiqueta
+  (ej. "Caja (= 24 Pieza)"), y se resetea a la base al cambiar de artículo.
+- Sin cambios en Ventas: se confirmó con el usuario que siempre se vende en la unidad base, así
+  que la conversión solo aplicaba al capturar la compra.
+
+**Variantes — funcionalidad nueva de fondo.** Decisión de arquitectura clave: en vez de una
+tabla `ArticuloVariante` separada, **cada variante es otro `Articulo`**, enlazado al padre con
+un nuevo campo auto-referencial `articuloPadreId`. Se eligió así porque Existencia,
+MovimientoInventario, CompraDetalle, VentaDetalle, AjusteDetalle, TransferenciaDetalle,
+ConteoDetalle, búsqueda global, reportes, exportación CSV y descuentos/promociones ya funcionan
+puramente sobre `articuloId` — con una variante siendo un `Articulo` normal, ninguno de esos
+módulos necesitó tocarse.
+- **Schema** (nueva migración `agregar_atributos_variantes`, aditiva): `Atributo` +
+  `ValorAtributo` (catálogo reusable, ej. "Color" → "Rojo"/"Azul"), `ArticuloValorAtributo`
+  (qué combinación de valores identifica a una variante) y `Articulo.articuloPadreId`.
+- **Backend**: nuevo módulo CRUD `catalogo/atributos` (mismo patrón que `unidades`, con
+  `valores` anidados). Nueva `generarVariantes()` en
+  [articulos.service.js](backend/src/modules/catalogo/articulos/articulos.service.js)
+  (`PUT /:id/variantes`): dado un padre + una lista de valores de atributo, calcula el producto
+  cartesiano entre atributos distintos (Color × Talla) y crea un `Articulo` hijo por cada
+  combinación nueva (aditivo e idempotente — combinaciones ya generadas no se tocan), copiando
+  del padre tipo/categoría/marca/unidad/impuesto/costo/precio/stock como punto de partida
+  editable; sku/código de barras quedan en `null`, igual que cualquier artículo nuevo. `listar()`
+  en modo paginado (el único usado por `ArticulosPage`) ahora excluye variantes de la tabla
+  principal (`articuloPadreId: null`) — se gestionan desde el panel "Variantes" del padre, no
+  como filas sueltas; el modo array completo (Ventas/Compras/Cotizaciones/Ajustes/Conteos/
+  Transferencias) sigue trayendo todo sin filtrar, porque esos flujos sí necesitan elegir una
+  variante puntual directamente.
+- **Frontend**: nueva sección "Atributos de variante" en
+  [ConfiguracionCatalogoPage.jsx](frontend/src/modules/catalogo/pages/ConfiguracionCatalogoPage.jsx)
+  (mismo criterio que Categorías: lógica propia, con chips de valores por atributo). Nuevo panel
+  "Variantes" en ArticulosPage.jsx: checkboxes de valores agrupados por atributo + botón
+  "Generar variantes"; la tabla de variantes ya generadas reusa directamente la función
+  `iniciarEdicion` ya existente (una variante es un `Articulo` común, así que el modal "Editar
+  artículo" de siempre sirve sin cambios). En el POS
+  ([VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx)), un artículo con
+  variantes ya no se agrega directo al hacer clic — muestra "Elegir variante (N)" y abre un
+  picker con cada combinación (precio y stock propios); las variantes en sí no aparecen como
+  tarjeta suelta en la grilla. El escaneo por código de barras/SKU exacto sigue agregando directo
+  (ya identifica la variante puntual).
+- **Fuera de alcance, a propósito**: sin migración de artículos ya existentes a variantes de un
+  padre común (confirmado con el usuario); Herramientas (CSV) no se tocó, crea artículos sueltos
+  sin padre sin romper nada; descuentos/promociones con alcance "ARTICULO" no se propagan
+  automáticamente del padre a sus variantes (cada una tiene su propio `articuloId`).
+
+Verificado en vivo contra el backend local (misma base de Supabase que producción): artículo de
+prueba con unidad base Pieza + alterna Caja (factor 24, ya configurada en Coca Cola de una
+sesión anterior) confirmado en el selector de Compras; atributos Color (Rojo/Azul) y Talla
+(M/L) generando las 4 combinaciones correctas, edición de SKU/precio de una variante puntual
+reusando el modal existente, venta de esa variante puntual desde el POS (grid → "Elegir
+variante" → picker → cobrar) con el stock descontado de la variante correcta (no del padre) y
+el folio de venta reflejando el precio de la variante. Datos de prueba limpiados (venta
+cancelada, artículo padre + 4 variantes desactivados).
+
 ## Qué contiene
 
 ```text
@@ -1167,9 +1239,13 @@ profunda sobre los 10 módulos (ver "Segunda ronda de QA" arriba): 5 bugs críti
 ventas y devoluciones sobre-aplicables por condición de carrera, reembolsos que ignoraban
 descuentos) más 5 adicionales (condiciones de carrera menores, un reporte que tampoco
 descontaba descuentos, e inyección de fórmulas en los exports CSV), todos verificados en vivo y
-ya desplegados en producción. Por último, se agregó un ícono de notificaciones (campana) en la
-barra superior que avisa cuando un artículo llega a su límite de stock mínimo o máximo por
-sucursal (ver "Alertas de stock" arriba). **No queda ningún pendiente abierto.** A elección:
+ya desplegados en producción. Se agregó un ícono de notificaciones (campana) en la barra
+superior que avisa cuando un artículo llega a su límite de stock mínimo o máximo por sucursal
+(ver "Alertas de stock" arriba). Por último, se cerró el gap de unidades alternas que ya existía
+en el backend desde Fase 2 pero nunca tuvo pantalla (comprar por Caja, llevar el stock por
+Pieza) y se agregaron variantes de producto por atributos reusables (color, talla, etc., con
+generación automática de combinaciones y SKU/precio propios por variante — ver "Unidades
+alternas y variantes de producto" arriba). **No queda ningún pendiente abierto.** A elección:
 - Decidir si agregar restricción de nombre único a Categorías/Marcas/Unidades/Impuestos/Listas
   de precio (detectado en la segunda ronda de QA que no la tienen; no se tocó porque podría
   chocar con duplicados ya existentes en producción).
@@ -1179,3 +1255,7 @@ sucursal (ver "Alertas de stock" arriba). **No queda ningún pendiente abierto.*
   desde la UI por ahora).
 - Nuevas funcionalidades fuera del plan original.
 - Loading states (spinners) más pulidos — el único ítem del pulido visual que quedó sin tocar.
+- Extender variantes/unidades alternas si hace falta: vender también por unidad alterna (hoy
+  solo se compra en alterna, se vende en base — descartado a propósito por el usuario), migrar
+  artículos ya existentes a variantes de un padre común, o propagar descuentos/promociones del
+  padre a sus variantes automáticamente.

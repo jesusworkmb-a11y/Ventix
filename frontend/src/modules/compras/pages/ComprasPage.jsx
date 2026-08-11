@@ -134,6 +134,8 @@ function ComprasPage() {
     }
   }
 
+  const articuloSeleccionado = articulos.find((a) => a.id === form.articuloId);
+
   return (
     <div className="space-y-6">
       <div>
@@ -217,7 +219,16 @@ function ComprasPage() {
               <option key={s.id} value={s.id}>{s.nombre}</option>
             ))}
           </Select>
-          <Select id="articuloIdCompra" label="Artículo" value={form.articuloId} onChange={(e) => actualizarCampo('articuloId', e.target.value)} required>
+          <Select
+            id="articuloIdCompra"
+            label="Artículo"
+            value={form.articuloId}
+            onChange={(e) => {
+              const articulo = articulos.find((a) => a.id === e.target.value);
+              setForm((f) => ({ ...f, articuloId: e.target.value, unidadId: articulo?.unidadBaseId || '' }));
+            }}
+            required
+          >
             <option value="">Selecciona...</option>
             {articulos.map((a) => (
               <option key={a.id} value={a.id}>{a.nombre}</option>
@@ -225,8 +236,13 @@ function ComprasPage() {
           </Select>
           <Select id="unidadId" label="Unidad" value={form.unidadId} onChange={(e) => actualizarCampo('unidadId', e.target.value)} required>
             <option value="">Selecciona...</option>
-            {unidades.map((u) => (
-              <option key={u.id} value={u.id}>{u.nombre}</option>
+            {articuloSeleccionado && (
+              <option value={articuloSeleccionado.unidadBaseId}>{articuloSeleccionado.unidadBase?.nombre} (base)</option>
+            )}
+            {(articuloSeleccionado?.unidadesAlternas || []).map((u) => (
+              <option key={u.unidadId} value={u.unidadId}>
+                {u.unidad?.nombre} (=&nbsp;{Number(u.factor)}&nbsp;{articuloSeleccionado?.unidadBase?.nombre})
+              </option>
             ))}
           </Select>
           <Input
