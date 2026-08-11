@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
@@ -50,17 +51,27 @@ async function eliminar({ empresaId, usuarioEjecutorId, descuentoId }) {
     throw new AppError(409, 'No se puede eliminar: ya se aplicó en ventas. Desactívalo en su lugar.');
   }
 
-  return prisma.$transaction(async (tx) => {
-    await tx.descuento.delete({ where: { id: descuentoId } });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'ELIMINAR',
-      entidad: 'Descuento',
-      entidadId: descuentoId,
-      valoresAntes: toJson(descuento),
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.descuento.delete({ where: { id: descuentoId } });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'ELIMINAR',
+        entidad: 'Descuento',
+        entidadId: descuentoId,
+        valoresAntes: toJson(descuento),
+      });
     });
-  });
+  } catch (error) {
+    // El check de `usos` de arriba no es atómico con el delete: si una venta concurrente aplica
+    // este descuento justo entre el check y el delete, el constraint de FK de la DB es la
+    // última línea de defensa contra un 500 crudo en vez de un 409 de negocio.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      throw new AppError(409, 'No se puede eliminar: ya se aplicó en ventas. Desactívalo en su lugar.');
+    }
+    throw error;
+  }
 }
 
 module.exports = { listar, crear, actualizar, eliminar };

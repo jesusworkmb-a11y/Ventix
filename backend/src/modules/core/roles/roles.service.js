@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
@@ -20,18 +21,32 @@ async function crear({ empresaId, usuarioEjecutorId, nombre }) {
   const existente = await prisma.rol.findUnique({ where: { empresaId_nombre: { empresaId, nombre } } });
   if (existente) throw new AppError(409, 'Ya existe un rol con ese nombre.');
 
-  return prisma.$transaction(async (tx) => {
-    const rol = await tx.rol.create({ data: { empresaId, nombre } });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'CREAR',
-      entidad: 'Rol',
-      entidadId: rol.id,
-      valoresDespues: toJson(rol),
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const rol = await tx.rol.create({ data: { empresaId, nombre } });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'CREAR',
+        entidad: 'Rol',
+        entidadId: rol.id,
+        valoresDespues: toJson(rol),
+      });
+      return rol;
     });
-    return rol;
-  });
+  } catch (error) {
+    // Mismo saneo de condición de carrera que auth.service/usuarios.service/articulos.service:
+    // el check previo no es atómico, así que el constraint único de la DB es la última línea de
+    // defensa contra dos altas simultáneas con el mismo nombre.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      error.meta?.target?.includes('nombre')
+    ) {
+      throw new AppError(409, 'Ya existe un rol con ese nombre.');
+    }
+    throw error;
+  }
 }
 
 async function actualizar({ empresaId, usuarioEjecutorId, rolId, nombre }) {

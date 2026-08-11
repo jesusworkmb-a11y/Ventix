@@ -1,8 +1,15 @@
 // Export CSV 100% client-side (los datos del reporte ya están en memoria, no hace falta un
 // endpoint nuevo) — mismo criterio de escapado que backend/src/shared/csv.js, para que un
 // valor con coma/comilla/salto de línea no rompa el archivo al abrirlo en Excel/Sheets.
+// Un valor que empiece con =, +, - o @ se interpreta como fórmula al abrir el CSV en Excel/
+// Sheets (CWE-1236) -- mismo criterio que backend/src/shared/csv.js: se neutraliza anteponiendo
+// un apóstrofe para que nombres de artículo/proveedor con esos caracteres no se ejecuten solos.
+function neutralizarFormula(texto) {
+  return /^[=+\-@]/.test(texto) ? `'${texto}` : texto;
+}
+
 function escaparCampo(valor) {
-  const texto = valor === null || valor === undefined ? '' : String(valor);
+  const texto = neutralizarFormula(valor === null || valor === undefined ? '' : String(valor));
   if (/[",\n]/.test(texto)) {
     return `"${texto.replace(/"/g, '""')}"`;
   }

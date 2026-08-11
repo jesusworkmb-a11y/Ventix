@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
@@ -50,17 +51,25 @@ async function eliminar({ empresaId, usuarioEjecutorId, promocionId }) {
     throw new AppError(409, 'No se puede eliminar: ya se aplicó en ventas. Desactívala en su lugar.');
   }
 
-  return prisma.$transaction(async (tx) => {
-    await tx.promocion.delete({ where: { id: promocionId } });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'ELIMINAR',
-      entidad: 'Promocion',
-      entidadId: promocionId,
-      valoresAntes: toJson(promocion),
+  try {
+    return await prisma.$transaction(async (tx) => {
+      await tx.promocion.delete({ where: { id: promocionId } });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'ELIMINAR',
+        entidad: 'Promocion',
+        entidadId: promocionId,
+        valoresAntes: toJson(promocion),
+      });
     });
-  });
+  } catch (error) {
+    // Mismo saneo que descuentos.service: el check de `usos` no es atómico con el delete.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      throw new AppError(409, 'No se puede eliminar: ya se aplicó en ventas. Desactívala en su lugar.');
+    }
+    throw error;
+  }
 }
 
 module.exports = { listar, crear, actualizar, eliminar };

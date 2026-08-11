@@ -1,8 +1,18 @@
 // Helper CSV mínimo, sin dependencias externas — pensado para catálogos que se editan en
 // Excel/Sheets, no para datos con campos multilínea entre comillas.
 
+// Un valor que empiece con =, +, - o @ se interpreta como fórmula al abrir el CSV en Excel/
+// Sheets (CWE-1236) -- como estas columnas incluyen texto libre controlado por cualquier
+// usuario con permiso de alta (nombre de cliente/proveedor/artículo, motivo), sin esto alguien
+// podía sembrar una fórmula (ej. =HYPERLINK(...)) que se ejecuta sola al abrir el export. Se
+// neutraliza anteponiendo un apóstrofe, que ningún programa de hojas de cálculo interpreta como
+// parte de la fórmula.
+function neutralizarFormula(texto) {
+  return /^[=+\-@]/.test(texto) ? `'${texto}` : texto;
+}
+
 function escaparCampo(valor) {
-  const texto = valor === null || valor === undefined ? '' : String(valor);
+  const texto = neutralizarFormula(valor === null || valor === undefined ? '' : String(valor));
   if (/[",\n]/.test(texto)) {
     return `"${texto.replace(/"/g, '""')}"`;
   }

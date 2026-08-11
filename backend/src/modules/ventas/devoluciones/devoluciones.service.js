@@ -67,7 +67,16 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
       );
     }
 
-    reembolso += detalle.cantidad * Number(ventaDetalle.precio) * (1 + Number(ventaDetalle.impuestoTasa));
+    // El reembolso debe reflejar lo que el cliente realmente pagó, no el precio de lista: si la
+    // línea tuvo un descuento/promoción (catalogo.descuentos o manual), descuentoMonto es el
+    // total de la línea completa, así que se prorratea por unidad antes de calcular el
+    // reembolso — sin esto, devolver una línea con descuento reembolsaba de más (verificado en
+    // vivo: venta de 5 unidades a $10 con 20% de descuento, total pagado $40, la devolución
+    // completa reembolsaba $50 en vez de $40).
+    const cantidadOriginal = Number(ventaDetalle.cantidad);
+    const descuentoPorUnidad = cantidadOriginal > 0 ? Number(ventaDetalle.descuentoMonto) / cantidadOriginal : 0;
+    const precioNetoUnitario = Number(ventaDetalle.precio) - descuentoPorUnidad;
+    reembolso += detalle.cantidad * precioNetoUnitario * (1 + Number(ventaDetalle.impuestoTasa));
     lineas.push({ ...detalle, ventaDetalleId: ventaDetalle.id });
   }
   reembolso = redondear(reembolso);
@@ -93,6 +102,25 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
     });
 
     for (const linea of lineas) {
+      // El check de "disponible" de arriba se calculó con datos leídos ANTES de esta
+      // transacción, así que dos devoluciones concurrentes sobre la misma línea podían pasar
+      // ambas el check y sobre-devolver: verificado en vivo con 3 devoluciones concurrentes
+      // pidiendo las mismas 5 unidades vendidas — las 3 tuvieron éxito, $150 reembolsados y +15
+      // de stock sobre una venta de 5 unidades / $50. Se relee la línea con FOR UPDATE (mismo
+      // patrón que sesiones_caja en caja.service.js) para bloquearla y revalidar contra el valor
+      // fresco antes de incrementar cantidadDevuelta.
+      const [ventaDetalleActual] = await tx.$queryRaw`
+        SELECT cantidad, cantidad_devuelta AS "cantidadDevuelta"
+        FROM ventas_detalle WHERE id = ${linea.ventaDetalleId} FOR UPDATE
+      `;
+      const disponibleAhora = Number(ventaDetalleActual.cantidad) - Number(ventaDetalleActual.cantidadDevuelta);
+      if (linea.cantidad > disponibleAhora) {
+        throw new AppError(
+          400,
+          `No se puede devolver más de lo vendido/no devuelto para ese artículo (disponible: ${disponibleAhora}).`,
+        );
+      }
+
       await tx.ventaDetalle.update({
         where: { id: linea.ventaDetalleId },
         data: { cantidadDevuelta: { increment: linea.cantidad } },

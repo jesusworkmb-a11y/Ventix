@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { aplicarMovimiento } = require('../../../shared/services/inventario.service');
@@ -75,27 +76,46 @@ async function establecerInicial({ empresaId, usuarioId, sucursalId, articuloId,
     );
   }
 
-  return prisma.$transaction(async (tx) => {
-    const { existencia, movimiento } = await aplicarMovimiento(tx, {
-      empresaId,
-      sucursalId,
-      articuloId,
-      tipo: 'INVENTARIO_INICIAL',
-      cantidad,
-      referenciaTipo: 'InventarioInicial',
-      referenciaId: articuloId,
-      usuarioId,
+  try {
+    return await prisma.$transaction(async (tx) => {
+      // El check de arriba no es atómico: dos establecerInicial() concurrentes sobre el mismo
+      // par sucursal/artículo pasaban ambos el check y, como aplicarMovimiento usa upsert
+      // (incrementa si ya existe), el segundo terminaba SUMÁNDOSE al primero en vez de
+      // rechazarse — la existencia quedaba en el doble de lo esperado en vez del 409 que el
+      // endpoint promete. Se crea la fila en 0 con una escritura directa (el constraint único
+      // de sucursalId+articuloId es la última línea de defensa) antes de dejar que
+      // aplicarMovimiento la incremente, sin duplicar su lógica de negativo/movimiento.
+      await tx.existencia.create({ data: { empresaId, sucursalId, articuloId, cantidad: 0 } });
+
+      const { existencia, movimiento } = await aplicarMovimiento(tx, {
+        empresaId,
+        sucursalId,
+        articuloId,
+        tipo: 'INVENTARIO_INICIAL',
+        cantidad,
+        referenciaTipo: 'InventarioInicial',
+        referenciaId: articuloId,
+        usuarioId,
+      });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId: usuarioId,
+        accion: 'CREAR',
+        entidad: 'Existencia',
+        entidadId: existencia.id,
+        valoresDespues: toJson(existencia),
+      });
+      return { existencia, movimiento };
     });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId: usuarioId,
-      accion: 'CREAR',
-      entidad: 'Existencia',
-      entidadId: existencia.id,
-      valoresDespues: toJson(existencia),
-    });
-    return { existencia, movimiento };
-  });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new AppError(
+        409,
+        'Ya existe una existencia para este artículo en esta sucursal; usa un ajuste para modificarla.',
+      );
+    }
+    throw error;
+  }
 }
 
 const COLUMNAS_EXPORTAR = ['sucursal', 'articulo', 'sku', 'cantidad'];

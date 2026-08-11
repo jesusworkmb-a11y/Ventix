@@ -5,6 +5,40 @@ const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
+const { usuarioTienePermiso } = require('../../../shared/services/permisos.service');
+
+const PERMISO_ADMINISTRAR_USUARIOS = 'administracion.usuarios.editar';
+
+// Evita que un cambio deje a la empresa sin ningún usuario activo capaz de administrar usuarios
+// (mismo criterio ya usado para proteger al Cliente General de ser desactivado): sin esto, un
+// admin podía desactivarse a sí mismo o degradar su propio rol (o el del último administrador)
+// y la empresa quedaba sin nadie que pudiera revertirlo desde la UI.
+async function quedariaSinAdministradorDeUsuarios({ empresaId, usuarioId, relacion, datos }) {
+  const teniaPermiso = await usuarioTienePermiso({
+    usuarioId,
+    rolId: relacion.rolId,
+    clave: PERMISO_ADMINISTRAR_USUARIOS,
+  });
+  if (!teniaPermiso) return false;
+
+  const seDesactiva = Boolean(datos.estado) && datos.estado !== 'ACTIVO';
+  const rolIdFinal = datos.rolId || relacion.rolId;
+  const tendraPermiso =
+    !seDesactiva && (await usuarioTienePermiso({ usuarioId, rolId: rolIdFinal, clave: PERMISO_ADMINISTRAR_USUARIOS }));
+  if (tendraPermiso) return false;
+
+  const otros = await prisma.usuarioEmpresa.findMany({
+    where: { empresaId, activo: true, usuarioId: { not: usuarioId }, usuario: { estado: 'ACTIVO' } },
+    select: { usuarioId: true, rolId: true },
+  });
+  for (const otro of otros) {
+    // eslint-disable-next-line no-await-in-loop
+    if (await usuarioTienePermiso({ usuarioId: otro.usuarioId, rolId: otro.rolId, clave: PERMISO_ADMINISTRAR_USUARIOS })) {
+      return false;
+    }
+  }
+  return true;
+}
 
 const INCLUDE_USUARIO = {
   usuario: { select: { id: true, nombre: true, correo: true, estado: true, ultimoAcceso: true } },
@@ -110,6 +144,13 @@ async function actualizar({ empresaId, usuarioEjecutorId, usuarioId, datos }) {
   if (datos.rolId) {
     const rol = await prisma.rol.findFirst({ where: { id: datos.rolId, empresaId } });
     if (!rol) throw new AppError(400, 'El rol indicado no pertenece a esta empresa.');
+  }
+
+  if (await quedariaSinAdministradorDeUsuarios({ empresaId, usuarioId, relacion, datos })) {
+    throw new AppError(
+      409,
+      'No puedes hacer este cambio: dejaría a la empresa sin ningún usuario activo que pueda administrar usuarios.',
+    );
   }
 
   return prisma.$transaction(async (tx) => {

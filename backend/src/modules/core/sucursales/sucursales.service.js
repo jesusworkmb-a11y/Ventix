@@ -1,3 +1,4 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
@@ -14,19 +15,33 @@ async function crear({ empresaId, usuarioEjecutorId, datos }) {
   });
   if (existente) throw new AppError(409, 'Ya existe una sucursal con esa clave.');
 
-  return prisma.$transaction(async (tx) => {
-    const sucursal = await tx.sucursal.create({ data: { empresaId, ...datos } });
-    await tx.secuencia.createMany({ data: buildSecuenciasPorSucursal(empresaId, sucursal) });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'CREAR',
-      entidad: 'Sucursal',
-      entidadId: sucursal.id,
-      valoresDespues: toJson(sucursal),
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const sucursal = await tx.sucursal.create({ data: { empresaId, ...datos } });
+      await tx.secuencia.createMany({ data: buildSecuenciasPorSucursal(empresaId, sucursal) });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'CREAR',
+        entidad: 'Sucursal',
+        entidadId: sucursal.id,
+        valoresDespues: toJson(sucursal),
+      });
+      return sucursal;
     });
-    return sucursal;
-  });
+  } catch (error) {
+    // Mismo saneo de condición de carrera que roles.service/auth.service/usuarios.service: el
+    // check previo no es atómico, así que el constraint único de la DB es la última línea de
+    // defensa contra dos altas simultáneas con la misma clave.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002' &&
+      error.meta?.target?.includes('clave')
+    ) {
+      throw new AppError(409, 'Ya existe una sucursal con esa clave.');
+    }
+    throw error;
+  }
 }
 
 async function actualizar({ empresaId, usuarioEjecutorId, sucursalId, datos }) {

@@ -26,7 +26,20 @@ async function auth(req, res, next) {
       return next(new AppError(401, 'Tu sesión ya no es válida. Inicia sesión de nuevo.'));
     }
 
-    req.auth = { usuarioId: payload.sub, empresaId: payload.empresaId, rolId: payload.rolId };
+    // Mismo criterio para el rol: el `rolId` del JWT es una foto del momento del login, no una
+    // fuente de verdad. Sin esto, degradar/reasignar el rol de un usuario (o desactivar su
+    // vínculo con la empresa) no tenía efecto sobre sesiones ya abiertas hasta que el token
+    // expirara solo (hasta 8h) — un admin recién degradado a Cajero seguía pudiendo crear
+    // sucursales, por ejemplo. Se resuelve en vivo en cada request, igual que el estado.
+    const usuarioEmpresa = await prisma.usuarioEmpresa.findFirst({
+      where: { usuarioId: payload.sub, empresaId: payload.empresaId, activo: true },
+      select: { rolId: true },
+    });
+    if (!usuarioEmpresa) {
+      return next(new AppError(401, 'Tu sesión ya no es válida. Inicia sesión de nuevo.'));
+    }
+
+    req.auth = { usuarioId: payload.sub, empresaId: payload.empresaId, rolId: usuarioEmpresa.rolId };
     next();
   } catch (error) {
     next(new AppError(401, 'Tu sesión expiró o no es válida. Inicia sesión de nuevo.'));

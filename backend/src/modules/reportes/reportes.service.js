@@ -66,17 +66,23 @@ async function reporteArticulosMasVendidos({ empresaId, sucursalId, desde, hasta
 
   const detalles = await prisma.ventaDetalle.findMany({
     where: { ventaId: { in: ventaIds } },
-    select: { articuloId: true, cantidad: true, precio: true, cantidadDevuelta: true },
+    select: { articuloId: true, cantidad: true, precio: true, cantidadDevuelta: true, descuentoMonto: true },
   });
 
   // Se descuenta lo devuelto de cada línea -- si no, un artículo devuelto por completo seguiría
-  // apareciendo como "vendido" aquí (mismo hueco que en reporteVentas#total).
+  // apareciendo como "vendido" aquí (mismo hueco que en reporteVentas#total). También se
+  // prorratea descuentoMonto por unidad (mismo criterio que el reembolso de devoluciones.service.js)
+  // -- sin esto, "monto" mostraba el precio de lista en vez de lo que el cliente realmente pagó
+  // cuando la línea tuvo un descuento/promoción de catálogo.
   const acumulado = new Map();
   for (const d of detalles) {
-    const cantidadNeta = Number(d.cantidad) - Number(d.cantidadDevuelta);
+    const cantidadOriginal = Number(d.cantidad);
+    const cantidadNeta = cantidadOriginal - Number(d.cantidadDevuelta);
+    const descuentoPorUnidad = cantidadOriginal > 0 ? Number(d.descuentoMonto) / cantidadOriginal : 0;
+    const precioNetoUnitario = Number(d.precio) - descuentoPorUnidad;
     const actual = acumulado.get(d.articuloId) || { cantidad: 0, monto: 0 };
     actual.cantidad += cantidadNeta;
-    actual.monto += cantidadNeta * Number(d.precio);
+    actual.monto += cantidadNeta * precioNetoUnitario;
     acumulado.set(d.articuloId, actual);
   }
 

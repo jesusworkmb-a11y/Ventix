@@ -388,6 +388,20 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
   if (venta.estado !== 'CONFIRMADA') throw new AppError(400, 'Solo se pueden cancelar ventas confirmadas.');
 
   return prisma.$transaction(async (tx) => {
+    // El check de arriba no es atómico con el resto: dos cancelar() casi simultáneos sobre la
+    // misma venta pasaban ambos el check y aplicaban la reversión de stock más de una vez —
+    // verificado en vivo: 5 cancelaciones concurrentes sobre una venta de 5 unidades, 4/5 con
+    // éxito y el stock volvió a 115 en vez de 100 (la reversión se aplicó 4 veces). Mismo patrón
+    // ya usado en compras.cancelar/transferencias.recibir/conteos.cambiarEstado: se reclama la
+    // venta con un UPDATE...WHERE estado='CONFIRMADA' antes de aplicar los movimientos.
+    const reclamada = await tx.venta.updateMany({
+      where: { id: ventaId, estado: 'CONFIRMADA' },
+      data: { estado: 'CANCELADA' },
+    });
+    if (reclamada.count === 0) {
+      throw new AppError(400, 'Solo se pueden cancelar ventas confirmadas.');
+    }
+
     for (const detalle of venta.detalles) {
       await aplicarMovimiento(tx, {
         empresaId,
@@ -401,7 +415,7 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
       });
     }
 
-    const actualizada = await tx.venta.update({ where: { id: ventaId }, data: { estado: 'CANCELADA' } });
+    const actualizada = await tx.venta.findUnique({ where: { id: ventaId } });
 
     await registrarAuditoria(tx, {
       empresaId,

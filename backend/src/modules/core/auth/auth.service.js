@@ -109,15 +109,23 @@ async function login({ correo, password }) {
 
   const passwordValido = await bcrypt.compare(password, usuario.passwordHash);
   if (!passwordValido) {
-    const intentosFallidos = usuario.intentosFallidos + 1;
-    const seBloquea = intentosFallidos >= MAX_INTENTOS_FALLIDOS;
-    await prisma.usuario.update({
+    // Incremento atómico (`SET intentos_fallidos = intentos_fallidos + 1` a nivel DB, no
+    // leer-en-JS-y-escribir): con el patrón anterior, logins fallidos concurrentes leían el
+    // mismo valor viejo y se pisaban entre sí, así que el conteo nunca llegaba al umbral —
+    // reproducido en vivo con 10 intentos fallidos concurrentes seguidos de un login exitoso,
+    // la cuenta nunca se bloqueaba. El incremento atómico serializa los intentos concurrentes a
+    // nivel de fila, así que el conteo sí sube correctamente bajo concurrencia.
+    const actualizado = await prisma.usuario.update({
       where: { id: usuario.id },
-      data: {
-        intentosFallidos: seBloquea ? 0 : intentosFallidos,
-        bloqueadoHasta: seBloquea ? new Date(Date.now() + BLOQUEO_MINUTOS * 60 * 1000) : null,
-      },
+      data: { intentosFallidos: { increment: 1 } },
+      select: { intentosFallidos: true },
     });
+    if (actualizado.intentosFallidos >= MAX_INTENTOS_FALLIDOS) {
+      await prisma.usuario.update({
+        where: { id: usuario.id },
+        data: { intentosFallidos: 0, bloqueadoHasta: new Date(Date.now() + BLOQUEO_MINUTOS * 60 * 1000) },
+      });
+    }
     throw new AppError(401, 'Correo o contraseña incorrectos.');
   }
 
