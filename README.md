@@ -72,9 +72,9 @@ Notas del despliegue:
    `FRONTEND_URL` (el frontend ya desplegado), no desde `localhost:5173` — para verificar cambios
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: no queda ningún pendiente abierto (10 módulos completos y en producción,
-   primera pasada de QA cerrada, rediseño visual + su pulido ya aplicados, documentos de venta
-   ya implementados) — ver el detalle de opciones en "Qué sigue" al final de este README.
+5. Dile qué sigue: no queda ningún pendiente abierto (10 módulos completos y en producción, dos
+   rondas de QA cerradas, rediseño visual + su pulido ya aplicados, documentos de venta ya
+   implementados) — ver el detalle de opciones en "Qué sigue" al final de este README.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -950,6 +950,88 @@ terminado: cotización con 20% de descuento → total neto correcto devuelto por
 producción (prueba de que el código nuevo ya estaba en vivo), conversión con autorización
 exitosa. Venta de prueba cancelada al terminar.
 
+## Segunda ronda de QA (2026-08-11)
+
+A pedido del usuario, segunda ronda de QA más profunda sobre los 10 módulos, uno por uno —
+revisión de código módulo por módulo + reproducción en vivo de cada hallazgo antes del fix y
+reverificación después, mismo criterio que la primera ronda (ver secciones de QA de cada módulo
+más arriba). A diferencia de la primera ronda, esta vez se pudo levantar el backend local contra
+la misma base de Supabase que producción (sin el problema de IPv6 de sesiones anteriores), así
+que casi toda la reproducción/verificación se hizo en local antes de pushear, no contra
+producción directamente. Clientes/Proveedores, Compras, Caja, Cotizaciones, Búsqueda global y
+Empresa no tuvieron hallazgos nuevos. Encontrado y corregido:
+
+**Críticos:**
+- **Las sesiones no revalidaban el rol en cada request, solo el estado.** El JWT lleva el
+  `rolId` fijo desde el login; `auth.middleware.js` solo revalidaba `estado` (activo/bloqueado)
+  en cada request, no el rol. Verificado en vivo: se degradó un usuario de prueba de
+  Administrador a Cajero y su token viejo siguió creando sucursales normalmente. Corregido
+  resolviendo el rol en vivo contra `UsuarioEmpresa` en cada request, igual que el estado —
+  degradar/reasignar un rol ahora tiene efecto inmediato sobre sesiones ya abiertas, no hasta
+  que el token expire (hasta 8h).
+- **El bloqueo de cuenta por intentos fallidos era evitable con concurrencia.** `login()` en
+  `auth.service.js` hacía un leer-incrementar-escribir en JS, no atómico: 10 intentos fallidos
+  concurrentes contra un usuario de prueba no bloquearon la cuenta (cada request leía el mismo
+  valor viejo). Corregido con un incremento atómico a nivel de base de datos
+  (`intentosFallidos: { increment: 1 }`) — reverificado con el mismo ataque, la cuenta ahora sí
+  bloquea. Reverificado también contra producción ya con el deploy hecho.
+- **`ventas.service.js#cancelar` nunca tuvo el candado atómico** que sí tienen
+  `compras.cancelar`/`transferencias.recibir`/`conteos.cambiarEstado` desde la primera ronda.
+  Verificado en vivo: 5 cancelaciones concurrentes sobre una venta de 5 unidades, 4 de 5 con
+  éxito, el stock volvió a 115 en vez de 100 (reversión aplicada 4 veces). Corregido con el
+  mismo patrón `UPDATE...WHERE estado='CONFIRMADA'` antes de aplicar los movimientos.
+- **`devoluciones.service.js#crear` podía sobre-devolverse.** La validación de "cuánto queda
+  disponible para devolver" se leía antes de la transacción. Verificado en vivo: 3 devoluciones
+  concurrentes pidiendo las mismas 5 unidades de una venta de $50 — **las 3 tuvieron éxito**,
+  $150 reembolsados y +15 de stock. Dinero real duplicado, no solo inventario. Corregido
+  bloqueando la línea de venta con `SELECT...FOR UPDATE` (mismo patrón que `sesiones_caja` en
+  Caja) y revalidando contra el valor fresco antes de incrementar `cantidadDevuelta`.
+- **El reembolso de una devolución ignoraba el descuento de la línea.** `descuentoMonto` es el
+  descuento total de la línea, pero `reembolso` se calculaba con el precio de lista completo sin
+  prorratearlo. Verificado en vivo: venta de 5 unidades a $10 con 20% de descuento (total pagado
+  $40), devolución completa reembolsó $50 en vez de $40. Corregido prorrateando
+  `descuentoMonto` por unidad antes de calcular el reembolso; reverificado también con una
+  devolución parcial (2 de 5 unidades → reembolso exacto de $16).
+
+**Otros:**
+- **Sin protección contra quedar sin ningún administrador de usuarios.** Se podía desactivar o
+  degradar al último usuario activo con permiso para administrar usuarios, dejando a la empresa
+  sin nadie que pudiera revertirlo desde la UI. Agregada la misma protección que ya existía para
+  el Cliente General, en `usuarios.service.js#actualizar`.
+- **Condición de carrera al crear roles/sucursales con nombre/clave duplicado** (Core): mismo
+  hueco que ya se había corregido en Catálogo/Core-auth en la primera ronda, pero nunca se
+  aplicó acá — daban 500 crudo en vez del 409 de negocio esperado bajo concurrencia. Corregido
+  en `roles.service.js`/`sucursales.service.js`.
+- **Misma condición de carrera al eliminar un descuento/promoción ya usado** (Catálogo): el
+  check de "¿ya se aplicó en ventas?" no es atómico con el delete; el constraint de llave
+  foránea de la DB podía filtrar como 500 crudo. Corregido en `descuentos.service.js`/
+  `promociones.service.js`.
+- **`existencias.service.js#establecerInicial` podía duplicarse bajo concurrencia** (mismo hueco
+  que los anteriores): 5 llamadas concurrentes fijando "10" como stock inicial terminaban en
+  "50" en vez de rechazar las 4 repetidas. Corregido.
+- **El reporte "Artículos más vendidos" tampoco descontaba el descuento de línea** del monto
+  reportado (mismo hueco que el reembolso de arriba, pero en Reportes) — mostraba ingresos por
+  encima de lo real en artículos con descuento aplicado. Corregido con el mismo prorrateo.
+- **Inyección de fórmulas en los exports CSV** (Herramientas, Existencias, Reportes; CWE-1236):
+  un nombre de cliente/proveedor/artículo que empezara con `=`, `+`, `-` o `@` se interpretaba
+  como fórmula al abrir el CSV en Excel/Sheets — nada neutralizaba esto en ninguno de los dos
+  helpers CSV del proyecto (`backend/src/shared/csv.js`, `frontend/src/shared/csv.js`).
+  Corregido en ambos anteponiendo un apóstrofe a valores que empiezan con esos caracteres.
+
+**Notado y documentado, no corregido** (decisión de producto, no bug): Categorías, Marcas,
+Unidades, Impuestos y Listas de precio no tienen ninguna restricción de nombre único en la base
+de datos — se puede crear "Bebidas" dos veces sin que nada lo impida. Agregar la restricción
+ahora podría chocar con duplicados que ya existan en producción, así que queda pendiente de
+decidir con el usuario en vez de asumir.
+
+Todos los fixes verificados en vivo contra el backend local (misma base de Supabase que
+producción, sin el problema de IPv6 de sesiones anteriores) antes de pushear, con datos de
+prueba limpiados después de cada uno (artículos/roles/sucursales de prueba desactivados o
+archivados, movimientos de caja compensatorios donde una prueba generó dinero/stock real de
+más). Pusheado a `main` en un solo commit (13 archivos) con permiso explícito del usuario,
+verificado también contra `https://ventix-backend-yjgv.onrender.com` ya con el deploy
+terminado (login-lockout reprobado en producción, mismo resultado que en local).
+
 ## Qué contiene
 
 ```text
@@ -1047,8 +1129,17 @@ ya se agregaron descuentos y promociones en Catálogo con aplicación automátic
 descuento manual con aprobación forzada de Supervisor, y su visibilidad en el resumen de venta
 y el ticket (ver "Descuentos y promociones" arriba) — y ese descuento manual ya se extendió
 también a Cotizaciones, con autorización diferida a cuando se convierten en venta (ver
-"Descuento manual en Cotizaciones" arriba). **No queda ningún pendiente abierto.** A elección:
-- Una segunda ronda de QA más profunda sobre algún módulo.
+"Descuento manual en Cotizaciones" arriba). Por último, ya se hizo una segunda ronda de QA más
+profunda sobre los 10 módulos (ver "Segunda ronda de QA" arriba): 5 bugs críticos corregidos
+(sesiones que no revalidaban rol, bloqueo de cuenta evitable por concurrencia, cancelación de
+ventas y devoluciones sobre-aplicables por condición de carrera, reembolsos que ignoraban
+descuentos) más 5 adicionales (condiciones de carrera menores, un reporte que tampoco
+descontaba descuentos, e inyección de fórmulas en los exports CSV), todos verificados en vivo y
+ya desplegados en producción. **No queda ningún pendiente abierto.** A elección:
+- Decidir si agregar restricción de nombre único a Categorías/Marcas/Unidades/Impuestos/Listas
+  de precio (detectado en la segunda ronda de QA que no la tienen; no se tocó porque podría
+  chocar con duplicados ya existentes en producción).
+- Una tercera ronda de QA, o profundizar en algún módulo específico.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
   desde la UI por ahora).
