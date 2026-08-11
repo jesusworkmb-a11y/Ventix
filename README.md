@@ -74,8 +74,9 @@ Notas del despliegue:
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: no queda ningún pendiente abierto (10 módulos completos y en producción, dos
    rondas de QA cerradas, rediseño visual + su pulido ya aplicados, documentos de venta,
-   descuentos/promociones, alertas de stock, y unidades alternas + variantes de producto ya
-   implementados) — ver el detalle de opciones en "Qué sigue" al final de este README.
+   descuentos/promociones, alertas de stock, unidades alternas + variantes de producto y
+   restricción de nombre único en Catálogo ya implementados) — ver el detalle de opciones en
+   "Qué sigue" al final de este README.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -1137,6 +1138,47 @@ variante" → picker → cobrar) con el stock descontado de la variante correcta
 el folio de venta reflejando el precio de la variante. Datos de prueba limpiados (venta
 cancelada, artículo padre + 4 variantes desactivados).
 
+## Nombre único en Categorías/Marcas/Unidades/Impuestos/Listas de precio (2026-08-11)
+
+Cierra el ítem pendiente que dejó la segunda ronda de QA: estas cinco entidades de
+Catálogo se podían crear/editar con un nombre duplicado dentro de la misma empresa.
+Antes de tocar el schema se confirmó contra producción que no había ningún duplicado
+existente (`GROUP BY empresa_id, lower(nombre) HAVING count(*) > 1` sobre las 5 tablas,
+0 filas en las 5) — si hubiera habido, agregar el constraint de DB habría roto la
+migración.
+
+- **Backend:** nuevo constraint `@@unique([empresaId, nombre])` en
+  [schema.prisma](backend/prisma/schema.prisma) para Marca/Unidad/Impuesto/ListaPrecio;
+  Categoría lo lleva acotado a `@@unique([empresaId, categoriaPadreId, nombre])` para
+  permitir reusar un nombre de subcategoría bajo padres distintos (p.ej. "Otros" bajo
+  "Bebidas" y bajo "Snacks"), ya que el modelo soporta hasta 2 niveles. Nuevo helper
+  compartido [`backend/src/shared/nombreUnico.js`](backend/src/shared/nombreUnico.js)
+  (`validarNombreUnico` + `relanzarConflictoNombre`), mismo patrón de dos capas ya usado
+  para SKU/código de barras en `articulos.service.js`: un pre-chequeo insensible a
+  mayúsculas/minúsculas antes de escribir (da un 409 limpio en el caso normal) más el
+  `@@unique` de la DB como última línea de defensa ante dos altas/ediciones simultáneas
+  con el mismo nombre exacto (capturando el `P2002` de Prisma). Los cinco
+  `<entidad>.service.js` de `catalogo/` quedaron con este mismo patrón.
+- **Frontend:** sin cambios — `ConfiguracionCatalogoPage.jsx` ya mostraba
+  `err.response?.data?.error` genérico en cada formulario, así que el mensaje 409
+  ("Ya existe una marca con ese nombre.", etc.) aparece solo.
+- **Nota de diseño — el constraint de Categoría no cubre la carrera entre dos categorías
+  raíz** (`categoriaPadreId: null`) con el mismo nombre: Postgres trata `NULL` como
+  distinto de `NULL` en un unique constraint, así que dos altas simultáneas de una
+  categoría raíz con nombre idéntico podrían ambas pasar el pre-chequeo y el constraint
+  de DB no las bloquea. Mismo tipo de ventana de riesgo ya aceptado en el proyecto (ver
+  `asegurarClienteGeneral()` en el QA de Clientes/Proveedores) — de baja severidad
+  (cosmético) y no se resolvió con una solución más compleja (índice funcional fuera del
+  DSL de Prisma) para mantener el mismo patrón que el resto del código.
+- Verificado contra la base de producción (mismo Supabase, vía backend local — la
+  conexión directa sí funcionó esta sesión): pre-chequeo insensible a mayúsculas bloquea
+  con 409 limpio; 5 altas concurrentes con el mismo nombre exacto disparadas directo
+  contra `prisma.marca.create()` (saltando el pre-chequeo a propósito) dieron 1 éxito y 4
+  rechazadas por el constraint de la DB; llamando al `crear()` real del servicio con la
+  misma carrera, las 4 rechazadas devuelven el 409 limpio (no el error crudo de Prisma);
+  subcategoría "Otros" creada bajo dos padres distintos sin problema, bloqueada al
+  repetirla bajo el mismo padre. Todos los datos de prueba limpiados al terminar.
+
 ## Qué contiene
 
 ```text
@@ -1246,10 +1288,10 @@ superior que avisa cuando un artículo llega a su límite de stock mínimo o má
 en el backend desde Fase 2 pero nunca tuvo pantalla (comprar por Caja, llevar el stock por
 Pieza) y se agregaron variantes de producto por atributos reusables (color, talla, etc., con
 generación automática de combinaciones y SKU/precio propios por variante — ver "Unidades
-alternas y variantes de producto" arriba). **No queda ningún pendiente abierto.** A elección:
-- Decidir si agregar restricción de nombre único a Categorías/Marcas/Unidades/Impuestos/Listas
-  de precio (detectado en la segunda ronda de QA que no la tienen; no se tocó porque podría
-  chocar con duplicados ya existentes en producción).
+alternas y variantes de producto" arriba). Por último, ya se agregó la restricción de nombre
+único a Categorías/Marcas/Unidades/Impuestos/Listas de precio que había quedado pendiente de
+la segunda ronda de QA (ver "Nombre único en Categorías/Marcas/Unidades/Impuestos/Listas de
+precio" arriba). **No queda ningún pendiente abierto.** A elección:
 - Una tercera ronda de QA, o profundizar en algún módulo específico.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables

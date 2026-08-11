@@ -278,6 +278,11 @@ model Categoria {
   descuentos     Descuento[]
   promociones    Promocion[]
 
+  // Nombre único por empresa dentro del mismo padre (permite reusar un nombre de
+  // subcategoría bajo padres distintos). No cubre la carrera entre dos categorías raíz
+  // (categoriaPadreId null) con el mismo nombre — Postgres trata NULL como distinto de
+  // NULL en un unique constraint; el pre-chequeo en el service cubre el caso normal.
+  @@unique([empresaId, categoriaPadreId, nombre])
   @@map("categorias")
 }
 
@@ -289,6 +294,7 @@ model Marca {
   empresa   Empresa    @relation(fields: [empresaId], references: [id])
   articulos Articulo[]
 
+  @@unique([empresaId, nombre])
   @@map("marcas")
 }
 
@@ -302,6 +308,7 @@ model Unidad {
   articulosBase    Articulo[]      @relation("UnidadBase")
   unidadesAlternas UnidadAlterna[]
 
+  @@unique([empresaId, nombre])
   @@map("unidades")
 }
 
@@ -328,32 +335,33 @@ model Impuesto {
   empresa   Empresa    @relation(fields: [empresaId], references: [id])
   articulos Articulo[]
 
+  @@unique([empresaId, nombre])
   @@map("impuestos")
 }
 
 model Articulo {
-  id           String       @id @default(uuid())
-  empresaId    String       @map("empresa_id")
-  tipo         TipoArticulo
-  clave        String? // clave/código interno
-  sku          String?
-  codigoBarras String?      @map("codigo_barras")
-  nombre       String
-  descripcion  String?
-  categoriaId  String?      @map("categoria_id")
-  marcaId      String?      @map("marca_id")
-  unidadBaseId String       @map("unidad_base_id")
-  impuestoId   String?      @map("impuesto_id")
-  costo        Decimal      @default(0) // último costo (§16.3)
-  precio       Decimal      @default(0)
-  stockMinimo  Decimal?     @map("stock_minimo")
-  stockMaximo  Decimal?     @map("stock_maximo")
-  imagenUrl    String?      @map("imagen_url")
-  activo       Boolean      @default(true)
+  id              String       @id @default(uuid())
+  empresaId       String       @map("empresa_id")
+  tipo            TipoArticulo
+  clave           String? // clave/código interno
+  sku             String?
+  codigoBarras    String?      @map("codigo_barras")
+  nombre          String
+  descripcion     String?
+  categoriaId     String?      @map("categoria_id")
+  marcaId         String?      @map("marca_id")
+  unidadBaseId    String       @map("unidad_base_id")
+  impuestoId      String?      @map("impuesto_id")
+  costo           Decimal      @default(0) // último costo (§16.3)
+  precio          Decimal      @default(0)
+  stockMinimo     Decimal?     @map("stock_minimo")
+  stockMaximo     Decimal?     @map("stock_maximo")
+  imagenUrl       String?      @map("imagen_url")
+  activo          Boolean      @default(true)
   // Variantes (color/talla/etc.): una variante es otro Articulo, enlazado a su producto padre
   // acá. null = artículo normal o producto padre; no-null = es una variante de ese padre.
-  articuloPadreId String?   @map("articulo_padre_id")
-  creadoEn     DateTime     @default(now()) @map("creado_en")
+  articuloPadreId String?      @map("articulo_padre_id")
+  creadoEn        DateTime     @default(now()) @map("creado_en")
 
   empresa    Empresa    @relation(fields: [empresaId], references: [id])
   categoria  Categoria? @relation(fields: [categoriaId], references: [id])
@@ -426,6 +434,7 @@ model ListaPrecio {
   precios  PrecioArticulo[]
   clientes Cliente[]
 
+  @@unique([empresaId, nombre])
   @@map("listas_precio")
 }
 

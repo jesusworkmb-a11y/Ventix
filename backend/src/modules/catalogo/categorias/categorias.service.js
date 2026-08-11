@@ -2,6 +2,9 @@ const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+const { validarNombreUnico, relanzarConflictoNombre } = require('../../../shared/nombreUnico');
+
+const MENSAJE_DUPLICADO = 'Ya existe una categoría con ese nombre en el mismo nivel.';
 
 async function listar({ empresaId }) {
   return prisma.categoria.findMany({ where: { empresaId }, orderBy: { nombre: 'asc' } });
@@ -22,19 +25,32 @@ async function validarPadre({ empresaId, categoriaId, categoriaPadreId }) {
 
 async function crear({ empresaId, usuarioEjecutorId, datos }) {
   await validarPadre({ empresaId, categoriaId: null, categoriaPadreId: datos.categoriaPadreId });
-
-  return prisma.$transaction(async (tx) => {
-    const categoria = await tx.categoria.create({ data: { empresaId, ...datos } });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'CREAR',
-      entidad: 'Categoria',
-      entidadId: categoria.id,
-      valoresDespues: toJson(categoria),
-    });
-    return categoria;
+  await validarNombreUnico({
+    prisma,
+    modelo: 'categoria',
+    empresaId,
+    id: null,
+    nombre: datos.nombre,
+    alcance: { categoriaPadreId: datos.categoriaPadreId ?? null },
+    mensaje: MENSAJE_DUPLICADO,
   });
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const categoria = await tx.categoria.create({ data: { empresaId, ...datos } });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'CREAR',
+        entidad: 'Categoria',
+        entidadId: categoria.id,
+        valoresDespues: toJson(categoria),
+      });
+      return categoria;
+    });
+  } catch (error) {
+    relanzarConflictoNombre(error, MENSAJE_DUPLICADO);
+  }
 }
 
 async function actualizar({ empresaId, usuarioEjecutorId, categoriaId, datos }) {
@@ -51,19 +67,34 @@ async function actualizar({ empresaId, usuarioEjecutorId, categoriaId, datos }) 
     }
   }
 
-  return prisma.$transaction(async (tx) => {
-    const actualizada = await tx.categoria.update({ where: { id: categoriaId }, data: datos });
-    await registrarAuditoria(tx, {
-      empresaId,
-      usuarioEjecutorId,
-      accion: 'ACTUALIZAR',
-      entidad: 'Categoria',
-      entidadId: categoriaId,
-      valoresAntes: toJson(categoria),
-      valoresDespues: toJson(actualizada),
-    });
-    return actualizada;
+  const categoriaPadreIdEfectivo = 'categoriaPadreId' in datos ? datos.categoriaPadreId : categoria.categoriaPadreId;
+  await validarNombreUnico({
+    prisma,
+    modelo: 'categoria',
+    empresaId,
+    id: categoriaId,
+    nombre: datos.nombre ?? categoria.nombre,
+    alcance: { categoriaPadreId: categoriaPadreIdEfectivo ?? null },
+    mensaje: MENSAJE_DUPLICADO,
   });
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const actualizada = await tx.categoria.update({ where: { id: categoriaId }, data: datos });
+      await registrarAuditoria(tx, {
+        empresaId,
+        usuarioEjecutorId,
+        accion: 'ACTUALIZAR',
+        entidad: 'Categoria',
+        entidadId: categoriaId,
+        valoresAntes: toJson(categoria),
+        valoresDespues: toJson(actualizada),
+      });
+      return actualizada;
+    });
+  } catch (error) {
+    relanzarConflictoNombre(error, MENSAJE_DUPLICADO);
+  }
 }
 
 module.exports = { listar, crear, actualizar };
