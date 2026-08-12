@@ -1217,15 +1217,20 @@ Proveedor de email: [Resend](https://resend.com).
   `exportarCsv` (descarga) para poder reusar el mismo CSV en el correo de Reportes.
 - Body limit de Express subido de 3mb a 8mb en `app.js` (los PDFs/CSVs adjuntos en base64 pueden
   superar el límite que alcanzaba solo para el logo de empresa).
-- **Verificado en vivo, incluido un envío real**: los 4 flujos probados contra el backend local
-  (conectado a Supabase) con clics reales en el navegador — antes de tener la API key de Resend,
-  los 4 endpoints se verificaron llegando limpio hasta el error esperado ("El envío de correo no
-  está configurado en el servidor"); con la API key configurada, se envió una Cotización real
-  (con PDF adjunto) al correo del usuario y se confirmó la entrega.
+- **Verificado en vivo, incluidos envíos reales entregados en producción**: los 4 flujos se
+  probaron primero contra el backend local (conectado a Supabase) con clics reales en el
+  navegador — antes de tener la API key de Resend, los 4 endpoints se verificaron llegando
+  limpio hasta el error esperado ("El envío de correo no está configurado en el servidor"); con
+  la API key configurada localmente, se envió una Cotización real (con PDF adjunto) y se confirmó
+  la entrega. Después de pushear a `main` y que el usuario agregara `RESEND_API_KEY`/
+  `RESEND_FROM_EMAIL` como variables de entorno en el servicio backend de Render, se repitió la
+  prueba contra producción real (`ventix-frontend.onrender.com` / `ventix-backend-yjgv.onrender.com`)
+  enviando una Compra real — el usuario confirmó la recepción de ambos correos.
 - Cuenta de Resend nueva del usuario, sin dominio propio verificado todavía — usa el dominio
   sandbox `onboarding@resend.dev` de Resend, que solo entrega al correo dueño de la cuenta. Para
   enviar a clientes/proveedores reales hace falta verificar un dominio propio en Resend (Domains →
-  Add Domain, agregar los registros DNS que da) y actualizar `RESEND_FROM_EMAIL`.
+  Add Domain, agregar los registros DNS que da) y actualizar `RESEND_FROM_EMAIL` (local y en
+  Render).
 
 ## Qué contiene
 
