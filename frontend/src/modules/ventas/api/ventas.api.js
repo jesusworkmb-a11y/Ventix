@@ -12,3 +12,6 @@ export function crearVenta(datos) {
 export function cancelarVenta(id) {
   return api.patch(`/ventas/ventas/${id}/cancelar`).then((res) => res.data);
 }
+export function enviarTicketPorCorreo(id, datos) {
+  return api.post(`/ventas/ventas/${id}/enviar-ticket`, datos).then((res) => res.data);
+}

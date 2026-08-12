@@ -7,10 +7,12 @@ const ANCHO_PAGINA = 210;
 const DERECHA = ANCHO_PAGINA - MARGEN_X;
 const ALTO_LOGO = 16; // mm — ancho se deriva de la proporción real de la imagen
 
+// Construye el jsPDF sin ningún efecto lateral (no descarga) — reusado tanto por
+// generarPdfCompra (descarga directa) como por generarBase64Compra (envío por correo).
 // A diferencia de Cotizacion, CompraDetalle.costo no lleva un impuesto separado (§17.5) — el
 // costo congelado en la línea ya es el importe total por unidad, así que no hace falta
 // recalcular subtotal/impuestos como en cotizacionPdf.js, solo sumar cantidad × costo.
-export function generarPdfCompra(compra, empresa) {
+function construirDocCompra(compra, empresa) {
   const lineas = compra.detalles.map((d) => {
     const cantidad = Number(d.cantidad);
     const costo = Number(d.costo);
@@ -113,5 +115,21 @@ export function generarPdfCompra(compra, empresa) {
   doc.text('Total', 150, finalY);
   doc.text(formatoMoneda(total), DERECHA, finalY, { align: 'right' });
 
+  return doc;
+}
+
+export function generarPdfCompra(compra, empresa) {
+  const doc = construirDocCompra(compra, empresa);
   doc.save(`${compra.folio || 'compra'}.pdf`);
+}
+
+// Para el envío por correo: el backend no genera PDFs (ver correo.service.js), así que el
+// frontend arma el mismo documento y lo manda en base64 crudo (sin el prefijo `data:...;base64,`
+// del data URI que devuelve jsPDF).
+export function generarBase64Compra(compra, empresa) {
+  const doc = construirDocCompra(compra, empresa);
+  const dataUri = doc.output('datauristring');
+  const base64 = dataUri.split(',')[1];
+  const nombreArchivo = `${compra.folio || 'compra'}.pdf`;
+  return { base64, nombreArchivo };
 }

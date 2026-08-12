@@ -37,7 +37,9 @@ function calcularTotales(cotizacion, articulosCompletos) {
 
 const ALTO_LOGO = 16; // mm — ancho se deriva de la proporción real de la imagen
 
-export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
+// Construye el jsPDF sin ningún efecto lateral (no descarga) — reusado tanto por
+// generarPdfCotizacion (descarga directa) como por generarBase64Cotizacion (envío por correo).
+function construirDocCotizacion(cotizacion, empresa, articulosCompletos) {
   const { lineas, subtotal, impuestos, descuentoTotal, total } = calcularTotales(cotizacion, articulosCompletos);
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   let y = 20;
@@ -141,5 +143,21 @@ export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
     finalY + 14,
   );
 
+  return doc;
+}
+
+export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
+  const doc = construirDocCotizacion(cotizacion, empresa, articulosCompletos);
   doc.save(`${cotizacion.folio || 'cotizacion'}.pdf`);
+}
+
+// Para el envío por correo: el backend no genera PDFs (ver correo.service.js), así que el
+// frontend arma el mismo documento y lo manda en base64 crudo (sin el prefijo `data:...;base64,`
+// del data URI que devuelve jsPDF).
+export function generarBase64Cotizacion(cotizacion, empresa, articulosCompletos) {
+  const doc = construirDocCotizacion(cotizacion, empresa, articulosCompletos);
+  const dataUri = doc.output('datauristring');
+  const base64 = dataUri.split(',')[1];
+  const nombreArchivo = `${cotizacion.folio || 'cotizacion'}.pdf`;
+  return { base64, nombreArchivo };
 }

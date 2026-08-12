@@ -13,16 +13,17 @@
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
-    "express": "^4.19.2",
+    "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
-    "bcrypt": "^5.1.1",
+    "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
+    "resend": "^6.19.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "prisma": "^5.18.0",
-    "nodemon": "^3.1.4"
+    "nodemon": "^3.1.4",
+    "prisma": "^5.18.0"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,

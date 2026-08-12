@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Trash2, Printer } from 'lucide-react';
-import { listarVentas, cancelarVenta, obtenerVenta } from '../api/ventas.api';
+import { Search, Trash2, Printer, Mail } from 'lucide-react';
+import {
+  listarVentas, cancelarVenta, obtenerVenta, enviarTicketPorCorreo,
+} from '../api/ventas.api';
 import { crearDevolucion } from '../api/devoluciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarUsuarios } from '../../core/api/core.api';
@@ -11,10 +13,12 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import EnviarCorreoModal from '../../../shared/ui/EnviarCorreoModal';
 import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import TicketVenta from '../components/TicketVenta';
 import { formatoMoneda } from '../../../shared/format';
+import { useAuth } from '../../../shared/context/AuthContext';
 
 const COLUMNAS = [
   { label: 'Folio', clave: 'folio', ordenable: true },
@@ -30,6 +34,7 @@ const ESTADO_TONO = { CONFIRMADA: 'success', CANCELADA: 'gray' };
 
 function VentasHistorialPage() {
   const location = useLocation();
+  const { empresa } = useAuth();
   const [ventas, setVentas] = useState([]);
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   // Prefil con el término del buscador global de la barra superior (TopBar.jsx), si se
@@ -53,6 +58,10 @@ function VentasHistorialPage() {
 
   const [ticketVenta, setTicketVenta] = useState(null);
   const [ticketAbierto, setTicketAbierto] = useState(false);
+  const [envioTicketAbierto, setEnvioTicketAbierto] = useState(false);
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
+  const [errorEnvioCorreo, setErrorEnvioCorreo] = useState('');
+  const [exitoEnvioCorreo, setExitoEnvioCorreo] = useState('');
 
   function cargarVentas(pagina = 1) {
     listarVentas({
@@ -105,6 +114,38 @@ function VentasHistorialPage() {
     } catch (err) {
       setError('No se pudo cargar el ticket de la venta.');
       setTicketAbierto(false);
+    }
+  }
+
+  async function enviarCorreoTicket(destinatario, asunto, mensaje) {
+    setEnviandoCorreo(true);
+    setErrorEnvioCorreo('');
+    try {
+      const { generarBase64Ticket } = await import('../pdf/ticketPdf');
+      const { base64, nombreArchivo } = generarBase64Ticket(ticketVenta, empresa, null);
+      await enviarTicketPorCorreo(ticketVenta.id, {
+        destinatario, asunto, mensaje, adjuntoBase64: base64, nombreArchivo,
+      });
+      setExitoEnvioCorreo(`Ticket enviado a ${destinatario}.`);
+      setEnvioTicketAbierto(false);
+    } catch (err) {
+      setErrorEnvioCorreo(err.response?.data?.error || 'No se pudo enviar el correo.');
+    } finally {
+      setEnviandoCorreo(false);
+    }
+  }
+
+  async function abrirEnvioTicket(ventaId) {
+    setError('');
+    setErrorEnvioCorreo('');
+    setExitoEnvioCorreo('');
+    setTicketVenta(null);
+    try {
+      const detalle = await obtenerVenta(ventaId);
+      setTicketVenta(detalle);
+      setEnvioTicketAbierto(true);
+    } catch (err) {
+      setError('No se pudo cargar el ticket de la venta.');
     }
   }
 
@@ -226,6 +267,7 @@ function VentasHistorialPage() {
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {exitoEnvioCorreo && <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">{exitoEnvioCorreo}</p>}
 
       <Card>
         <div className="relative max-w-sm">
@@ -271,6 +313,14 @@ function VentasHistorialPage() {
                     title="Imprimir ticket"
                   >
                     <Printer size={14} /> Imprimir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirEnvioTicket(v.id)}
+                    className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 hover:underline"
+                    title="Enviar por correo"
+                  >
+                    <Mail size={14} /> Enviar
                   </button>
                   {v.estado === 'CONFIRMADA' && (
                     <>
@@ -397,6 +447,17 @@ function VentasHistorialPage() {
           </div>
         )}
       </Modal>
+
+      <EnviarCorreoModal
+        abierto={envioTicketAbierto}
+        onCerrar={() => setEnvioTicketAbierto(false)}
+        titulo="Enviar ticket por correo"
+        destinatarioSugerido={ticketVenta?.cliente?.correo || ''}
+        asuntoSugerido={ticketVenta ? `Ticket de venta ${ticketVenta.folio}` : ''}
+        enviando={enviandoCorreo}
+        error={errorEnvioCorreo}
+        onEnviar={enviarCorreoTicket}
+      />
     </div>
   );
 }

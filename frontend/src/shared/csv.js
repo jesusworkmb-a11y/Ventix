@@ -16,11 +16,17 @@ function escaparCampo(valor) {
   return texto;
 }
 
-// filas: array de objetos; columnas: array de { clave, label }.
-export function exportarCsv(nombreArchivo, filas, columnas) {
+// filas: array de objetos; columnas: array de { clave, label }. Separado de exportarCsv para
+// poder reusar el mismo contenido tanto para la descarga como para el envío por correo (ver
+// enviarReportePorCorreo en reportes.api.js), sin duplicar el escapado.
+export function construirCsv(filas, columnas) {
   const encabezado = columnas.map((c) => c.label).join(',');
   const lineas = filas.map((fila) => columnas.map((c) => escaparCampo(fila[c.clave])).join(','));
-  const contenido = [encabezado, ...lineas].join('\n');
+  return [encabezado, ...lineas].join('\n');
+}
+
+export function exportarCsv(nombreArchivo, filas, columnas) {
+  const contenido = construirCsv(filas, columnas);
 
   const blobUrl = URL.createObjectURL(new Blob([`﻿${contenido}`], { type: 'text/csv;charset=utf-8' }));
   const enlace = document.createElement('a');

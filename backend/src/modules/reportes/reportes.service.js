@@ -1,5 +1,8 @@
 const prisma = require('../../config/db');
 const redondear = require('../../shared/redondear');
+const { registrarAuditoria } = require('../../shared/services/auditoria.service');
+const { enviarCorreoConAdjunto } = require('../../shared/services/correo.service');
+const toJson = require('../../shared/toJson');
 
 async function reporteVentas({ empresaId, sucursalId, desde, hasta }) {
   const where = { empresaId, estado: 'CONFIRMADA' };
@@ -186,10 +189,39 @@ async function reporteCaja({ empresaId, cajaId, desde, hasta }) {
   };
 }
 
+// A diferencia de cotizaciones/compras/ventas, un reporte no es una fila persistida — no hay
+// nada que buscar por ID. El CSV ya viene armado desde el frontend (mismos filas/columnas que
+// la tabla en pantalla, ver ReportesPage.jsx), acá solo se relaya por correo y se audita.
+async function enviar({
+  empresaId, usuarioId, destinatario, asunto, mensaje, adjuntoBase64, nombreArchivo,
+}) {
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  const asuntoFinal = asunto || `Reporte — ${empresa?.nombreComercial || 'Ventix'}`;
+
+  await enviarCorreoConAdjunto({
+    destinatario,
+    asunto: asuntoFinal,
+    mensaje,
+    adjunto: { nombreArchivo, contenidoBase64: adjuntoBase64 },
+  });
+
+  await registrarAuditoria(null, {
+    empresaId,
+    usuarioEjecutorId: usuarioId,
+    accion: 'ENVIAR_CORREO',
+    entidad: 'Reporte',
+    entidadId: null,
+    valoresDespues: toJson({ destinatario, nombreArchivo }),
+  });
+
+  return { enviado: true };
+}
+
 module.exports = {
   reporteVentas,
   reporteArticulosMasVendidos,
   reporteInventarioValorizado,
   reporteCompras,
   reporteCaja,
+  enviar,
 };

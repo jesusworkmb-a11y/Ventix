@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Search, FileDown } from 'lucide-react';
-import { listarCompras, obtenerCompra, crearCompra, cancelarCompra } from '../api/compras.api';
+import { Search, FileDown, Mail } from 'lucide-react';
+import {
+  listarCompras, obtenerCompra, crearCompra, cancelarCompra, enviarCompraPorCorreo,
+} from '../api/compras.api';
 import { listarProveedores } from '../../proveedores/api/proveedores.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos, listarUnidades } from '../../catalogo/api/catalogo.api';
@@ -10,6 +12,7 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
+import EnviarCorreoModal from '../../../shared/ui/EnviarCorreoModal';
 import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
@@ -47,6 +50,12 @@ function ComprasPage() {
   const [unidades, setUnidades] = useState([]);
   const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
+
+  const [envioCompraId, setEnvioCompraId] = useState(null);
+  const [envioCompra, setEnvioCompra] = useState(null);
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
+  const [errorEnvioCorreo, setErrorEnvioCorreo] = useState('');
+  const [exitoEnvioCorreo, setExitoEnvioCorreo] = useState('');
 
   function cargarCompras(pagina = 1) {
     listarCompras({
@@ -101,6 +110,42 @@ function ComprasPage() {
     }
   }
 
+  async function abrirEnvioCorreo(compraId) {
+    setErrorPdf('');
+    setErrorEnvioCorreo('');
+    setExitoEnvioCorreo('');
+    try {
+      const detalle = await obtenerCompra(compraId);
+      setEnvioCompra(detalle);
+      setEnvioCompraId(compraId);
+    } catch (err) {
+      setErrorPdf('No se pudo cargar la compra para enviarla.');
+    }
+  }
+
+  function cerrarEnvioCorreo() {
+    setEnvioCompraId(null);
+    setEnvioCompra(null);
+  }
+
+  async function enviarCorreoCompra(destinatario, asunto, mensaje) {
+    setEnviandoCorreo(true);
+    setErrorEnvioCorreo('');
+    try {
+      const { generarBase64Compra } = await import('../pdf/compraPdf');
+      const { base64, nombreArchivo } = generarBase64Compra(envioCompra, empresa);
+      await enviarCompraPorCorreo(envioCompraId, {
+        destinatario, asunto, mensaje, adjuntoBase64: base64, nombreArchivo,
+      });
+      setExitoEnvioCorreo(`Compra enviada a ${destinatario}.`);
+      cerrarEnvioCorreo();
+    } catch (err) {
+      setErrorEnvioCorreo(err.response?.data?.error || 'No se pudo enviar el correo.');
+    } finally {
+      setEnviandoCorreo(false);
+    }
+  }
+
   async function handleCancelar(compraId) {
     setError('');
     try {
@@ -144,6 +189,7 @@ function ComprasPage() {
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {exitoEnvioCorreo && <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">{exitoEnvioCorreo}</p>}
 
       <Card>
         <div className="relative max-w-sm">
@@ -191,6 +237,14 @@ function ComprasPage() {
                     title="Descargar PDF"
                   >
                     <FileDown size={14} /> PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirEnvioCorreo(c.id)}
+                    className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 hover:underline"
+                    title="Enviar por correo"
+                  >
+                    <Mail size={14} /> Enviar
                   </button>
                   {c.estado === 'CONFIRMADA' && (
                     <button type="button" onClick={() => handleCancelar(c.id)} className="text-sm text-danger-600 hover:underline">
@@ -270,6 +324,17 @@ function ComprasPage() {
           </div>
         </form>
       </Card>
+
+      <EnviarCorreoModal
+        abierto={envioCompraId !== null}
+        onCerrar={cerrarEnvioCorreo}
+        titulo="Enviar compra por correo"
+        destinatarioSugerido={envioCompra?.proveedor?.correo || ''}
+        asuntoSugerido={envioCompra ? `Compra ${envioCompra.folio}` : ''}
+        enviando={enviandoCorreo}
+        error={errorEnvioCorreo}
+        onEnviar={enviarCorreoCompra}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.service');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
+const { enviarCorreoConAdjunto } = require('../../../shared/services/correo.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
@@ -201,4 +202,39 @@ async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCaja
   return venta;
 }
 
-module.exports = { listar, obtener, crear, convertir };
+// Reusa la cotización ya persistida solo para el folio/sucursal (auditoría) y el asunto por
+// defecto — el PDF ya viene armado desde el frontend en base64 (mismo criterio del logo de
+// empresa: el backend no genera PDFs, ver correo.service.js).
+async function enviar({
+  empresaId, usuarioId, cotizacionId, destinatario, asunto, mensaje, adjuntoBase64, nombreArchivo,
+}) {
+  const cotizacion = await prisma.cotizacion.findFirst({ where: { id: cotizacionId, empresaId } });
+  if (!cotizacion) throw new AppError(404, 'Cotización no encontrada.');
+
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  const asuntoFinal = asunto || `Cotización ${cotizacion.folio} — ${empresa?.nombreComercial || 'Ventix'}`;
+
+  await enviarCorreoConAdjunto({
+    destinatario,
+    asunto: asuntoFinal,
+    mensaje,
+    adjunto: { nombreArchivo, contenidoBase64: adjuntoBase64 },
+  });
+
+  await registrarAuditoria(null, {
+    empresaId,
+    sucursalId: cotizacion.sucursalId,
+    usuarioEjecutorId: usuarioId,
+    accion: 'ENVIAR_CORREO',
+    entidad: 'Cotizacion',
+    entidadId: cotizacion.id,
+    folio: cotizacion.folio,
+    valoresDespues: toJson({ destinatario }),
+  });
+
+  return { enviado: true };
+}
+
+module.exports = {
+  listar, obtener, crear, convertir, enviar,
+};

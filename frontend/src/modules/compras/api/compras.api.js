@@ -12,3 +12,6 @@ export function crearCompra(datos) {
 export function cancelarCompra(id) {
   return api.patch(`/compras/${id}/cancelar`).then((res) => res.data);
 }
+export function enviarCompraPorCorreo(id, datos) {
+  return api.post(`/compras/${id}/enviar`, datos).then((res) => res.data);
+}

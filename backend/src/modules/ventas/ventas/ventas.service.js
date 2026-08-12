@@ -4,6 +4,7 @@ const { aplicarMovimiento } = require('../../../shared/services/inventario.servi
 const { registrarMovimientoCaja } = require('../../../shared/services/caja.service');
 const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.service');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
+const { enviarCorreoConAdjunto } = require('../../../shared/services/correo.service');
 const { usuarioTienePermiso } = require('../../../shared/services/permisos.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
@@ -432,4 +433,39 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
   });
 }
 
-module.exports = { listar, obtener, crear, cancelar, resolverPreciosCatalogo };
+// Mismo criterio que cotizaciones.service.js#enviar/compras.service.js#enviar: el PDF del
+// ticket ya viene armado desde el frontend en base64, acá solo se resuelve el folio/empresa
+// para el asunto por defecto y se audita.
+async function enviarTicket({
+  empresaId, usuarioId, ventaId, destinatario, asunto, mensaje, adjuntoBase64, nombreArchivo,
+}) {
+  const venta = await prisma.venta.findFirst({ where: { id: ventaId, empresaId } });
+  if (!venta) throw new AppError(404, 'Venta no encontrada.');
+
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  const asuntoFinal = asunto || `Ticket de venta ${venta.folio} — ${empresa?.nombreComercial || 'Ventix'}`;
+
+  await enviarCorreoConAdjunto({
+    destinatario,
+    asunto: asuntoFinal,
+    mensaje,
+    adjunto: { nombreArchivo, contenidoBase64: adjuntoBase64 },
+  });
+
+  await registrarAuditoria(null, {
+    empresaId,
+    sucursalId: venta.sucursalId,
+    usuarioEjecutorId: usuarioId,
+    accion: 'ENVIAR_CORREO',
+    entidad: 'Venta',
+    entidadId: venta.id,
+    folio: venta.folio,
+    valoresDespues: toJson({ destinatario }),
+  });
+
+  return { enviado: true };
+}
+
+module.exports = {
+  listar, obtener, crear, cancelar, resolverPreciosCatalogo, enviarTicket,
+};

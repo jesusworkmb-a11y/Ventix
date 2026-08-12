@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Mail } from 'lucide-react';
 import {
   reporteVentas,
   reporteArticulosMasVendidos,
   reporteInventarioValorizado,
   reporteCompras,
   reporteCaja,
+  enviarReportePorCorreo,
 } from '../api/reportes.api';
 import { listarSucursales } from '../../core/api/core.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
+import EnviarCorreoModal from '../../../shared/ui/EnviarCorreoModal';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
-import { exportarCsv } from '../../../shared/csv';
+import { exportarCsv, construirCsv } from '../../../shared/csv';
 
 // Botón "Exportar CSV" reusado en cada Card de reporte (via el prop `action` de Card) — cada
 // reporte exporta exactamente las filas de la tabla que tiene abajo, no un volcado aparte ni
@@ -30,6 +32,27 @@ function BotonExportar({ nombreArchivo, filas, columnas }) {
       disabled={filas.length === 0}
     >
       <Download size={16} /> Exportar CSV
+    </Button>
+  );
+}
+
+// Reusa exactamente las mismas filas/columnas que BotonExportar (arriba) — el envío por correo
+// manda el mismo CSV que se descargaría, nunca un volcado aparte. El armado real del adjunto
+// (base64) vive en la página, acá solo se abre el modal con los datos de este reporte.
+function BotonEnviarCorreo({
+  nombreArchivo, filas, columnas, asunto, onAbrir,
+}) {
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      onClick={() => onAbrir({
+        nombreArchivo, filas, columnas, asunto,
+      })}
+      disabled={filas.length === 0}
+    >
+      <Mail size={16} /> Enviar por correo
     </Button>
   );
 }
@@ -50,6 +73,11 @@ function ReportesPage() {
   const [hasta, setHasta] = useState('');
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
+
+  const [envioDatos, setEnvioDatos] = useState(null);
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
+  const [errorEnvioCorreo, setErrorEnvioCorreo] = useState('');
+  const [exitoEnvioCorreo, setExitoEnvioCorreo] = useState('');
 
   useEffect(() => {
     listarSucursales().then(setSucursales).catch(() => {});
@@ -72,6 +100,36 @@ function ReportesPage() {
       setResultado(data);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo generar el reporte.');
+    }
+  }
+
+  function abrirEnvioReporte(datos) {
+    setErrorEnvioCorreo('');
+    setExitoEnvioCorreo('');
+    setEnvioDatos(datos);
+  }
+
+  function cerrarEnvioReporte() {
+    setEnvioDatos(null);
+  }
+
+  // El CSV emailado es el mismo que produce exportarCsv (mismo BOM UTF-8 para que los acentos
+  // se vean bien en Excel) — solo cambia el destino final (adjunto de correo vs. descarga).
+  async function enviarCorreoReporte(destinatario, asunto, mensaje) {
+    setEnviandoCorreo(true);
+    setErrorEnvioCorreo('');
+    try {
+      const contenido = `﻿${construirCsv(envioDatos.filas, envioDatos.columnas)}`;
+      const base64 = btoa(unescape(encodeURIComponent(contenido)));
+      await enviarReportePorCorreo({
+        destinatario, asunto, mensaje, adjuntoBase64: base64, nombreArchivo: envioDatos.nombreArchivo,
+      });
+      setExitoEnvioCorreo(`Reporte enviado a ${destinatario}.`);
+      cerrarEnvioReporte();
+    } catch (err) {
+      setErrorEnvioCorreo(err.response?.data?.error || 'No se pudo enviar el correo.');
+    } finally {
+      setEnviandoCorreo(false);
     }
   }
 
@@ -114,16 +172,26 @@ function ReportesPage() {
       </Card>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {exitoEnvioCorreo && <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">{exitoEnvioCorreo}</p>}
 
       {resultado && tipo === 'ventas' && (
         <Card
           title="Ventas por período"
           action={(
-            <BotonExportar
-              nombreArchivo="ventas-por-metodo-pago.csv"
-              filas={resultado.porMetodoPago.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) }))}
-              columnas={[{ clave: 'metodo', label: 'Método' }, { clave: 'monto', label: 'Monto' }]}
-            />
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="ventas-por-metodo-pago.csv"
+                filas={resultado.porMetodoPago.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) }))}
+                columnas={[{ clave: 'metodo', label: 'Método' }, { clave: 'monto', label: 'Monto' }]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="ventas-por-metodo-pago.csv"
+                filas={resultado.porMetodoPago.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) }))}
+                columnas={[{ clave: 'metodo', label: 'Método' }, { clave: 'monto', label: 'Monto' }]}
+                asunto="Reporte — Ventas por período"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
           )}
         >
           <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -163,19 +231,36 @@ function ReportesPage() {
         <Card
           title="Artículos más vendidos"
           action={(
-            <BotonExportar
-              nombreArchivo="articulos-mas-vendidos.csv"
-              filas={resultado.map((r) => ({
-                articulo: r.articulo?.nombre,
-                cantidad: Number(r.cantidad),
-                monto: Number(r.monto),
-              }))}
-              columnas={[
-                { clave: 'articulo', label: 'Artículo' },
-                { clave: 'cantidad', label: 'Cantidad' },
-                { clave: 'monto', label: 'Monto' },
-              ]}
-            />
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="articulos-mas-vendidos.csv"
+                filas={resultado.map((r) => ({
+                  articulo: r.articulo?.nombre,
+                  cantidad: Number(r.cantidad),
+                  monto: Number(r.monto),
+                }))}
+                columnas={[
+                  { clave: 'articulo', label: 'Artículo' },
+                  { clave: 'cantidad', label: 'Cantidad' },
+                  { clave: 'monto', label: 'Monto' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="articulos-mas-vendidos.csv"
+                filas={resultado.map((r) => ({
+                  articulo: r.articulo?.nombre,
+                  cantidad: Number(r.cantidad),
+                  monto: Number(r.monto),
+                }))}
+                columnas={[
+                  { clave: 'articulo', label: 'Artículo' },
+                  { clave: 'cantidad', label: 'Cantidad' },
+                  { clave: 'monto', label: 'Monto' },
+                ]}
+                asunto="Reporte — Artículos más vendidos"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
           )}
         >
           <Table columnas={['Artículo', 'Cantidad', 'Monto']}>
@@ -196,11 +281,20 @@ function ReportesPage() {
           <Card
             title="Inventario valorizado"
             action={(
-              <BotonExportar
-                nombreArchivo="inventario-valorizado.csv"
-                filas={resultado.porSucursal.map((s) => ({ sucursal: s.sucursal.nombre, valor: Number(s.valor) }))}
-                columnas={[{ clave: 'sucursal', label: 'Sucursal' }, { clave: 'valor', label: 'Valor' }]}
-              />
+              <div className="flex flex-wrap gap-2">
+                <BotonExportar
+                  nombreArchivo="inventario-valorizado.csv"
+                  filas={resultado.porSucursal.map((s) => ({ sucursal: s.sucursal.nombre, valor: Number(s.valor) }))}
+                  columnas={[{ clave: 'sucursal', label: 'Sucursal' }, { clave: 'valor', label: 'Valor' }]}
+                />
+                <BotonEnviarCorreo
+                  nombreArchivo="inventario-valorizado.csv"
+                  filas={resultado.porSucursal.map((s) => ({ sucursal: s.sucursal.nombre, valor: Number(s.valor) }))}
+                  columnas={[{ clave: 'sucursal', label: 'Sucursal' }, { clave: 'valor', label: 'Valor' }]}
+                  asunto="Reporte — Inventario valorizado"
+                  onAbrir={abrirEnvioReporte}
+                />
+              </div>
             )}
           >
             <p className="mb-4 text-sm text-gray-500">
@@ -218,21 +312,40 @@ function ReportesPage() {
           <Card
             title="Stock bajo"
             action={(
-              <BotonExportar
-                nombreArchivo="stock-bajo.csv"
-                filas={resultado.stockBajo.map((r) => ({
-                  articulo: r.articulo.nombre,
-                  sucursal: r.sucursal.nombre,
-                  cantidad: Number(r.cantidad),
-                  minimo: Number(r.stockMinimo),
-                }))}
-                columnas={[
-                  { clave: 'articulo', label: 'Artículo' },
-                  { clave: 'sucursal', label: 'Sucursal' },
-                  { clave: 'cantidad', label: 'Cantidad' },
-                  { clave: 'minimo', label: 'Mínimo' },
-                ]}
-              />
+              <div className="flex flex-wrap gap-2">
+                <BotonExportar
+                  nombreArchivo="stock-bajo.csv"
+                  filas={resultado.stockBajo.map((r) => ({
+                    articulo: r.articulo.nombre,
+                    sucursal: r.sucursal.nombre,
+                    cantidad: Number(r.cantidad),
+                    minimo: Number(r.stockMinimo),
+                  }))}
+                  columnas={[
+                    { clave: 'articulo', label: 'Artículo' },
+                    { clave: 'sucursal', label: 'Sucursal' },
+                    { clave: 'cantidad', label: 'Cantidad' },
+                    { clave: 'minimo', label: 'Mínimo' },
+                  ]}
+                />
+                <BotonEnviarCorreo
+                  nombreArchivo="stock-bajo.csv"
+                  filas={resultado.stockBajo.map((r) => ({
+                    articulo: r.articulo.nombre,
+                    sucursal: r.sucursal.nombre,
+                    cantidad: Number(r.cantidad),
+                    minimo: Number(r.stockMinimo),
+                  }))}
+                  columnas={[
+                    { clave: 'articulo', label: 'Artículo' },
+                    { clave: 'sucursal', label: 'Sucursal' },
+                    { clave: 'cantidad', label: 'Cantidad' },
+                    { clave: 'minimo', label: 'Mínimo' },
+                  ]}
+                  asunto="Reporte — Stock bajo"
+                  onAbrir={abrirEnvioReporte}
+                />
+              </div>
             )}
           >
             {resultado.stockBajo.length === 0 ? (
@@ -257,19 +370,36 @@ function ReportesPage() {
         <Card
           title="Compras por proveedor"
           action={(
-            <BotonExportar
-              nombreArchivo="compras-por-proveedor.csv"
-              filas={resultado.porProveedor.map((p) => ({
-                proveedor: p.proveedor.nombre,
-                total: Number(p.total),
-                compras: Number(p.numeroCompras),
-              }))}
-              columnas={[
-                { clave: 'proveedor', label: 'Proveedor' },
-                { clave: 'total', label: 'Total' },
-                { clave: 'compras', label: 'Compras' },
-              ]}
-            />
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="compras-por-proveedor.csv"
+                filas={resultado.porProveedor.map((p) => ({
+                  proveedor: p.proveedor.nombre,
+                  total: Number(p.total),
+                  compras: Number(p.numeroCompras),
+                }))}
+                columnas={[
+                  { clave: 'proveedor', label: 'Proveedor' },
+                  { clave: 'total', label: 'Total' },
+                  { clave: 'compras', label: 'Compras' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="compras-por-proveedor.csv"
+                filas={resultado.porProveedor.map((p) => ({
+                  proveedor: p.proveedor.nombre,
+                  total: Number(p.total),
+                  compras: Number(p.numeroCompras),
+                }))}
+                columnas={[
+                  { clave: 'proveedor', label: 'Proveedor' },
+                  { clave: 'total', label: 'Total' },
+                  { clave: 'compras', label: 'Compras' },
+                ]}
+                asunto="Reporte — Compras por proveedor"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
           )}
         >
           <p className="mb-4 text-sm text-gray-500">
@@ -292,25 +422,48 @@ function ReportesPage() {
         <Card
           title="Cortes de caja"
           action={(
-            <BotonExportar
-              nombreArchivo="cortes-de-caja.csv"
-              filas={resultado.sesiones.map((s) => ({
-                caja: s.caja?.nombre,
-                fondo: Number(s.fondoInicial),
-                esperado: Number(s.saldoEsperado),
-                real: Number(s.saldoReal),
-                diferencia: Number(s.diferencia),
-                cerrada: new Date(s.cerradaEn).toLocaleString(),
-              }))}
-              columnas={[
-                { clave: 'caja', label: 'Caja' },
-                { clave: 'fondo', label: 'Fondo' },
-                { clave: 'esperado', label: 'Esperado' },
-                { clave: 'real', label: 'Real' },
-                { clave: 'diferencia', label: 'Diferencia' },
-                { clave: 'cerrada', label: 'Cerrada' },
-              ]}
-            />
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="cortes-de-caja.csv"
+                filas={resultado.sesiones.map((s) => ({
+                  caja: s.caja?.nombre,
+                  fondo: Number(s.fondoInicial),
+                  esperado: Number(s.saldoEsperado),
+                  real: Number(s.saldoReal),
+                  diferencia: Number(s.diferencia),
+                  cerrada: new Date(s.cerradaEn).toLocaleString(),
+                }))}
+                columnas={[
+                  { clave: 'caja', label: 'Caja' },
+                  { clave: 'fondo', label: 'Fondo' },
+                  { clave: 'esperado', label: 'Esperado' },
+                  { clave: 'real', label: 'Real' },
+                  { clave: 'diferencia', label: 'Diferencia' },
+                  { clave: 'cerrada', label: 'Cerrada' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="cortes-de-caja.csv"
+                filas={resultado.sesiones.map((s) => ({
+                  caja: s.caja?.nombre,
+                  fondo: Number(s.fondoInicial),
+                  esperado: Number(s.saldoEsperado),
+                  real: Number(s.saldoReal),
+                  diferencia: Number(s.diferencia),
+                  cerrada: new Date(s.cerradaEn).toLocaleString(),
+                }))}
+                columnas={[
+                  { clave: 'caja', label: 'Caja' },
+                  { clave: 'fondo', label: 'Fondo' },
+                  { clave: 'esperado', label: 'Esperado' },
+                  { clave: 'real', label: 'Real' },
+                  { clave: 'diferencia', label: 'Diferencia' },
+                  { clave: 'cerrada', label: 'Cerrada' },
+                ]}
+                asunto="Reporte — Cortes de caja"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
           )}
         >
           <p className="mb-4 text-sm text-gray-500">
@@ -331,6 +484,16 @@ function ReportesPage() {
           </Table>
         </Card>
       )}
+
+      <EnviarCorreoModal
+        abierto={envioDatos !== null}
+        onCerrar={cerrarEnvioReporte}
+        titulo="Enviar reporte por correo"
+        asuntoSugerido={envioDatos?.asunto || ''}
+        enviando={enviandoCorreo}
+        error={errorEnvioCorreo}
+        onEnviar={enviarCorreoReporte}
+      />
     </div>
   );
 }

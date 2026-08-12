@@ -15,3 +15,6 @@ export function reporteCompras(params) {
 export function reporteCaja(params) {
   return api.get('/reportes/caja', { params }).then((res) => res.data);
 }
+export function enviarReportePorCorreo(datos) {
+  return api.post('/reportes/enviar', datos).then((res) => res.data);
+}

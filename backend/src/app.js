@@ -21,9 +21,10 @@ const busquedaRoutes = require('./modules/busqueda/busqueda.routes');
 const app = express();
 
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
-// Límite subido de 100kb (default de express) a 3mb: el logo de la empresa viaja como data URI
-// (base64) en el body de PATCH /core/empresa — ver empresa.validators.js.
-app.use(express.json({ limit: '3mb' }));
+// Límite subido de 100kb (default de express) a 8mb: el logo de la empresa viaja como data URI
+// (base64) en el body de PATCH /core/empresa, y los PDFs/CSVs adjuntos en los endpoints
+// "enviar por correo" (cotizaciones/compras/ventas/reportes) viajan igual, también en base64.
+app.use(express.json({ limit: '8mb' }));
 
 app.use('/api', healthRoutes);
 app.use('/api/core', coreRoutes);

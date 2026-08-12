@@ -1,3 +1,5 @@
+const AppError = require('../../shared/errors/AppError');
+const { enviarDocumentoSchema } = require('../../shared/validators/enviarDocumento.validator');
 const service = require('./reportes.service');
 
 async function ventas(req, res) {
@@ -36,4 +38,17 @@ async function caja(req, res) {
   res.json(reporte);
 }
 
-module.exports = { ventas, articulosMasVendidos, inventarioValorizado, compras, caja };
+async function enviar(req, res) {
+  const parsed = enviarDocumentoSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Datos de envío inválidos.');
+  const resultado = await service.enviar({
+    empresaId: req.auth.empresaId,
+    usuarioId: req.auth.usuarioId,
+    ...parsed.data,
+  });
+  res.json(resultado);
+}
+
+module.exports = {
+  ventas, articulosMasVendidos, inventarioValorizado, compras, caja, enviar,
+};

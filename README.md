@@ -74,9 +74,9 @@ Notas del despliegue:
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: no queda ningún pendiente abierto (10 módulos completos y en producción, dos
    rondas de QA cerradas, rediseño visual + su pulido ya aplicados, documentos de venta,
-   descuentos/promociones, alertas de stock, unidades alternas + variantes de producto y
-   restricción de nombre único en Catálogo ya implementados) — ver el detalle de opciones en
-   "Qué sigue" al final de este README.
+   descuentos/promociones, alertas de stock, unidades alternas + variantes de producto,
+   restricción de nombre único en Catálogo y envío de documentos por correo ya implementados) —
+   ver el detalle de opciones en "Qué sigue" al final de este README.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -1179,6 +1179,54 @@ migración.
   subcategoría "Otros" creada bajo dos padres distintos sin problema, bloqueada al
   repetirla bajo el mismo padre. Todos los datos de prueba limpiados al terminar.
 
+## Enviar documentos por correo (2026-08-11)
+
+El usuario pidió poder enviar documentos por correo directamente desde el sistema, en vez de
+descargarlos y reenviarlos a mano. Alcance: Cotización, Compra, Ticket de venta y Reportes (CSV).
+Proveedor de email: [Resend](https://resend.com).
+
+- **El backend no genera PDFs** (no tenía ninguna librería de PDF instalada, y sumar una tipo
+  Puppeteer era pesado innecesariamente). En su lugar, el **frontend sigue generando el PDF/CSV
+  como ya lo hacía** (jsPDF) y lo manda como `base64` a un endpoint nuevo del backend, que solo lo
+  adjunta y lo envía — mismo criterio que ya usa el proyecto para el logo de empresa (data URI en
+  el JSON).
+- **Cuatro endpoints "enviar", cada uno dueño de su propio módulo** (regla de límites de módulo,
+  §3.1 — nada de un `/api/documentos/enviar` centralizado): `POST
+  /api/ventas/cotizaciones/:id/enviar` (permiso `venta.ver`), `POST /api/compras/:id/enviar`
+  (`compra.ver`), `POST /api/ventas/ventas/:id/enviar-ticket` (`venta.ver`), `POST
+  /api/reportes/enviar` (`reportes.ver`). Los cuatro comparten un servicio único
+  [`backend/src/shared/services/correo.service.js`](backend/src/shared/services/correo.service.js)
+  para el envío real (wrapper sobre el SDK `resend`) y un validador Zod compartido
+  ([`backend/src/shared/validators/enviarDocumento.validator.js`](backend/src/shared/validators/enviarDocumento.validator.js)).
+  **Sin permiso nuevo en el catálogo**: cada acción "enviar" reusa el mismo permiso que ya gatea
+  ver/descargar ese documento — si ya lo podés ver, lo podés mandar por correo.
+- `Cotizacion` no tiene relaciones de Prisma hacia `Cliente`/`Sucursal` (a diferencia de
+  `Venta`/`Compra`) — no hizo falta migración, el `enviar()` de ese módulo reusa el mismo patrón
+  de consulta manual que ya usaba `obtener()`.
+- **Ticket de venta**: antes solo existía como impresión térmica (`window.print()`), sin ruta a
+  PDF. Nuevo [`ticketPdf.js`](frontend/src/modules/ventas/pdf/ticketPdf.js) que arma el mismo
+  contenido como PDF angosto (formato recibo), solo para email — la impresión sigue igual.
+  `cotizacionPdf.js`/`compraPdf.js` se refactorizaron para separar la construcción del `doc` de
+  jsPDF de la descarga, sin cambiar el comportamiento de descarga existente, y agregar una función
+  hermana que devuelve el mismo documento en base64.
+- **Frontend**: componente nuevo
+  [`EnviarCorreoModal`](frontend/src/shared/ui/EnviarCorreoModal.jsx) en el design system (modal
+  chico con destinatario/asunto/mensaje), reusado por las 5 pantallas — sugiere el destinatario
+  desde `cliente.correo`/`proveedor.correo` cuando existe (queda editable si viene vacío, p.ej.
+  Cliente General). `frontend/src/shared/csv.js` se separó en `construirCsv` (string) +
+  `exportarCsv` (descarga) para poder reusar el mismo CSV en el correo de Reportes.
+- Body limit de Express subido de 3mb a 8mb en `app.js` (los PDFs/CSVs adjuntos en base64 pueden
+  superar el límite que alcanzaba solo para el logo de empresa).
+- **Verificado en vivo, incluido un envío real**: los 4 flujos probados contra el backend local
+  (conectado a Supabase) con clics reales en el navegador — antes de tener la API key de Resend,
+  los 4 endpoints se verificaron llegando limpio hasta el error esperado ("El envío de correo no
+  está configurado en el servidor"); con la API key configurada, se envió una Cotización real
+  (con PDF adjunto) al correo del usuario y se confirmó la entrega.
+- Cuenta de Resend nueva del usuario, sin dominio propio verificado todavía — usa el dominio
+  sandbox `onboarding@resend.dev` de Resend, que solo entrega al correo dueño de la cuenta. Para
+  enviar a clientes/proveedores reales hace falta verificar un dominio propio en Resend (Domains →
+  Add Domain, agregar los registros DNS que da) y actualizar `RESEND_FROM_EMAIL`.
+
 ## Qué contiene
 
 ```text
@@ -1291,7 +1339,10 @@ generación automática de combinaciones y SKU/precio propios por variante — v
 alternas y variantes de producto" arriba). Por último, ya se agregó la restricción de nombre
 único a Categorías/Marcas/Unidades/Impuestos/Listas de precio que había quedado pendiente de
 la segunda ronda de QA (ver "Nombre único en Categorías/Marcas/Unidades/Impuestos/Listas de
-precio" arriba). **No queda ningún pendiente abierto.** A elección:
+precio" arriba). Por último, ya se agregó el envío de documentos por correo (Cotización, Compra,
+Ticket de venta, Reportes) vía Resend (ver "Enviar documentos por correo" arriba) — pendiente
+menor: el usuario todavía no verificó un dominio propio en Resend, así que por ahora solo entrega
+al correo de su cuenta (dominio sandbox). **No queda ningún otro pendiente abierto.** A elección:
 - Una tercera ronda de QA, o profundizar en algún módulo específico.
 - Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
   web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables

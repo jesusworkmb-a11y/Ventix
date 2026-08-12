@@ -14,5 +14,6 @@ router.get('/', requierePermiso('compra.ver'), asyncHandler(controller.listar));
 router.get('/:id', requierePermiso('compra.ver'), asyncHandler(controller.obtener));
 router.post('/', requierePermiso('compra.crear'), asyncHandler(controller.crear));
 router.patch('/:id/cancelar', requierePermiso('compra.cancelar'), asyncHandler(controller.cancelar));
+router.post('/:id/enviar', requierePermiso('compra.ver'), asyncHandler(controller.enviar));
 
 module.exports = router;

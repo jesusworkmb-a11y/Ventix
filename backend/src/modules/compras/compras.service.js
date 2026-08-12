@@ -3,6 +3,7 @@ const AppError = require('../../shared/errors/AppError');
 const { aplicarMovimiento } = require('../../shared/services/inventario.service');
 const { obtenerSiguienteFolio } = require('../../shared/services/secuencia.service');
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
+const { enviarCorreoConAdjunto } = require('../../shared/services/correo.service');
 const toJson = require('../../shared/toJson');
 const redondear = require('../../shared/redondear');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../shared/paginacion');
@@ -239,4 +240,38 @@ async function cancelar({ empresaId, usuarioId, compraId }) {
   });
 }
 
-module.exports = { listar, obtener, crear, cancelar };
+// Mismo criterio que cotizaciones.service.js#enviar: el PDF ya viene armado desde el frontend
+// en base64, acá solo se resuelve el folio/empresa para el asunto por defecto y se audita.
+async function enviar({
+  empresaId, usuarioId, compraId, destinatario, asunto, mensaje, adjuntoBase64, nombreArchivo,
+}) {
+  const compra = await prisma.compra.findFirst({ where: { id: compraId, empresaId } });
+  if (!compra) throw new AppError(404, 'Compra no encontrada.');
+
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  const asuntoFinal = asunto || `Compra ${compra.folio} — ${empresa?.nombreComercial || 'Ventix'}`;
+
+  await enviarCorreoConAdjunto({
+    destinatario,
+    asunto: asuntoFinal,
+    mensaje,
+    adjunto: { nombreArchivo, contenidoBase64: adjuntoBase64 },
+  });
+
+  await registrarAuditoria(null, {
+    empresaId,
+    sucursalId: compra.sucursalId,
+    usuarioEjecutorId: usuarioId,
+    accion: 'ENVIAR_CORREO',
+    entidad: 'Compra',
+    entidadId: compra.id,
+    folio: compra.folio,
+    valoresDespues: toJson({ destinatario }),
+  });
+
+  return { enviado: true };
+}
+
+module.exports = {
+  listar, obtener, crear, cancelar, enviar,
+};

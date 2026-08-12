@@ -16,5 +16,6 @@ router.get('/articulos-mas-vendidos', asyncHandler(controller.articulosMasVendid
 router.get('/inventario-valorizado', asyncHandler(controller.inventarioValorizado));
 router.get('/compras', asyncHandler(controller.compras));
 router.get('/caja', asyncHandler(controller.caja));
+router.post('/enviar', asyncHandler(controller.enviar));
 
 module.exports = router;

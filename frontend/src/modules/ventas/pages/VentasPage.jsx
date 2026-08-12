@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Trash2, Search, Plus, Minus, Package, UserPlus, CreditCard,
-  ArrowLeftRight, Layers, Banknote, Printer, Percent, X,
+  ArrowLeftRight, Layers, Banknote, Printer, Percent, X, Mail,
 } from 'lucide-react';
-import { crearVenta, obtenerVenta } from '../api/ventas.api';
+import { crearVenta, obtenerVenta, enviarTicketPorCorreo } from '../api/ventas.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes, crearCliente } from '../../clientes/api/clientes.api';
 import { listarArticulos, listarDescuentos, listarPromociones } from '../../catalogo/api/catalogo.api';
@@ -15,6 +15,7 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Modal from '../../../shared/ui/Modal';
+import EnviarCorreoModal from '../../../shared/ui/EnviarCorreoModal';
 import TicketVenta from '../components/TicketVenta';
 import { formatoMoneda } from '../../../shared/format';
 import { useAuth } from '../../../shared/context/AuthContext';
@@ -133,6 +134,10 @@ function VentasPage() {
   const [manualForm, setManualForm] = useState({ tipo: 'PORCENTAJE', valor: '' });
 
   const [ticketVenta, setTicketVenta] = useState(null);
+  const [envioTicketAbierto, setEnvioTicketAbierto] = useState(false);
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
+  const [errorEnvioCorreo, setErrorEnvioCorreo] = useState('');
+  const [exitoEnvioCorreo, setExitoEnvioCorreo] = useState('');
   const [ticketAbierto, setTicketAbierto] = useState(false);
 
   const [nuevoClienteAbierto, setNuevoClienteAbierto] = useState(false);
@@ -613,6 +618,24 @@ function VentasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hayModalAbierto, busqueda, carrito, sesion, cajaId, clienteId, total, procesando, requiereAutorizacion, autorizadoPorId]);
 
+  async function enviarCorreoTicket(destinatario, asunto, mensaje) {
+    setEnviandoCorreo(true);
+    setErrorEnvioCorreo('');
+    try {
+      const { generarBase64Ticket } = await import('../pdf/ticketPdf');
+      const { base64, nombreArchivo } = generarBase64Ticket(ticketVenta, empresa, ultimoCambio);
+      await enviarTicketPorCorreo(confirmada.id, {
+        destinatario, asunto, mensaje, adjuntoBase64: base64, nombreArchivo,
+      });
+      setExitoEnvioCorreo(`Ticket enviado a ${destinatario}.`);
+      setEnvioTicketAbierto(false);
+    } catch (err) {
+      setErrorEnvioCorreo(err.response?.data?.error || 'No se pudo enviar el correo.');
+    } finally {
+      setEnviandoCorreo(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -637,6 +660,7 @@ function VentasPage() {
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {exitoEnvioCorreo && <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">{exitoEnvioCorreo}</p>}
       {confirmada && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
           <p>
@@ -1087,11 +1111,25 @@ function VentasPage() {
         <TicketVenta venta={ticketVenta} cambio={ultimoCambio} />
         <div className="mt-4 flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={() => setTicketAbierto(false)}>Cerrar</Button>
+          <Button type="button" variant="secondary" onClick={() => setEnvioTicketAbierto(true)}>
+            <Mail size={16} /> Enviar por correo
+          </Button>
           <Button type="button" onClick={() => window.print()}>
             <Printer size={16} /> Imprimir
           </Button>
         </div>
       </Modal>
+
+      <EnviarCorreoModal
+        abierto={envioTicketAbierto}
+        onCerrar={() => setEnvioTicketAbierto(false)}
+        titulo="Enviar ticket por correo"
+        destinatarioSugerido={ticketVenta?.cliente?.correo || ''}
+        asuntoSugerido={ticketVenta ? `Ticket de venta ${ticketVenta.folio}` : ''}
+        enviando={enviandoCorreo}
+        error={errorEnvioCorreo}
+        onEnviar={enviarCorreoTicket}
+      />
 
       <Modal abierto={varianteArticuloId !== null} onCerrar={() => setVarianteArticuloId(null)} titulo="Elegí la variante">
         <ul className="flex flex-col gap-2">

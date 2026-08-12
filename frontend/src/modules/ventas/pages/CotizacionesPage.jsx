@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2, FileDown, Search, Percent } from 'lucide-react';
-import { listarCotizaciones, obtenerCotizacion, crearCotizacion, convertirCotizacion } from '../api/cotizaciones.api';
+import { Trash2, FileDown, Search, Percent, Mail } from 'lucide-react';
+import {
+  listarCotizaciones, obtenerCotizacion, crearCotizacion, convertirCotizacion, enviarCotizacionPorCorreo,
+} from '../api/cotizaciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
@@ -13,6 +15,7 @@ import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
+import EnviarCorreoModal from '../../../shared/ui/EnviarCorreoModal';
 import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
@@ -63,6 +66,12 @@ function CotizacionesPage() {
   const [convRequiereAutorizacion, setConvRequiereAutorizacion] = useState(false);
   const [convAutorizadoPorId, setConvAutorizadoPorId] = useState('');
   const [convError, setConvError] = useState('');
+
+  const [envioCotizacionId, setEnvioCotizacionId] = useState(null);
+  const [envioCotizacion, setEnvioCotizacion] = useState(null);
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
+  const [errorEnvioCorreo, setErrorEnvioCorreo] = useState('');
+  const [exitoEnvioCorreo, setExitoEnvioCorreo] = useState('');
 
   useEffect(() => {
     listarClientes()
@@ -127,6 +136,45 @@ function CotizacionesPage() {
       generarPdfCotizacion(detalle, empresa, articulos);
     } catch (err) {
       setError('No se pudo generar el PDF de la cotización.');
+    }
+  }
+
+  // Reusa el detalle completo de la cotización (mismo obtenerCotizacion que descargarPdf) tanto
+  // para prellenar el destinatario sugerido (cliente.correo, puede venir vacío) como para armar
+  // el PDF recién al confirmar el envío.
+  async function abrirEnvioCorreo(cotizacionId) {
+    setError('');
+    setErrorEnvioCorreo('');
+    setExitoEnvioCorreo('');
+    try {
+      const detalle = await obtenerCotizacion(cotizacionId);
+      setEnvioCotizacion(detalle);
+      setEnvioCotizacionId(cotizacionId);
+    } catch (err) {
+      setError('No se pudo cargar la cotización para enviarla.');
+    }
+  }
+
+  function cerrarEnvioCorreo() {
+    setEnvioCotizacionId(null);
+    setEnvioCotizacion(null);
+  }
+
+  async function enviarCorreoCotizacion(destinatario, asunto, mensaje) {
+    setEnviandoCorreo(true);
+    setErrorEnvioCorreo('');
+    try {
+      const { generarBase64Cotizacion } = await import('../pdf/cotizacionPdf');
+      const { base64, nombreArchivo } = generarBase64Cotizacion(envioCotizacion, empresa, articulos);
+      await enviarCotizacionPorCorreo(envioCotizacionId, {
+        destinatario, asunto, mensaje, adjuntoBase64: base64, nombreArchivo,
+      });
+      setExitoEnvioCorreo(`Cotización enviada a ${destinatario}.`);
+      cerrarEnvioCorreo();
+    } catch (err) {
+      setErrorEnvioCorreo(err.response?.data?.error || 'No se pudo enviar el correo.');
+    } finally {
+      setEnviandoCorreo(false);
     }
   }
 
@@ -317,6 +365,7 @@ function CotizacionesPage() {
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {exitoEnvioCorreo && <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">{exitoEnvioCorreo}</p>}
       {creada && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
           <p>Cotización {creada.folio} creada. Total: {formatoMoneda(creada.total)}</p>
@@ -511,6 +560,14 @@ function CotizacionesPage() {
                   >
                     <FileDown size={14} /> PDF
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => abrirEnvioCorreo(c.id)}
+                    className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 hover:underline"
+                    title="Enviar por correo"
+                  >
+                    <Mail size={14} /> Enviar
+                  </button>
                   {!c.convertidaEnVentaId && (
                     <button type="button" onClick={() => abrirConversion(c.id)} className="text-sm text-primary-600 hover:underline">
                       Convertir en venta
@@ -565,6 +622,17 @@ function CotizacionesPage() {
           </div>
         </form>
       </Modal>
+
+      <EnviarCorreoModal
+        abierto={envioCotizacionId !== null}
+        onCerrar={cerrarEnvioCorreo}
+        titulo="Enviar cotización por correo"
+        destinatarioSugerido={envioCotizacion?.cliente?.correo || ''}
+        asuntoSugerido={envioCotizacion ? `Cotización ${envioCotizacion.folio}` : ''}
+        enviando={enviandoCorreo}
+        error={errorEnvioCorreo}
+        onEnviar={enviarCorreoCotizacion}
+      />
     </div>
   );
 }
