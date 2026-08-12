@@ -249,7 +249,7 @@ async function enviar({
   if (!compra) throw new AppError(404, 'Compra no encontrada.');
 
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
-  const asuntoFinal = asunto || `Compra ${compra.folio} — ${empresa?.nombreComercial || 'Ventix'}`;
+  const asuntoFinal = asunto || `Compra ${compra.folio} — ${empresa?.nombreComercial || 'BOX POS'}`;
 
   await enviarCorreoConAdjunto({
     destinatario,

@@ -2,7 +2,7 @@
   "name": "ventix-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Ventix — backend modular (MOD-001..MOD-010) sobre Node.js + Express + PostgreSQL + Prisma",
+  "description": "BOX POS — backend modular (MOD-001..MOD-010) sobre Node.js + Express + PostgreSQL + Prisma",
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",

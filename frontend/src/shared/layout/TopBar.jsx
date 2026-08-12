@@ -147,7 +147,7 @@ function TopBar({ onAbrirMenu }) {
         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           type="search"
-          placeholder="Buscar en Ventix..."
+          placeholder="Buscar en BOX POS..."
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
           onFocus={() => setAbierto(true)}

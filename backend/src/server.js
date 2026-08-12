@@ -9,7 +9,7 @@ seedPermisos()
   .then(backfillRolesBase)
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`Ventix backend escuchando en puerto ${PORT}`); // eslint-disable-line no-console
+      console.log(`BOX POS backend escuchando en puerto ${PORT}`); // eslint-disable-line no-console
     });
   })
   .catch((error) => {

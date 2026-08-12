@@ -60,9 +60,9 @@ function Sidebar({ abierto, onCerrar }) {
       >
         <div className={`flex h-16 shrink-0 items-center gap-2 px-5 ${mostrarColapsado ? 'lg:justify-center lg:px-2' : ''}`}>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 text-lg font-bold text-white">
-            V
+            B
           </div>
-          <span className={`text-lg font-bold text-white ${mostrarColapsado ? 'lg:hidden' : ''}`}>Ventix</span>
+          <span className={`text-lg font-bold text-white ${mostrarColapsado ? 'lg:hidden' : ''}`}>BOX POS</span>
           <button
             type="button"
             onClick={alternarColapsado}

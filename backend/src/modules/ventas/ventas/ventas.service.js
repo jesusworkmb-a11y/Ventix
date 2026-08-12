@@ -443,7 +443,7 @@ async function enviarTicket({
   if (!venta) throw new AppError(404, 'Venta no encontrada.');
 
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
-  const asuntoFinal = asunto || `Ticket de venta ${venta.folio} — ${empresa?.nombreComercial || 'Ventix'}`;
+  const asuntoFinal = asunto || `Ticket de venta ${venta.folio} — ${empresa?.nombreComercial || 'BOX POS'}`;
 
   await enviarCorreoConAdjunto({
     destinatario,

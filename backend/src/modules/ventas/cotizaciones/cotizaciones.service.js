@@ -212,7 +212,7 @@ async function enviar({
   if (!cotizacion) throw new AppError(404, 'Cotización no encontrada.');
 
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
-  const asuntoFinal = asunto || `Cotización ${cotizacion.folio} — ${empresa?.nombreComercial || 'Ventix'}`;
+  const asuntoFinal = asunto || `Cotización ${cotizacion.folio} — ${empresa?.nombreComercial || 'BOX POS'}`;
 
   await enviarCorreoConAdjunto({
     destinatario,

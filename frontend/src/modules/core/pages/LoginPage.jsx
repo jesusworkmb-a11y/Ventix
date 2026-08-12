@@ -32,9 +32,9 @@ function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 text-xl font-bold text-white">
-            V
+            B
           </div>
-          <span className="text-xl font-bold text-gray-900">Ventix</span>
+          <span className="text-xl font-bold text-gray-900">BOX POS</span>
         </div>
 
         <Card>
