@@ -2,12 +2,14 @@ require('dotenv').config();
 const app = require('./app');
 const seedPermisos = require('./shared/bootstrap/seedPermisos');
 const seedCatalogosSat = require('./shared/bootstrap/seedCatalogosSat');
+const seedSecuenciasFacturacion = require('./shared/bootstrap/seedSecuenciasFacturacion');
 const backfillRolesBase = require('./shared/bootstrap/backfillRolesBase');
 
 const PORT = process.env.PORT || 4000;
 
 seedPermisos()
   .then(seedCatalogosSat)
+  .then(seedSecuenciasFacturacion)
   .then(backfillRolesBase)
   .then(() => {
     app.listen(PORT, () => {

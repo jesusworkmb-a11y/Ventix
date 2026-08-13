@@ -859,7 +859,9 @@ model Venta {
   // Facturación CFDI: id "suelto" (sin @relation formal, mismo criterio que Cotizacion.convertidaEnVentaId)
   // de la Factura que ya cubre esta venta. null = sin facturar. Se reclama con
   // UPDATE...WHERE factura_id IS NULL, mismo patrón anti-carrera que el resto del proyecto.
-  facturaId       String?     @unique @map("factura_id")
+  // OJO: a propósito NO es @unique — Factura Global/Consolidada agrupa N ventas bajo UNA
+  // factura, así que varias filas de Venta legítimamente comparten el mismo factura_id.
+  facturaId       String?     @map("factura_id")
   creadoEn        DateTime    @default(now()) @map("creado_en")
 
   empresa    Empresa    @relation(fields: [empresaId], references: [id])
@@ -871,6 +873,7 @@ model Venta {
   pagos        Pago[]
   devoluciones Devolucion[]
 
+  @@index([facturaId])
   @@map("ventas")
 }
 
