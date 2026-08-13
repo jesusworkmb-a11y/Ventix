@@ -75,8 +75,9 @@ model Empresa {
   proveedores     Proveedor[]
   compras         Compra[]
   existencias     Existencia[]
-  ventas          Venta[]
-  facturas        Factura[]
+  ventas             Venta[]
+  facturas           Factura[]
+  facturasPlantillas FacturaPlantilla[]
 
   @@map("empresas")
 }
@@ -110,6 +111,7 @@ model Sucursal {
   compras          Compra[]
   usuariosSucursal UsuarioSucursal[]
   facturas         Factura[]
+  facturasPlantillas FacturaPlantilla[]
 
   @@unique([empresaId, clave])
   @@map("sucursales")
@@ -575,10 +577,11 @@ model Cliente {
   usoCfdiPreferido   String? @map("uso_cfdi_preferido")
   domicilioFiscalCp  String? @map("domicilio_fiscal_cp")
 
-  empresa     Empresa      @relation(fields: [empresaId], references: [id])
-  listaPrecio ListaPrecio? @relation(fields: [listaPrecioId], references: [id])
-  ventas      Venta[]
-  facturas    Factura[]
+  empresa            Empresa            @relation(fields: [empresaId], references: [id])
+  listaPrecio        ListaPrecio?       @relation(fields: [listaPrecioId], references: [id])
+  ventas             Venta[]
+  facturas           Factura[]
+  facturasPlantillas FacturaPlantilla[]
 
   @@map("clientes")
 }
@@ -1128,4 +1131,43 @@ model FacturaDetalleImpuesto {
   detalle FacturaDetalle @relation(fields: [facturaDetalleId], references: [id])
 
   @@map("facturas_detalle_impuestos")
+}
+
+// Fase 2 de "captura rápida" (ver Fase 1: Factura.obtenerSugerencia sugiriendo repetir la
+// última factura). Una plantilla es un "pedido tipo" nombrado para un cliente en una sucursal
+// puntual -- misma granularidad que la sugerencia de Fase 1. Solo conceptos ligados a un
+// Articulo del catálogo (sin freeform): al aplicarla se resuelve SIEMPRE el precio/clave SAT
+// EN VIVO del Articulo, nunca un valor guardado acá -- mismo criterio que Cliente.listaPrecioId,
+// para que una plantilla vieja no "resucite" un precio desactualizado.
+model FacturaPlantilla {
+  id               String   @id @default(uuid())
+  empresaId        String   @map("empresa_id")
+  sucursalId       String   @map("sucursal_id")
+  clienteId        String   @map("cliente_id")
+  nombre           String
+  formaPago        String?  @map("forma_pago")
+  metodoPago       String?  @map("metodo_pago")
+  esPredeterminada Boolean  @default(false) @map("es_predeterminada")
+  usoContador      Int      @default(0) @map("uso_contador")
+  ultimoUso        DateTime? @map("ultimo_uso")
+  creadoEn         DateTime @default(now()) @map("creado_en")
+
+  empresa   Empresa                    @relation(fields: [empresaId], references: [id])
+  sucursal  Sucursal                   @relation(fields: [sucursalId], references: [id])
+  cliente   Cliente                    @relation(fields: [clienteId], references: [id])
+  conceptos FacturaPlantillaConcepto[]
+
+  @@map("facturas_plantillas")
+}
+
+model FacturaPlantillaConcepto {
+  id                 String  @id @default(uuid())
+  facturaPlantillaId String  @map("factura_plantilla_id")
+  articuloId         String  @map("articulo_id") // suelto, sin @relation -- mismo criterio que FacturaDetalle.articuloId
+  cantidadHabitual   Decimal @default(1) @map("cantidad_habitual")
+  orden              Int     @default(0)
+
+  facturaPlantilla FacturaPlantilla @relation(fields: [facturaPlantillaId], references: [id])
+
+  @@map("facturas_plantillas_detalle")
 }

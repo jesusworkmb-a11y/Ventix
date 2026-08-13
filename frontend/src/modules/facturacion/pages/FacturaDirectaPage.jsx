@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Search, Package, UserPlus } from 'lucide-react';
+import { Trash2, Search, Package, UserPlus, BookmarkPlus, Star, Settings2 } from 'lucide-react';
 import { crearFacturaDirecta, obtenerSugerenciaFactura } from '../api/facturas.api';
+import {
+  listarPlantillas, crearPlantilla, actualizarPlantilla, eliminarPlantilla, registrarUsoPlantilla,
+} from '../api/plantillas.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarClientes, crearCliente } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
@@ -83,6 +86,21 @@ function conceptoCongeladoDesdeDetalle(d) {
   };
 }
 
+// Un concepto de FacturaPlantilla solo guarda {articuloId, cantidadHabitual} -- siempre se
+// resuelve en vivo contra el Articulo actual (mismo criterio que Cliente.listaPrecioId). Si el
+// artículo ya no existe o está inactivo no hay forma de reconstruirlo (a diferencia de una
+// Factura vieja, la plantilla no congela nada), así que esa línea se omite y se avisa.
+function resolverConceptosDesdePlantilla(plantilla, articulos) {
+  const omitidos = [];
+  const conceptos = [];
+  for (const c of plantilla.conceptos) {
+    const articulo = articulos.find((a) => a.id === c.articuloId && a.activo);
+    if (!articulo) { omitidos.push(c.articuloId); continue; }
+    conceptos.push(conceptoDesdeArticulo(articulo, Number(c.cantidadHabitual)));
+  }
+  return { conceptos, omitidos };
+}
+
 function FacturaDirectaPage() {
   const navigate = useNavigate();
   const [sucursales, setSucursales] = useState([]);
@@ -109,6 +127,16 @@ function FacturaDirectaPage() {
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
   const [nuevoClienteTelefono, setNuevoClienteTelefono] = useState('');
   const [nuevoClienteError, setNuevoClienteError] = useState('');
+
+  const [guardarPlantillaAbierto, setGuardarPlantillaAbierto] = useState(false);
+  const [guardarPlantillaNombre, setGuardarPlantillaNombre] = useState('');
+  const [guardarPlantillaPredeterminada, setGuardarPlantillaPredeterminada] = useState(false);
+  const [guardarPlantillaError, setGuardarPlantillaError] = useState('');
+  const [guardandoPlantilla, setGuardandoPlantilla] = useState(false);
+
+  const [gestionPlantillasAbierto, setGestionPlantillasAbierto] = useState(false);
+  const [plantillasCliente, setPlantillasCliente] = useState([]);
+  const [cargandoPlantillas, setCargandoPlantillas] = useState(false);
 
   useEffect(() => {
     listarSucursales().then((s) => {
@@ -188,21 +216,106 @@ function FacturaDirectaPage() {
     }
   }
 
-  // "Usar como base": clona los conceptos de la sugerencia. Si el articuloId sigue existiendo y
-  // activo, resuelve precio/clave SAT ACTUALES (no los congelados); si no, cae al concepto
-  // congelado de la factura anterior, marcado con una advertencia informativa (no bloqueante).
+  // "Usar como base": clona los conceptos de la sugerencia -- que puede venir de una
+  // FacturaPlantilla (Fase 2, siempre resuelta en vivo) o, si no hay ninguna, de la última
+  // Factura de este cliente en esta sucursal (Fase 1, con fallback a los valores congelados si
+  // el artículo ya no existe).
   function usarSugerenciaComoBase() {
     if (!sugerencia) return;
-    const nuevosConceptos = sugerencia.detalles.map((d) => {
-      const articuloActual = d.articuloId ? articulos.find((a) => a.id === d.articuloId && a.activo) : null;
-      return articuloActual
-        ? conceptoDesdeArticulo(articuloActual, Number(d.cantidad))
-        : conceptoCongeladoDesdeDetalle(d);
-    });
-    setConceptos(nuevosConceptos);
-    setFormaPago(sugerencia.formaPago);
-    setMetodoPago(sugerencia.metodoPago);
+    if (sugerencia.origen === 'PLANTILLA') {
+      const { plantilla } = sugerencia;
+      const { conceptos: nuevosConceptos, omitidos } = resolverConceptosDesdePlantilla(plantilla, articulos);
+      setConceptos(nuevosConceptos);
+      if (plantilla.formaPago) setFormaPago(plantilla.formaPago);
+      if (plantilla.metodoPago) setMetodoPago(plantilla.metodoPago);
+      if (omitidos.length > 0) {
+        setError(`${omitidos.length} artículo(s) de la plantilla "${plantilla.nombre}" ya no están disponibles y se omitieron.`);
+      }
+      registrarUsoPlantilla(plantilla.id).catch(() => {});
+    } else {
+      const { factura } = sugerencia;
+      const nuevosConceptos = factura.detalles.map((d) => {
+        const articuloActual = d.articuloId ? articulos.find((a) => a.id === d.articuloId && a.activo) : null;
+        return articuloActual
+          ? conceptoDesdeArticulo(articuloActual, Number(d.cantidad))
+          : conceptoCongeladoDesdeDetalle(d);
+      });
+      setConceptos(nuevosConceptos);
+      setFormaPago(factura.formaPago);
+      setMetodoPago(factura.metodoPago);
+    }
     setSugerenciaIgnorada(true);
+  }
+
+  function abrirGuardarPlantilla() {
+    setGuardarPlantillaError('');
+    setGuardarPlantillaNombre('');
+    setGuardarPlantillaPredeterminada(false);
+    setGuardarPlantillaAbierto(true);
+  }
+
+  // Solo los conceptos ligados a un Articulo del catálogo se pueden guardar (una plantilla
+  // siempre resuelve en vivo, no tiene dónde congelar un concepto cargado a mano).
+  const conceptosGuardables = conceptos.filter((c) => c.articuloId);
+
+  async function confirmarGuardarPlantilla(e) {
+    e.preventDefault();
+    setGuardarPlantillaError('');
+    if (!guardarPlantillaNombre.trim()) { setGuardarPlantillaError('Ponele un nombre a la plantilla.'); return; }
+    if (conceptosGuardables.length === 0) { setGuardarPlantillaError('Agregá al menos un concepto desde el catálogo (los manuales no se pueden guardar).'); return; }
+
+    setGuardandoPlantilla(true);
+    try {
+      await crearPlantilla({
+        sucursalId,
+        clienteId,
+        nombre: guardarPlantillaNombre.trim(),
+        esPredeterminada: guardarPlantillaPredeterminada,
+        formaPago: formaPago || undefined,
+        metodoPago,
+        conceptos: conceptosGuardables.map((c) => ({ articuloId: c.articuloId, cantidadHabitual: Number(c.cantidad) })),
+      });
+      setGuardarPlantillaAbierto(false);
+    } catch (err) {
+      setGuardarPlantillaError(err.response?.data?.error || 'No se pudo guardar la plantilla.');
+    } finally {
+      setGuardandoPlantilla(false);
+    }
+  }
+
+  function abrirGestionPlantillas() {
+    setGestionPlantillasAbierto(true);
+    setCargandoPlantillas(true);
+    listarPlantillas({ sucursalId, clienteId })
+      .then(setPlantillasCliente)
+      .catch(() => setPlantillasCliente([]))
+      .finally(() => setCargandoPlantillas(false));
+  }
+
+  async function marcarPredeterminada(plantilla) {
+    await actualizarPlantilla(plantilla.id, { esPredeterminada: !plantilla.esPredeterminada });
+    setPlantillasCliente((lista) => lista.map((p) => ({
+      ...p,
+      esPredeterminada: p.id === plantilla.id ? !plantilla.esPredeterminada : (plantilla.esPredeterminada ? p.esPredeterminada : false),
+    })));
+  }
+
+  async function borrarPlantilla(plantilla) {
+    await eliminarPlantilla(plantilla.id);
+    setPlantillasCliente((lista) => lista.filter((p) => p.id !== plantilla.id));
+  }
+
+  function usarPlantillaDesdeGestion(plantilla) {
+    const { conceptos: nuevosConceptos, omitidos } = resolverConceptosDesdePlantilla(plantilla, articulos);
+    setConceptos(nuevosConceptos);
+    if (plantilla.formaPago) setFormaPago(plantilla.formaPago);
+    if (plantilla.metodoPago) setMetodoPago(plantilla.metodoPago);
+    if (omitidos.length > 0) {
+      setError(`${omitidos.length} artículo(s) de la plantilla "${plantilla.nombre}" ya no están disponibles y se omitieron.`);
+    }
+    registrarUsoPlantilla(plantilla.id).catch(() => {});
+    setSugerenciaIgnorada(true);
+    setGestionPlantillasAbierto(false);
   }
 
   function agregarConcepto(e) {
@@ -309,7 +422,7 @@ function FacturaDirectaPage() {
     }
   }
 
-  const hayModalAbierto = nuevoClienteAbierto;
+  const hayModalAbierto = nuevoClienteAbierto || guardarPlantillaAbierto || gestionPlantillasAbierto;
   const haySugerenciaVisible = sugerencia && !sugerenciaIgnorada;
 
   useEffect(() => {
@@ -408,11 +521,35 @@ function FacturaDirectaPage() {
             </div>
           </div>
 
-          {haySugerenciaVisible && (
+          {clienteId && (
+            <button
+              type="button"
+              onClick={abrirGestionPlantillas}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-primary-700"
+            >
+              <Settings2 size={13} /> Plantillas guardadas de este cliente
+            </button>
+          )}
+
+          {haySugerenciaVisible && sugerencia.origen === 'PLANTILLA' && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
               <p className="text-sm text-primary-900">
-                Este cliente ya facturó desde esta sucursal — última vez <strong>{formatoFecha(sugerencia.creadoEn)}</strong>,
-                {' '}{sugerencia.detalles.length} concepto(s), {formatoMoneda(sugerencia.total)}. ¿Usar como base?
+                <Star size={13} className="mb-0.5 inline text-primary-600" /> Tenés la plantilla{' '}
+                <strong>&quot;{sugerencia.plantilla.nombre}&quot;</strong> guardada para este cliente en esta sucursal
+                ({sugerencia.plantilla.conceptos.length} artículo(s)). ¿Usar como base?
+              </p>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" onClick={usarSugerenciaComoBase}>Usar como base (F4)</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => setSugerenciaIgnorada(true)}>Ignorar</Button>
+              </div>
+            </div>
+          )}
+
+          {haySugerenciaVisible && sugerencia.origen === 'FACTURA' && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
+              <p className="text-sm text-primary-900">
+                Este cliente ya facturó desde esta sucursal — última vez <strong>{formatoFecha(sugerencia.factura.creadoEn)}</strong>,
+                {' '}{sugerencia.factura.detalles.length} concepto(s), {formatoMoneda(sugerencia.factura.total)}. ¿Usar como base?
               </p>
               <div className="flex gap-2">
                 <Button type="button" size="sm" onClick={usarSugerenciaComoBase}>Usar como base (F4)</Button>
@@ -632,7 +769,12 @@ function FacturaDirectaPage() {
             <span>Total: <strong>{formatoMoneda(total)}</strong></span>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            {clienteId && (
+              <Button type="button" variant="secondary" onClick={abrirGuardarPlantilla} disabled={conceptosGuardables.length === 0}>
+                <BookmarkPlus size={16} /> Guardar como plantilla
+              </Button>
+            )}
             <Button type="submit" disabled={guardando}>{guardando ? 'Creando…' : 'Crear factura (F1)'}</Button>
           </div>
 
@@ -668,6 +810,73 @@ function FacturaDirectaPage() {
             <Button type="submit">Crear cliente</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal abierto={guardarPlantillaAbierto} onCerrar={() => setGuardarPlantillaAbierto(false)} titulo="Guardar como plantilla">
+        <form onSubmit={confirmarGuardarPlantilla} className="space-y-4">
+          {guardarPlantillaError && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{guardarPlantillaError}</p>}
+          <p className="text-sm text-gray-500">
+            Se guardan los {conceptosGuardables.length} concepto(s) ligados a un artículo del catálogo
+            {conceptosGuardables.length < conceptos.length && ' (los cargados a mano no se incluyen)'}.
+          </p>
+          <Input
+            id="guardarPlantillaNombre"
+            label="Nombre de la plantilla"
+            value={guardarPlantillaNombre}
+            onChange={(e) => setGuardarPlantillaNombre(e.target.value)}
+            placeholder="Ej. Pedido semanal"
+            required
+            autoFocus
+          />
+          <label className="flex items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={guardarPlantillaPredeterminada}
+              onChange={(e) => setGuardarPlantillaPredeterminada(e.target.checked)}
+            />
+            Marcar como predeterminada para este cliente en esta sucursal
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setGuardarPlantillaAbierto(false)}>Cancelar</Button>
+            <Button type="submit" disabled={guardandoPlantilla}>{guardandoPlantilla ? 'Guardando…' : 'Guardar plantilla'}</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal abierto={gestionPlantillasAbierto} onCerrar={() => setGestionPlantillasAbierto(false)} titulo="Plantillas de este cliente">
+        <div className="space-y-3">
+          {cargandoPlantillas && <p className="text-sm text-gray-400">Cargando…</p>}
+          {!cargandoPlantillas && plantillasCliente.length === 0 && (
+            <p className="text-sm text-gray-400">Este cliente todavía no tiene plantillas guardadas en esta sucursal.</p>
+          )}
+          {plantillasCliente.map((p) => (
+            <div key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => usarPlantillaDesdeGestion(p)}
+                  className="truncate text-left text-sm font-medium text-gray-800 hover:text-primary-700"
+                >
+                  {p.nombre}
+                </button>
+                <p className="text-xs text-gray-400">{p.conceptos.length} artículo(s) · usada {p.usoContador} vez(veces)</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => marcarPredeterminada(p)}
+                  title={p.esPredeterminada ? 'Quitar como predeterminada' : 'Marcar como predeterminada'}
+                  className={p.esPredeterminada ? 'text-primary-600' : 'text-gray-300 hover:text-primary-600'}
+                >
+                  <Star size={16} fill={p.esPredeterminada ? 'currentColor' : 'none'} />
+                </button>
+                <button type="button" onClick={() => borrarPlantilla(p)} className="text-gray-300 hover:text-danger-600">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </Modal>
     </div>
   );
