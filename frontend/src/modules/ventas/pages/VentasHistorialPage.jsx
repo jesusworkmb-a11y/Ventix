@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Trash2, Printer, Mail } from 'lucide-react';
+import { Search, Trash2, Printer, Mail, Receipt } from 'lucide-react';
 import {
   listarVentas, cancelarVenta, obtenerVenta, enviarTicketPorCorreo,
 } from '../api/ventas.api';
 import { crearDevolucion } from '../api/devoluciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarUsuarios } from '../../core/api/core.api';
+import { crearFacturaDesdeVenta } from '../../facturacion/api/facturas.api';
+import ReceptorFiscalCampos, { RECEPTOR_VACIO, receptorDesdeCliente } from '../../facturacion/components/ReceptorFiscalCampos';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -34,7 +36,8 @@ const ESTADO_TONO = { CONFIRMADA: 'success', CANCELADA: 'gray' };
 
 function VentasHistorialPage() {
   const location = useLocation();
-  const { empresa } = useAuth();
+  const { empresa, permisos } = useAuth();
+  const puedeFacturar = permisos?.includes('facturacion.crear');
   const [ventas, setVentas] = useState([]);
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   // Prefil con el término del buscador global de la barra superior (TopBar.jsx), si se
@@ -55,6 +58,13 @@ function VentasHistorialPage() {
   const [devMotivo, setDevMotivo] = useState(MOTIVOS_DEVOLUCION[0]);
   const [devAutorizadoPorId, setDevAutorizadoPorId] = useState('');
   const [devError, setDevError] = useState('');
+
+  const [facturandoId, setFacturandoId] = useState(null);
+  const [ventaFacturar, setVentaFacturar] = useState(null);
+  const [receptorFactura, setReceptorFactura] = useState(RECEPTOR_VACIO);
+  const [errorFacturar, setErrorFacturar] = useState('');
+  const [creandoFactura, setCreandoFactura] = useState(false);
+  const [folioFacturaCreada, setFolioFacturaCreada] = useState('');
 
   const [ticketVenta, setTicketVenta] = useState(null);
   const [ticketAbierto, setTicketAbierto] = useState(false);
@@ -156,6 +166,38 @@ function VentasHistorialPage() {
       cargarVentas(paginacion.pagina);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo cancelar la venta.');
+    }
+  }
+
+  function abrirFacturar(venta) {
+    setErrorFacturar('');
+    setFolioFacturaCreada('');
+    setVentaFacturar(venta);
+    setReceptorFactura(receptorDesdeCliente(venta.cliente));
+    setFacturandoId(venta.id);
+  }
+
+  function cerrarFacturar() {
+    setFacturandoId(null);
+    setVentaFacturar(null);
+  }
+
+  function actualizarReceptorFactura(campo, valor) {
+    setReceptorFactura((r) => ({ ...r, [campo]: valor }));
+  }
+
+  async function confirmarFacturar(e) {
+    e.preventDefault();
+    setErrorFacturar('');
+    setCreandoFactura(true);
+    try {
+      const factura = await crearFacturaDesdeVenta({ ventaId: facturandoId, receptor: receptorFactura });
+      setFolioFacturaCreada(factura.folio);
+      cargarVentas(paginacion.pagina);
+    } catch (err) {
+      setErrorFacturar(err.response?.data?.error || 'No se pudo generar la factura.');
+    } finally {
+      setCreandoFactura(false);
     }
   }
 
@@ -324,6 +366,21 @@ function VentasHistorialPage() {
                   </button>
                   {v.estado === 'CONFIRMADA' && (
                     <>
+                      {puedeFacturar && (
+                        v.facturaId ? (
+                          <span className="inline-flex items-center gap-1 text-sm text-gray-400" title="Ya facturada">
+                            <Receipt size={14} /> Facturada
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => abrirFacturar(v)}
+                            className="inline-flex items-center gap-1 text-sm text-primary-600 hover:underline"
+                          >
+                            <Receipt size={14} /> Facturar
+                          </button>
+                        )
+                      )}
                       <button type="button" onClick={() => handleCancelar(v.id)} className="text-sm text-danger-600 hover:underline">
                         Cancelar
                       </button>
@@ -432,6 +489,30 @@ function VentasHistorialPage() {
               </div>
             </form>
           </>
+        )}
+      </Modal>
+
+      <Modal abierto={facturandoId !== null} onCerrar={cerrarFacturar} titulo="Facturar venta" ancho="max-w-2xl">
+        {folioFacturaCreada ? (
+          <div className="space-y-3 text-center">
+            <p className="text-sm text-gray-700">
+              Factura <strong>{folioFacturaCreada}</strong> creada — queda en estado Pendiente hasta que se
+              integre el timbrado ante el SAT.
+            </p>
+            <Button onClick={cerrarFacturar}>Cerrar</Button>
+          </div>
+        ) : (
+          <form onSubmit={confirmarFacturar} className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Venta {ventaFacturar?.folio} — {formatoMoneda(ventaFacturar?.total)}
+            </p>
+            <ReceptorFiscalCampos value={receptorFactura} onChange={actualizarReceptorFactura} idPrefix="facturarVenta" />
+            {errorFacturar && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorFacturar}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={cerrarFacturar}>Cancelar</Button>
+              <Button type="submit" disabled={creandoFactura}>{creandoFactura ? 'Generando…' : 'Generar factura'}</Button>
+            </div>
+          </form>
         )}
       </Modal>
 

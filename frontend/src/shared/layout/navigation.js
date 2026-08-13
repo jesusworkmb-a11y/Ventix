@@ -10,6 +10,7 @@ import {
   BarChart3,
   Wrench,
   Settings,
+  Receipt,
 } from 'lucide-react';
 
 // Estructura fija del sidebar (§ "La estructura nunca cambia" de la guía visual).
@@ -53,6 +54,16 @@ export const NAVEGACION = [
   { label: 'Clientes', to: '/clientes', icon: Users },
   { label: 'Proveedores', to: '/proveedores', icon: Truck },
   { label: 'Reportes', to: '/reportes', icon: BarChart3 },
+  {
+    label: 'Facturación',
+    to: '/facturacion',
+    icon: Receipt,
+    hijos: [
+      { label: 'Facturas', to: '/facturacion', permiso: 'facturacion.ver' },
+      { label: 'Factura directa', to: '/facturacion/directa', permiso: 'facturacion.crear' },
+      { label: 'Global / Consolidada', to: '/facturacion/global', permiso: 'facturacion.global.generar' },
+    ],
+  },
   { label: 'Herramientas', to: '/herramientas', icon: Wrench },
   {
     label: 'Configuración',

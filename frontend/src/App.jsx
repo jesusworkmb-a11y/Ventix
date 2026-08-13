@@ -25,6 +25,9 @@ import VentasHistorialPage from './modules/ventas/pages/VentasHistorialPage';
 import CotizacionesPage from './modules/ventas/pages/CotizacionesPage';
 import ReportesPage from './modules/reportes/pages/ReportesPage';
 import HerramientasPage from './modules/herramientas/pages/HerramientasPage';
+import FacturasPage from './modules/facturacion/pages/FacturasPage';
+import FacturaDirectaPage from './modules/facturacion/pages/FacturaDirectaPage';
+import FacturaGlobalPage from './modules/facturacion/pages/FacturaGlobalPage';
 
 // A partir de Fase 1 el enrutamiento real reemplaza el check de conectividad de Fase 0.
 function App() {
@@ -206,6 +209,30 @@ function App() {
           element={(
             <ProtectedRoute>
               <HerramientasPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/facturacion"
+          element={(
+            <ProtectedRoute>
+              <FacturasPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/facturacion/directa"
+          element={(
+            <ProtectedRoute>
+              <FacturaDirectaPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/facturacion/global"
+          element={(
+            <ProtectedRoute>
+              <FacturaGlobalPage />
             </ProtectedRoute>
           )}
         />
