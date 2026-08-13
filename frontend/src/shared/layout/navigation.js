@@ -59,9 +59,9 @@ export const NAVEGACION = [
     to: '/facturacion',
     icon: Receipt,
     hijos: [
-      { label: 'Facturas', to: '/facturacion', permiso: 'facturacion.ver' },
       { label: 'Factura directa', to: '/facturacion/directa', permiso: 'facturacion.crear' },
       { label: 'Global / Consolidada', to: '/facturacion/global', permiso: 'facturacion.global.generar' },
+      { label: 'Facturas', to: '/facturacion', permiso: 'facturacion.ver' },
     ],
   },
   { label: 'Herramientas', to: '/herramientas', icon: Wrench },
