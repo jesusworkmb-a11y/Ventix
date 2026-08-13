@@ -10,5 +10,10 @@ router.use(auth);
 router.get('/', requierePermiso('administracion.sucursales.ver'), asyncHandler(controller.listar));
 router.post('/', requierePermiso('administracion.sucursales.gestionar'), asyncHandler(controller.crear));
 router.patch('/:id', requierePermiso('administracion.sucursales.gestionar'), asyncHandler(controller.actualizar));
+router.patch(
+  '/:id/fiscal',
+  requierePermiso('administracion.fiscal.editar'),
+  asyncHandler(controller.actualizarFiscal),
+);
 
 module.exports = router;

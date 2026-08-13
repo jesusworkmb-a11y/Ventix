@@ -18,6 +18,7 @@ const crearArticuloSchema = z.object({
   stockMinimo: z.coerce.number().min(0).optional(),
   stockMaximo: z.coerce.number().min(0).optional(),
   imagenUrl: z.string().url().optional(),
+  claveProdServSat: z.string().min(1).optional(), // c_ClaveProdServ SAT
 });
 
 const actualizarArticuloSchema = crearArticuloSchema.partial().extend({
@@ -31,6 +32,7 @@ const actualizarArticuloSchema = crearArticuloSchema.partial().extend({
   impuestoId: z.string().min(1).nullable().optional(),
   stockMinimo: z.coerce.number().min(0).nullable().optional(),
   stockMaximo: z.coerce.number().min(0).nullable().optional(),
+  claveProdServSat: z.string().min(1).nullable().optional(),
 });
 
 const unidadesAlternasSchema = z.object({

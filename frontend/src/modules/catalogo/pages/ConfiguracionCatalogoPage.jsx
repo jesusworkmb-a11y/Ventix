@@ -35,6 +35,7 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
+import SelectorCatalogoSat from '../../../shared/ui/SelectorCatalogoSat';
 import { useAuth } from '../../../shared/context/AuthContext';
 
 // Categorías tiene lógica propia (padre + límite de 2 niveles), por eso no usa SeccionSimple.
@@ -145,6 +146,53 @@ function SeccionCategorias() {
 // Marcas/Unidades/Impuestos son solo "lista + mini-form"; una sección genérica evita repetir
 // el mismo bloque 3 veces con la única diferencia siendo los campos del formulario. `actualizar`
 // es opcional: si se pasa, cada item se puede editar inline con los mismos `campos`.
+// campo.tipo: 'text' (default) | 'number' -> Input; 'select' (campo.opciones) -> Select;
+// 'catalogoSat' (campo.catalogoSatTipo) -> SelectorCatalogoSat. Agregado para las claves SAT
+// de Unidades/Impuestos sin duplicar el render de campos crear/editar de SeccionSimple.
+function CampoControl({ campo, idPrefix, valor, onChange }) {
+  const id = `${idPrefix}-${campo.nombre}`;
+  if (campo.tipo === 'catalogoSat') {
+    return (
+      <SelectorCatalogoSat
+        id={id}
+        tipo={campo.catalogoSatTipo}
+        label={campo.label}
+        value={valor || null}
+        onChange={onChange}
+      />
+    );
+  }
+  if (campo.tipo === 'select') {
+    return (
+      <Select
+        id={id}
+        label={campo.label}
+        value={valor ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        required={campo.requerido}
+        className="w-40"
+      >
+        {!campo.requerido && <option value="">—</option>}
+        {campo.opciones.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </Select>
+    );
+  }
+  return (
+    <Input
+      id={id}
+      label={campo.label}
+      type={campo.tipo || 'text'}
+      step={campo.tipo === 'number' ? '0.01' : undefined}
+      value={valor ?? ''}
+      onChange={(e) => onChange(e.target.value)}
+      required={campo.requerido}
+      className="w-40"
+    />
+  );
+}
+
 function SeccionSimple({ titulo, cargar, crear, actualizar, campos, renderItem }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({});
@@ -207,16 +255,12 @@ function SeccionSimple({ titulo, cargar, crear, actualizar, campos, renderItem }
             {editandoId === item.id ? (
               <form onSubmit={guardarEdicion} className="flex flex-wrap items-end gap-3">
                 {campos.map((campo) => (
-                  <Input
+                  <CampoControl
                     key={campo.nombre}
-                    id={`${titulo}-${item.id}-${campo.nombre}`}
-                    label={campo.label}
-                    type={campo.tipo || 'text'}
-                    step={campo.tipo === 'number' ? '0.01' : undefined}
-                    value={editForm[campo.nombre] ?? ''}
-                    onChange={(e) => setEditForm((f) => ({ ...f, [campo.nombre]: e.target.value }))}
-                    required={campo.requerido}
-                    className="w-40"
+                    campo={campo}
+                    idPrefix={`${titulo}-${item.id}`}
+                    valor={editForm[campo.nombre]}
+                    onChange={(v) => setEditForm((f) => ({ ...f, [campo.nombre]: v }))}
                   />
                 ))}
                 <Button type="submit" variant="secondary">Guardar</Button>
@@ -238,16 +282,12 @@ function SeccionSimple({ titulo, cargar, crear, actualizar, campos, renderItem }
       </ul>
       <form onSubmit={agregar} className="mt-4 flex flex-wrap items-end gap-3">
         {campos.map((campo) => (
-          <Input
+          <CampoControl
             key={campo.nombre}
-            id={`${titulo}-nuevo-${campo.nombre}`}
-            label={campo.label}
-            type={campo.tipo || 'text'}
-            step={campo.tipo === 'number' ? '0.01' : undefined}
-            value={form[campo.nombre] || ''}
-            onChange={(e) => setForm((f) => ({ ...f, [campo.nombre]: e.target.value }))}
-            required={campo.requerido}
-            className="w-40"
+            campo={campo}
+            idPrefix={`${titulo}-nuevo`}
+            valor={form[campo.nombre]}
+            onChange={(v) => setForm((f) => ({ ...f, [campo.nombre]: v }))}
           />
         ))}
         <Button type="submit" variant="secondary">Agregar</Button>
@@ -913,24 +953,55 @@ function ConfiguracionCatalogoPage() {
       <SeccionSimple
         titulo="Unidades"
         cargar={listarUnidades}
-        crear={crearUnidad}
+        crear={(datos) => crearUnidad({ ...datos, claveUnidadSat: datos.claveUnidadSat || undefined })}
         actualizar={actualizarUnidad}
         campos={[
           { nombre: 'nombre', label: 'Nombre', requerido: true },
           { nombre: 'abreviatura', label: 'Abreviatura' },
+          { nombre: 'claveUnidadSat', label: 'Clave unidad SAT', tipo: 'catalogoSat', catalogoSatTipo: 'ClaveUnidad' },
         ]}
-        renderItem={(u) => `${u.nombre}${u.abreviatura ? ` (${u.abreviatura})` : ''}`}
+        renderItem={(u) => `${u.nombre}${u.abreviatura ? ` (${u.abreviatura})` : ''}${u.claveUnidadSat ? ` · SAT ${u.claveUnidadSat}` : ''}`}
       />
       <SeccionSimple
         titulo="Impuestos"
         cargar={listarImpuestos}
-        crear={(datos) => crearImpuesto({ ...datos, tasa: Number(datos.tasa) })}
-        actualizar={(id, datos) => actualizarImpuesto(id, { ...datos, tasa: Number(datos.tasa) })}
+        crear={(datos) => crearImpuesto({
+          ...datos,
+          tasa: Number(datos.tasa),
+          claveImpuestoSat: datos.claveImpuestoSat || undefined,
+          tipoFactorSat: datos.tipoFactorSat || undefined,
+        })}
+        actualizar={(id, datos) => actualizarImpuesto(id, {
+          ...datos,
+          tasa: Number(datos.tasa),
+          claveImpuestoSat: datos.claveImpuestoSat || undefined,
+          tipoFactorSat: datos.tipoFactorSat || undefined,
+        })}
         campos={[
           { nombre: 'nombre', label: 'Nombre', requerido: true },
           { nombre: 'tasa', label: 'Tasa (ej. 0.16)', tipo: 'number', requerido: true },
+          {
+            nombre: 'claveImpuestoSat',
+            label: 'Impuesto SAT',
+            tipo: 'select',
+            opciones: [
+              { value: '001', label: 'ISR (001)' },
+              { value: '002', label: 'IVA (002)' },
+              { value: '003', label: 'IEPS (003)' },
+            ],
+          },
+          {
+            nombre: 'tipoFactorSat',
+            label: 'Tipo de factor',
+            tipo: 'select',
+            opciones: [
+              { value: 'Tasa', label: 'Tasa' },
+              { value: 'Cuota', label: 'Cuota' },
+              { value: 'Exento', label: 'Exento' },
+            ],
+          },
         ]}
-        renderItem={(i) => `${i.nombre} — ${(Number(i.tasa) * 100).toFixed(0)}%`}
+        renderItem={(i) => `${i.nombre} — ${(Number(i.tasa) * 100).toFixed(0)}%${i.claveImpuestoSat ? ` · SAT ${i.claveImpuestoSat}/${i.tipoFactorSat}` : ''}`}
       />
       <SeccionListasPrecio />
       <SeccionAtributos />

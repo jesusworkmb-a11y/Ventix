@@ -4,6 +4,7 @@ import ProtectedRoute from './shared/components/ProtectedRoute';
 import RegistroPage from './modules/core/pages/RegistroPage';
 import LoginPage from './modules/core/pages/LoginPage';
 import EmpresaPage from './modules/core/pages/EmpresaPage';
+import ConfiguracionFiscalPage from './modules/core/pages/ConfiguracionFiscalPage';
 import SucursalesPage from './modules/core/pages/SucursalesPage';
 import UsuariosPage from './modules/core/pages/UsuariosPage';
 import RolesPage from './modules/core/pages/RolesPage';
@@ -45,6 +46,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <EmpresaPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/administracion/fiscal"
+          element={(
+            <ProtectedRoute>
+              <ConfiguracionFiscalPage />
             </ProtectedRoute>
           )}
         />

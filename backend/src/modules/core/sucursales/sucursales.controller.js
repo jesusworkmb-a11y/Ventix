@@ -1,6 +1,10 @@
 const AppError = require('../../../shared/errors/AppError');
 const service = require('./sucursales.service');
-const { crearSucursalSchema, actualizarSucursalSchema } = require('./sucursales.validators');
+const {
+  crearSucursalSchema,
+  actualizarSucursalSchema,
+  actualizarFiscalSucursalSchema,
+} = require('./sucursales.validators');
 
 async function listar(req, res) {
   const sucursales = await service.listar({ empresaId: req.auth.empresaId });
@@ -30,4 +34,16 @@ async function actualizar(req, res) {
   res.json(sucursal);
 }
 
-module.exports = { listar, crear, actualizar };
+async function actualizarFiscal(req, res) {
+  const parsed = actualizarFiscalSucursalSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Datos fiscales de sucursal inválidos.');
+  const sucursal = await service.actualizarFiscal({
+    empresaId: req.auth.empresaId,
+    usuarioEjecutorId: req.auth.usuarioId,
+    sucursalId: req.params.id,
+    datos: parsed.data,
+  });
+  res.json(sucursal);
+}
+
+module.exports = { listar, crear, actualizar, actualizarFiscal };

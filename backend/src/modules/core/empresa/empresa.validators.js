@@ -9,4 +9,29 @@ const actualizarEmpresaSchema = z.object({
   logoUrl: z.string().max(2_000_000, 'El logo es demasiado grande.').nullable().optional(),
 });
 
-module.exports = { actualizarEmpresaSchema };
+// Separado del PATCH general de arriba a propósito: el RFC/razón social/régimen fiscal es
+// dato legal sensible para CFDI, distinto en severidad de cambiar el nombre comercial/logo —
+// se gatea con su propio permiso (administracion.fiscal.editar) en vez de reusar
+// administracion.empresa.editar. rfc/razonSocial ya existían en el modelo pero nunca tuvieron
+// UI ni endpoint propio hasta ahora (solo nombreComercial/logoUrl eran editables).
+const rfcSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i, 'RFC con formato inválido.')
+  .transform((v) => v.toUpperCase());
+
+const actualizarFiscalEmpresaSchema = z.object({
+  rfc: rfcSchema.nullable().optional(),
+  razonSocial: z.string().min(1).nullable().optional(),
+  regimenFiscalClave: z.string().min(1).nullable().optional(),
+  // Slug de la URL pública del portal de autofacturación. null = portal apagado para esta empresa.
+  slugPublico: z
+    .string()
+    .regex(/^[a-z0-9-]+$/, 'El slug solo puede tener minúsculas, números y guiones.')
+    .min(3)
+    .max(60)
+    .nullable()
+    .optional(),
+});
+
+module.exports = { actualizarEmpresaSchema, actualizarFiscalEmpresaSchema };

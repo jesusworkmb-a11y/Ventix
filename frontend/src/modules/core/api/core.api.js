@@ -15,6 +15,9 @@ export function me() {
 export function actualizarEmpresa(datos) {
   return api.patch('/core/empresa', datos).then((res) => res.data);
 }
+export function actualizarEmpresaFiscal(datos) {
+  return api.patch('/core/empresa/fiscal', datos).then((res) => res.data);
+}
 
 export function listarSucursales() {
   return api.get('/core/sucursales').then((res) => res.data);
@@ -24,6 +27,9 @@ export function crearSucursal(datos) {
 }
 export function actualizarSucursal(id, datos) {
   return api.patch(`/core/sucursales/${id}`, datos).then((res) => res.data);
+}
+export function actualizarSucursalFiscal(id, datos) {
+  return api.patch(`/core/sucursales/${id}/fiscal`, datos).then((res) => res.data);
 }
 
 export function listarUsuarios(params) {

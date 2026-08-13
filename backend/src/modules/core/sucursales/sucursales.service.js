@@ -70,4 +70,33 @@ async function actualizar({ empresaId, usuarioEjecutorId, sucursalId, datos }) {
   });
 }
 
-module.exports = { listar, crear, actualizar };
+async function actualizarFiscal({ empresaId, usuarioEjecutorId, sucursalId, datos }) {
+  const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, empresaId } });
+  if (!sucursal) throw new AppError(404, 'Sucursal no encontrada.');
+
+  return prisma.$transaction(async (tx) => {
+    const actualizada = await tx.sucursal.update({ where: { id: sucursalId }, data: datos });
+    await registrarAuditoria(tx, {
+      empresaId,
+      usuarioEjecutorId,
+      accion: 'ACTUALIZAR',
+      entidad: 'Sucursal',
+      entidadId: sucursal.id,
+      valoresAntes: toJson({
+        rfc: sucursal.rfc,
+        razonSocial: sucursal.razonSocial,
+        regimenFiscalClave: sucursal.regimenFiscalClave,
+        codigoPostal: sucursal.codigoPostal,
+      }),
+      valoresDespues: toJson({
+        rfc: actualizada.rfc,
+        razonSocial: actualizada.razonSocial,
+        regimenFiscalClave: actualizada.regimenFiscalClave,
+        codigoPostal: actualizada.codigoPostal,
+      }),
+    });
+    return actualizada;
+  });
+}
+
+module.exports = { listar, crear, actualizar, actualizarFiscal };

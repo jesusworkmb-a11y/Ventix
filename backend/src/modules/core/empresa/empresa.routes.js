@@ -8,5 +8,10 @@ const router = express.Router();
 router.use(auth);
 
 router.patch('/', requierePermiso('administracion.empresa.editar'), asyncHandler(controller.actualizar));
+router.patch(
+  '/fiscal',
+  requierePermiso('administracion.fiscal.editar'),
+  asyncHandler(controller.actualizarFiscal),
+);
 
 module.exports = router;

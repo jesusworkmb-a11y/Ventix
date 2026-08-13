@@ -20,4 +20,15 @@ const actualizarSucursalSchema = z
   })
   .partial();
 
-module.exports = { crearSucursalSchema, actualizarSucursalSchema };
+// Fiscal, gateado con administracion.fiscal.editar (mismo criterio que empresa.validators.js):
+// campos nullable = "hereda de Empresa" (comportamiento matriz), enviar null limpia el override.
+const actualizarFiscalSucursalSchema = z
+  .object({
+    rfc: z.string().min(1).nullable(),
+    razonSocial: z.string().min(1).nullable(),
+    regimenFiscalClave: z.string().min(1).nullable(),
+    codigoPostal: z.string().min(1).nullable(),
+  })
+  .partial();
+
+module.exports = { crearSucursalSchema, actualizarSucursalSchema, actualizarFiscalSucursalSchema };

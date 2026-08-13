@@ -1,6 +1,6 @@
 const AppError = require('../../../shared/errors/AppError');
 const service = require('./empresa.service');
-const { actualizarEmpresaSchema } = require('./empresa.validators');
+const { actualizarEmpresaSchema, actualizarFiscalEmpresaSchema } = require('./empresa.validators');
 
 async function actualizar(req, res) {
   const parsed = actualizarEmpresaSchema.safeParse(req.body);
@@ -13,4 +13,15 @@ async function actualizar(req, res) {
   res.json(empresa);
 }
 
-module.exports = { actualizar };
+async function actualizarFiscal(req, res) {
+  const parsed = actualizarFiscalEmpresaSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Datos fiscales inválidos.');
+  const empresa = await service.actualizarFiscal({
+    empresaId: req.auth.empresaId,
+    usuarioEjecutorId: req.auth.usuarioId,
+    datos: parsed.data,
+  });
+  res.json(empresa);
+}
+
+module.exports = { actualizar, actualizarFiscal };

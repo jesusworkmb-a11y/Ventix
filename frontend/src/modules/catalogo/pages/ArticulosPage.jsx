@@ -23,6 +23,7 @@ import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
 import Paginacion from '../../../shared/ui/Paginacion';
+import SelectorCatalogoSat from '../../../shared/ui/SelectorCatalogoSat';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
 
@@ -47,6 +48,7 @@ const FORM_VACIO = {
   precio: '',
   stockMinimo: '',
   stockMaximo: '',
+  claveProdServSat: null,
 };
 
 function articuloAForm(a) {
@@ -64,6 +66,7 @@ function articuloAForm(a) {
     stockMinimo: a.stockMinimo === null || a.stockMinimo === undefined ? '' : String(a.stockMinimo),
     stockMaximo: a.stockMaximo === null || a.stockMaximo === undefined ? '' : String(a.stockMaximo),
     activo: a.activo,
+    claveProdServSat: a.claveProdServSat || null,
   };
 }
 
@@ -286,6 +289,7 @@ function ArticulosPage() {
         stockMinimo: editForm.stockMinimo === '' ? null : Number(editForm.stockMinimo),
         stockMaximo: editForm.stockMaximo === '' ? null : Number(editForm.stockMaximo),
         activo: editForm.activo,
+        claveProdServSat: editForm.claveProdServSat,
       });
       setEditandoId(null);
       cargarArticulos(paginacion.pagina);
@@ -311,6 +315,7 @@ function ArticulosPage() {
         precio: form.precio ? Number(form.precio) : undefined,
         stockMinimo: form.stockMinimo ? Number(form.stockMinimo) : undefined,
         stockMaximo: form.stockMaximo ? Number(form.stockMaximo) : undefined,
+        claveProdServSat: form.claveProdServSat || undefined,
       });
       setForm(FORM_VACIO);
       cargarArticulos(1);
@@ -450,6 +455,14 @@ function ArticulosPage() {
             value={form.stockMinimo}
             onChange={(e) => actualizarCampo('stockMinimo', e.target.value)}
           />
+          <SelectorCatalogoSat
+            id="claveProdServArticulo"
+            tipo="ClaveProdServ"
+            label="Clave prod/serv SAT (opcional)"
+            value={form.claveProdServSat}
+            onChange={(v) => actualizarCampo('claveProdServSat', v)}
+            placeholder="Buscar clave SAT…"
+          />
           <Input
             id="stockMaximoArticulo"
             label="Stock máximo (opcional)"
@@ -519,6 +532,14 @@ function ArticulosPage() {
             placeholder="Sin definir"
             value={editForm.stockMaximo}
             onChange={(e) => setEditForm((f) => ({ ...f, stockMaximo: e.target.value }))}
+          />
+          <SelectorCatalogoSat
+            id="claveProdServEdit"
+            tipo="ClaveProdServ"
+            label="Clave prod/serv SAT (opcional)"
+            value={editForm.claveProdServSat}
+            onChange={(v) => setEditForm((f) => ({ ...f, claveProdServSat: v }))}
+            placeholder="Buscar clave SAT…"
           />
           <label className="sm:col-span-2 flex items-center gap-2 text-sm text-gray-600">
             <input
