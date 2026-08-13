@@ -61,6 +61,23 @@ const PERMISOS_DEFAULT = [
   { clave: 'reportes.ver', grupo: 'Reportes', nombre: 'Ver reportes' },
   { clave: 'herramientas.exportar', grupo: 'Herramientas', nombre: 'Exportar datos a CSV' },
   { clave: 'herramientas.importar', grupo: 'Herramientas', nombre: 'Importar artículos desde CSV' },
+  { clave: 'facturacion.ver', grupo: 'Facturación', nombre: 'Ver facturas (CFDI)' },
+  {
+    clave: 'facturacion.crear',
+    grupo: 'Facturación',
+    nombre: 'Emitir facturas (directa, desde venta o autofacturación)',
+  },
+  { clave: 'facturacion.cancelar', grupo: 'Facturación', nombre: 'Cancelar facturas' },
+  {
+    clave: 'facturacion.global.generar',
+    grupo: 'Facturación',
+    nombre: 'Generar factura global (público en general) o consolidada por cliente',
+  },
+  {
+    clave: 'administracion.fiscal.editar',
+    grupo: 'Administración',
+    nombre: 'Editar datos fiscales de la empresa y sucursales (RFC, régimen, catálogos SAT)',
+  },
 ];
 
 const TODAS_LAS_CLAVES = PERMISOS_DEFAULT.map((p) => p.clave);
@@ -104,6 +121,10 @@ const ROL_PERMISOS_DEFAULT = {
     'reportes.ver',
     'herramientas.exportar',
     'herramientas.importar',
+    'facturacion.ver',
+    'facturacion.crear',
+    'facturacion.cancelar',
+    'facturacion.global.generar',
   ],
   Cajero: [
     'venta.crear',
@@ -117,6 +138,8 @@ const ROL_PERMISOS_DEFAULT = {
     'clientes.ver',
     'clientes.gestionar',
     'inventario.ver',
+    'facturacion.ver',
+    'facturacion.crear',
   ],
   Almacenista: [
     'inventario.ajustar',

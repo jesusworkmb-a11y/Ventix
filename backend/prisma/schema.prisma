@@ -34,20 +34,26 @@ enum EstadoUsuario {
 }
 
 model Empresa {
-  id              String        @id @default(uuid())
-  nombreComercial String        @map("nombre_comercial")
-  razonSocial     String?       @map("razon_social")
-  rfc             String?
-  pais            String
-  moneda          String
-  zonaHoraria     String        @map("zona_horaria")
-  correo          String?
-  telefono        String?
-  sitioWeb        String?       @map("sitio_web")
-  logoUrl         String?       @map("logo_url")
-  estado          EstadoGeneral @default(ACTIVA)
-  creadoEn        DateTime      @default(now()) @map("creado_en")
-  actualizadoEn   DateTime      @updatedAt @map("actualizado_en")
+  id                 String        @id @default(uuid())
+  nombreComercial    String        @map("nombre_comercial")
+  razonSocial        String?       @map("razon_social")
+  rfc                String?
+  pais               String
+  moneda             String
+  zonaHoraria        String        @map("zona_horaria")
+  correo             String?
+  telefono           String?
+  sitioWeb           String?       @map("sitio_web")
+  logoUrl            String?       @map("logo_url")
+  // Facturación CFDI (§Facturación): régimen fiscal del emisor (c_RegimenFiscal SAT).
+  // Sucursal puede sobreescribirlo (null = hereda el de acá) para el caso de sucursales
+  // que facturan bajo un RFC/razón social propios.
+  regimenFiscalClave String?       @map("regimen_fiscal_clave")
+  // Slug de la URL pública del portal de autofacturación (/facturar/:slug). null = portal apagado.
+  slugPublico        String?       @unique @map("slug_publico")
+  estado             EstadoGeneral @default(ACTIVA)
+  creadoEn           DateTime      @default(now()) @map("creado_en")
+  actualizadoEn      DateTime      @updatedAt @map("actualizado_en")
 
   sucursales      Sucursal[]
   usuariosEmpresa UsuarioEmpresa[]
@@ -70,6 +76,7 @@ model Empresa {
   compras         Compra[]
   existencias     Existencia[]
   ventas          Venta[]
+  facturas        Factura[]
 
   @@map("empresas")
 }
@@ -86,12 +93,23 @@ model Sucursal {
   estado      EstadoGeneral @default(ACTIVA)
   creadoEn    DateTime      @default(now()) @map("creado_en")
 
+  // Facturación CFDI: null = hereda el dato de Empresa (comportamiento "matriz").
+  // Con valor propio, esta sucursal emite bajo su propio RFC/razón social/régimen
+  // (ej. una sucursal que opera como entidad legal separada).
+  rfc                String? @map("rfc")
+  razonSocial        String? @map("razon_social")
+  regimenFiscalClave String? @map("regimen_fiscal_clave")
+  // Lugar de expedición del CFDI (código postal). Sin fallback: cada punto de
+  // expedición tiene el suyo. Obligatorio solo si la sucursal va a facturar.
+  codigoPostal       String? @map("codigo_postal")
+
   empresa          Empresa           @relation(fields: [empresaId], references: [id])
   cajas            Caja[]
   existencias      Existencia[]
   ventas           Venta[]
   compras          Compra[]
   usuariosSucursal UsuarioSucursal[]
+  facturas         Factura[]
 
   @@unique([empresaId, clave])
   @@map("sucursales")
@@ -299,10 +317,11 @@ model Marca {
 }
 
 model Unidad {
-  id          String  @id @default(uuid())
-  empresaId   String  @map("empresa_id")
-  nombre      String // Pieza, Caja, Kilogramo...
-  abreviatura String?
+  id             String  @id @default(uuid())
+  empresaId      String  @map("empresa_id")
+  nombre         String // Pieza, Caja, Kilogramo...
+  abreviatura    String?
+  claveUnidadSat String? @map("clave_unidad_sat") // c_ClaveUnidad SAT, ej. "H87", "E48"
 
   empresa          Empresa         @relation(fields: [empresaId], references: [id])
   articulosBase    Articulo[]      @relation("UnidadBase")
@@ -327,10 +346,13 @@ model UnidadAlterna {
 }
 
 model Impuesto {
-  id        String  @id @default(uuid())
-  empresaId String  @map("empresa_id")
-  nombre    String // IVA 16%, IVA 8%, Exento
-  tasa      Decimal // 0.16, 0.08, 0.00
+  id               String  @id @default(uuid())
+  empresaId        String  @map("empresa_id")
+  nombre           String // IVA 16%, IVA 8%, Exento
+  tasa             Decimal // 0.16, 0.08, 0.00
+  // Facturación CFDI: mapeo de este impuesto local a la clave SAT correspondiente.
+  claveImpuestoSat String  @default("002") @map("clave_impuesto_sat") // c_Impuesto: 001 ISR, 002 IVA, 003 IEPS
+  tipoFactorSat    String  @default("Tasa") @map("tipo_factor_sat") // c_TipoFactor: Tasa | Cuota | Exento
 
   empresa   Empresa    @relation(fields: [empresaId], references: [id])
   articulos Articulo[]
@@ -340,28 +362,29 @@ model Impuesto {
 }
 
 model Articulo {
-  id              String       @id @default(uuid())
-  empresaId       String       @map("empresa_id")
-  tipo            TipoArticulo
-  clave           String? // clave/código interno
-  sku             String?
-  codigoBarras    String?      @map("codigo_barras")
-  nombre          String
-  descripcion     String?
-  categoriaId     String?      @map("categoria_id")
-  marcaId         String?      @map("marca_id")
-  unidadBaseId    String       @map("unidad_base_id")
-  impuestoId      String?      @map("impuesto_id")
-  costo           Decimal      @default(0) // último costo (§16.3)
-  precio          Decimal      @default(0)
-  stockMinimo     Decimal?     @map("stock_minimo")
-  stockMaximo     Decimal?     @map("stock_maximo")
-  imagenUrl       String?      @map("imagen_url")
-  activo          Boolean      @default(true)
+  id               String       @id @default(uuid())
+  empresaId        String       @map("empresa_id")
+  tipo             TipoArticulo
+  clave            String? // clave/código interno
+  sku              String?
+  codigoBarras     String?      @map("codigo_barras")
+  nombre           String
+  descripcion      String?
+  categoriaId      String?      @map("categoria_id")
+  marcaId          String?      @map("marca_id")
+  unidadBaseId     String       @map("unidad_base_id")
+  impuestoId       String?      @map("impuesto_id")
+  costo            Decimal      @default(0) // último costo (§16.3)
+  precio           Decimal      @default(0)
+  stockMinimo      Decimal?     @map("stock_minimo")
+  stockMaximo      Decimal?     @map("stock_maximo")
+  imagenUrl        String?      @map("imagen_url")
+  claveProdServSat String?      @map("clave_prod_serv_sat") // c_ClaveProdServ SAT, ej. "83111603"
+  activo           Boolean      @default(true)
   // Variantes (color/talla/etc.): una variante es otro Articulo, enlazado a su producto padre
   // acá. null = artículo normal o producto padre; no-null = es una variante de ese padre.
-  articuloPadreId String?      @map("articulo_padre_id")
-  creadoEn        DateTime     @default(now()) @map("creado_en")
+  articuloPadreId  String?      @map("articulo_padre_id")
+  creadoEn         DateTime     @default(now()) @map("creado_en")
 
   empresa    Empresa    @relation(fields: [empresaId], references: [id])
   categoria  Categoria? @relation(fields: [categoriaId], references: [id])
@@ -546,9 +569,16 @@ model Cliente {
   activo        Boolean  @default(true)
   creadoEn      DateTime @default(now()) @map("creado_en")
 
+  // Facturación CFDI: solo defaults para prellenar el formulario al facturar — la Factura
+  // siempre congela su propia copia del receptor (ver Factura), esto no es fuente de verdad.
+  regimenFiscalClave String? @map("regimen_fiscal_clave")
+  usoCfdiPreferido   String? @map("uso_cfdi_preferido")
+  domicilioFiscalCp  String? @map("domicilio_fiscal_cp")
+
   empresa     Empresa      @relation(fields: [empresaId], references: [id])
   listaPrecio ListaPrecio? @relation(fields: [listaPrecioId], references: [id])
   ventas      Venta[]
+  facturas    Factura[]
 
   @@map("clientes")
 }
@@ -826,6 +856,10 @@ model Venta {
   impuestos       Decimal
   total           Decimal
   autorizadoPorId String?     @map("autorizado_por_id") // supervisor que autorizó un descuento/promoción que lo requería (opcional)
+  // Facturación CFDI: id "suelto" (sin @relation formal, mismo criterio que Cotizacion.convertidaEnVentaId)
+  // de la Factura que ya cubre esta venta. null = sin facturar. Se reclama con
+  // UPDATE...WHERE factura_id IS NULL, mismo patrón anti-carrera que el resto del proyecto.
+  facturaId       String?     @unique @map("factura_id")
   creadoEn        DateTime    @default(now()) @map("creado_en")
 
   empresa    Empresa    @relation(fields: [empresaId], references: [id])
@@ -925,4 +959,170 @@ model CotizacionDetalle {
   cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id])
 
   @@map("cotizaciones_detalle")
+}
+
+// =============================================================================
+// MOD-FACTURACION — CFDI (México). Fase A: solo esquema local + catálogos SAT.
+// El timbrado real contra un PAC se integra en una fase final aparte (uuid/xml/sello
+// abajo quedan reservados, sin lógica todavía, para no requerir una segunda migración
+// disruptiva cuando llegue esa fase).
+// =============================================================================
+
+// Catálogo genérico para los ~9 catálogos oficiales del SAT (RegimenFiscal, UsoCfdi,
+// FormaPago, Moneda, Pais, TipoFactor, ObjetoImp, Impuesto, MotivoCancelacion,
+// Periodicidad, Meses, ClaveProdServ, ClaveUnidad). Una sola tabla en vez de un modelo
+// por catálogo porque el SAT los actualiza con cierta frecuencia y varían mucho en
+// tamaño (de 3 filas hasta ~52,000 en ClaveProdServ) — se siembran/resiembran desde
+// los archivos oficiales que publica el SAT.
+model CatalogoSat {
+  id          String  @id @default(uuid())
+  tipo        String // RegimenFiscal | UsoCfdi | FormaPago | Moneda | Pais | TipoFactor |
+  // ObjetoImp | Impuesto | MotivoCancelacion | Periodicidad | Meses |
+  // ClaveProdServ | ClaveUnidad
+  clave       String
+  descripcion String
+  activo      Boolean @default(true)
+  metadata    Json? // datos propios del catálogo, ej. UsoCfdi: {aplicaPersonaFisica, aplicaPersonaMoral}
+
+  @@unique([tipo, clave])
+  @@index([tipo, descripcion])
+  @@map("catalogos_sat")
+}
+
+enum TipoFactura {
+  DIRECTA // emisión libre, sin venta previa del POS
+  VENTA_POS // convierte una venta existente del POS
+  AUTOFACTURACION // el cliente factura su propia compra desde el portal público
+  GLOBAL // agrupa ventas de público en general (RFC genérico) — requiere InformacionGlobal
+  CONSOLIDADA_CLIENTE // agrupa varias ventas de UN cliente identificado en un solo CFDI
+}
+
+enum EstadoFactura {
+  BORRADOR
+  PENDIENTE // lista para timbrar, aún no enviada al PAC
+  TIMBRADA
+  CANCELADA
+  ERROR
+}
+
+model Factura {
+  id         String        @id @default(uuid())
+  empresaId  String        @map("empresa_id")
+  sucursalId String        @map("sucursal_id")
+  clienteId  String?       @map("cliente_id") // trazabilidad/reportes; el receptor real va congelado abajo (ver Cliente)
+  tipo       TipoFactura
+  estado     EstadoFactura @default(BORRADOR)
+  serie      String?
+  folio      String?
+
+  // Receptor — snapshot congelado al momento de facturar (mismo criterio que
+  // VentaDetalle.precio/.impuestoTasa: no lee del Cliente en vivo, porque Directa/
+  // Autofacturación pueden no tener un Cliente guardado y porque el régimen/domicilio
+  // del cliente puede cambiar después sin que eso deba alterar una factura ya emitida).
+  rfcReceptor               String @map("rfc_receptor")
+  nombreReceptor            String @map("nombre_receptor")
+  regimenFiscalReceptor     String @map("regimen_fiscal_receptor")
+  usoCfdi                   String @map("uso_cfdi")
+  domicilioFiscalReceptorCp String @map("domicilio_fiscal_receptor_cp")
+
+  // Emisor — congelado igual, resuelto como sucursal.<campo> ?? empresa.<campo>
+  rfcEmisor           String @map("rfc_emisor")
+  razonSocialEmisor   String @map("razon_social_emisor")
+  regimenFiscalEmisor String @map("regimen_fiscal_emisor")
+  lugarExpedicion     String @map("lugar_expedicion") // CP de la sucursal, sin fallback
+
+  formaPago  String   @map("forma_pago") // c_FormaPago (en ventas MIXTO: la del monto mayor)
+  metodoPago String   @map("metodo_pago") // PUE | PPD
+  moneda     String   @default("MXN")
+  tipoCambio Decimal? @map("tipo_cambio")
+
+  subtotal                  Decimal
+  totalDescuento            Decimal @default(0) @map("total_descuento")
+  totalImpuestosTrasladados Decimal @default(0) @map("total_impuestos_trasladados")
+  totalImpuestosRetenidos   Decimal @default(0) @map("total_impuestos_retenidos")
+  total                     Decimal
+
+  // Solo aplica cuando tipo = GLOBAL (CFDI 4.0 exige este nodo con RFC genérico)
+  informacionGlobalPeriodicidad String? @map("informacion_global_periodicidad") // c_Periodicidad
+  informacionGlobalMeses        String? @map("informacion_global_meses") // c_Meses
+  informacionGlobalAnio         Int?    @map("informacion_global_anio")
+
+  // Cancelación (CFDI 4.0 exige motivo; "01" requiere la factura que la sustituye)
+  claveMotivoCancelacion String? @map("clave_motivo_cancelacion")
+  facturaSustitutaId     String? @map("factura_sustituta_id") // id "suelto", sin @relation (mismo criterio que referenciaId en otros módulos)
+
+  // Reservado para la fase de integración con el PAC — nullable, sin lógica todavía
+  uuid             String?   @unique // Folio Fiscal asignado por el SAT
+  xmlTimbrado      String?   @map("xml_timbrado")
+  cadenaOriginal   String?   @map("cadena_original")
+  selloSAT         String?   @map("sello_sat")
+  noCertificadoSAT String?   @map("no_certificado_sat")
+  fechaTimbrado    DateTime? @map("fecha_timbrado")
+
+  usuarioId     String   @map("usuario_id")
+  creadoEn      DateTime @default(now()) @map("creado_en")
+  actualizadoEn DateTime @updatedAt @map("actualizado_en")
+
+  empresa  Empresa  @relation(fields: [empresaId], references: [id])
+  sucursal Sucursal @relation(fields: [sucursalId], references: [id])
+  cliente  Cliente? @relation(fields: [clienteId], references: [id])
+
+  detalles FacturaDetalle[]
+  ventas   FacturaVenta[] // 1 fila para VENTA_POS/AUTOFACTURACION, N para GLOBAL/CONSOLIDADA_CLIENTE
+
+  @@map("facturas")
+}
+
+// Une Factura <-> Venta(s) del POS. Sirve tanto para "facturar una venta" (1 fila) como
+// para Global/Consolidada (N filas, una por venta agrupada). ventaId queda "suelto" (sin
+// @relation formal hacia Venta), mismo criterio que referenciaId en MovimientoInventario/
+// MovimientoCaja para no acoplar el módulo de Facturación al de Ventas vía Prisma.
+model FacturaVenta {
+  id        String @id @default(uuid())
+  facturaId String @map("factura_id")
+  ventaId   String @map("venta_id")
+
+  factura Factura @relation(fields: [facturaId], references: [id])
+
+  @@unique([ventaId]) // una venta no puede estar en más de una factura vigente
+  @@map("facturas_ventas")
+}
+
+model FacturaDetalle {
+  id               String  @id @default(uuid())
+  facturaId        String  @map("factura_id")
+  articuloId       String? @map("articulo_id") // suelto, sin @relation (mismo criterio que VentaDetalle.articuloId) — nullable porque Directa/Global pueden no mapear a un Articulo interno
+  claveProdServSat String  @map("clave_prod_serv_sat") // congelado del Articulo al momento de facturar
+  claveUnidadSat   String  @map("clave_unidad_sat")
+  descripcion      String
+  cantidad         Decimal
+  valorUnitario    Decimal @map("valor_unitario")
+  importe          Decimal
+  descuento        Decimal @default(0)
+  objetoImpuesto   String  @map("objeto_impuesto") // c_ObjetoImp
+
+  factura   Factura                  @relation(fields: [facturaId], references: [id])
+  impuestos FacturaDetalleImpuesto[]
+
+  @@map("facturas_detalle")
+}
+
+enum TipoImpuestoCfdi {
+  TRASLADO
+  RETENCION
+}
+
+model FacturaDetalleImpuesto {
+  id               String           @id @default(uuid())
+  facturaDetalleId String           @map("factura_detalle_id")
+  tipo             TipoImpuestoCfdi
+  impuestoClaveSat String           @map("impuesto_clave_sat") // c_Impuesto: 001 ISR, 002 IVA, 003 IEPS
+  tipoFactorSat    String           @map("tipo_factor_sat") // c_TipoFactor: Tasa | Cuota | Exento
+  base             Decimal
+  tasaOCuota       Decimal?         @map("tasa_o_cuota")
+  importe          Decimal?
+
+  detalle FacturaDetalle @relation(fields: [facturaDetalleId], references: [id])
+
+  @@map("facturas_detalle_impuestos")
 }
