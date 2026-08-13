@@ -5,7 +5,7 @@ Generado a partir de:
 - `VENTIX_BASE_TECNICA_CONSOLIDADA_V1.md`
 - `VENTIX_PLAN_DE_TRABAJO_V1.md`
 
-## Estado actual (2026-08-11)
+## Estado actual (2026-08-13)
 
 Las 10 fases del plan original están completas, commiteadas y en GitHub
 (`https://github.com/jesusworkmb-a11y/Ventix`, rama `main`), **y desplegadas en producción en Render**.
@@ -72,11 +72,13 @@ Notas del despliegue:
    `FRONTEND_URL` (el frontend ya desplegado), no desde `localhost:5173` — para verificar cambios
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
-5. Dile qué sigue: no queda ningún pendiente abierto (10 módulos completos y en producción, dos
-   rondas de QA cerradas, rediseño visual + su pulido ya aplicados, documentos de venta,
-   descuentos/promociones, alertas de stock, unidades alternas + variantes de producto,
-   restricción de nombre único en Catálogo y envío de documentos por correo ya implementados) —
-   ver el detalle de opciones en "Qué sigue" al final de este README.
+5. Dile qué sigue: los 10 módulos originales no tienen pendientes abiertos. Además ya se
+   construyó el módulo de **Facturación Electrónica CFDI** (fuera del plan original) — Fases A-D
+   completas y en producción (schema/catálogos SAT, configuración fiscal, motor de facturas con
+   los 4 flujos de negocio, y su UI), quedan pendientes la Fase E (portal público de
+   autofacturación) y la Fase F (timbrado real contra un PAC — necesita que el usuario elija
+   proveedor antes de arrancar). Ver el detalle en "Facturación Electrónica (CFDI)" y las
+   opciones en "Qué sigue" al final de este README.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -1232,6 +1234,96 @@ Proveedor de email: [Resend](https://resend.com).
   Add Domain, agregar los registros DNS que da) y actualizar `RESEND_FROM_EMAIL` (local y en
   Render).
 
+## Facturación Electrónica (CFDI México) — Fases A-D (2026-08-13)
+
+Fuera del plan original de 10 fases — el usuario pidió construir el módulo de Facturación
+Electrónica (CFDI México), con la integración real del PAC (timbrado) dejada para el final a
+propósito, para poder construir primero toda la lógica de negocio/modelo de datos/UI en local.
+Roadmap acordado de 6 fases (A-F); **A-D ya están completas y verificadas en vivo contra
+producción**, con datos de prueba limpiados después de cada verificación (mismo criterio que el
+resto del proyecto). E y F quedan pendientes, ver "Qué sigue".
+
+### Fase A — Esquema de datos y catálogos SAT
+
+Nuevos modelos en `schema.prisma`: `Factura`, `FacturaDetalle`, `FacturaDetalleImpuesto`,
+`FacturaVenta` (tabla puente que soporta tanto "una venta → una factura" como "N ventas → una
+factura", para Global/Consolidada) y `CatalogoSat` (tabla genérica para los ~9 catálogos
+oficiales del SAT — régimen fiscal, uso CFDI, forma de pago, etc. — sembrada al arrancar el
+server vía `seedCatalogosSat.js`, mismo patrón que ya usaba `seedPermisos`). Campos fiscales
+nuevos en `Empresa` (RFC, régimen fiscal, slug del portal público), `Sucursal` (override
+opcional de RFC/razón social/régimen/código postal — null hereda de la Empresa, comportamiento
+"matriz"), `Cliente` (régimen/uso CFDI/CP preferidos, solo para prellenar formularios),
+`Articulo`/`Unidad` (clave de producto-servicio / clave de unidad SAT) e `Impuesto` (clave de
+impuesto SAT + tipo de factor). `Venta.facturaId` es el candado anti-duplicado (mismo patrón que
+`Cotizacion.convertidaEnVentaId`) — **a propósito no es `@unique`**, porque Global/Consolidada
+necesitan que varias ventas compartan la misma factura (ver Fase C, se detectó y corrigió un bug
+real acá). Los catálogos grandes del SAT (`ClaveProdServ` ~52k filas, `ClaveUnidad` ~2.5k) no se
+sembraron — quedan pendientes de una carga aparte desde los archivos oficiales, hardcodearlos no
+era viable.
+
+### Fase B — Configuración fiscal
+
+Nueva pantalla [`ConfiguracionFiscalPage.jsx`](frontend/src/modules/core/pages/ConfiguracionFiscalPage.jsx)
+en `/administracion/fiscal`, gateada con un permiso propio `administracion.fiscal.editar`
+(separado de `administracion.empresa.editar` — el RFC es dato legal, distinto en severidad de
+cambiar el nombre comercial/logo). De paso se encontró que `Empresa.rfc` nunca había tenido UI
+desde que existe el campo (Fase 0) — ya se cerró. Artículos y Configuración de Catálogo
+(Unidades/Impuestos) ahora capturan sus claves SAT en el mismo formulario que ya tenían. Nuevo
+componente reusable [`SelectorCatalogoSat.jsx`](frontend/src/shared/ui/SelectorCatalogoSat.jsx)
+(combobox con búsqueda server-side sobre `CatalogoSat`, con endpoint propio de solo lectura
+`GET /api/facturacion/catalogos-sat`) — necesario porque los catálogos grandes no caben en un
+`<select>` nativo mandado completo al navegador.
+
+### Fase C — Motor de facturas
+
+[`facturas.service.js`](backend/src/modules/facturacion/facturas/facturas.service.js) implementa
+`crear()` para los 4 flujos de negocio: **Directa** (sin venta previa, conceptos manuales),
+**Venta POS** (convierte una venta existente, candado atómico sobre `Venta.facturaId` dentro de
+la misma transacción que crea la Factura), **Global** (agrupa ventas de "público en general" de
+un periodo, RFC genérico) y **Consolidada** (agrupa N ventas de un cliente identificado en un
+solo CFDI). El candado multi-venta de Global/Consolidada se probó con requests concurrentes
+reales — reprodujo exactamente el bug de `@unique` antes del fix, y quedó confirmado corregido
+después (ambas ventas terminan compartiendo la misma factura, 1 de N requests concurrentes tiene
+éxito). `cancelar()` exige motivo SAT y libera `Venta.facturaId` de las ventas asociadas. Regla
+de negocio: en una venta con pago `MIXTO`, la forma de pago del CFDI es la del método con el
+monto mayor (decisión del usuario). Simplificación consciente documentada in-line: el traslado
+de impuesto siempre se asume IVA, porque `VentaDetalle` solo congela la tasa numérica, no qué
+`Impuesto` del catálogo se usó — revisar si hace falta IEPS/retenciones antes de integrar el PAC.
+Todos los montos Decimal se escriben como string vía `.toFixed(2)`, no como `number` crudo,
+mismo gotcha de precisión de Prisma ya documentado y corregido en Caja.
+
+### Fase D — Interfaz de usuario
+
+Tres pantallas nuevas bajo un grupo "Facturación" propio en el sidebar:
+[`FacturasPage.jsx`](frontend/src/modules/facturacion/pages/FacturasPage.jsx) (listado paginado
+server-side, detalle con conceptos/impuestos, cancelar con motivo SAT),
+[`FacturaDirectaPage.jsx`](frontend/src/modules/facturacion/pages/FacturaDirectaPage.jsx) (form
+completo con líneas manuales, el backend calcula los impuestos) y
+[`FacturaGlobalPage.jsx`](frontend/src/modules/facturacion/pages/FacturaGlobalPage.jsx) (dos
+modos: público en general con selección automática por periodo, o cliente identificado con
+checklist de sus ventas sin facturar). Botón "Facturar" nuevo en Ventas recientes
+([VentasHistorialPage.jsx](frontend/src/modules/ventas/pages/VentasHistorialPage.jsx)), con un
+modal que prellena los datos del receptor desde el cliente de la venta cuando los tiene
+cargados. Componente reusable
+[`ReceptorFiscalCampos.jsx`](frontend/src/modules/facturacion/components/ReceptorFiscalCampos.jsx)
+(RFC/nombre/régimen/uso CFDI/CP) compartido por los tres flujos. Verificado con clics reales
+contra producción (login, navegar las 3 pantallas nuevas, probar el combobox de régimen fiscal
+de punta a punta, abrir el modal de "Facturar" desde una venta) — sin errores de consola.
+
+### Para probarlo
+
+Antes de poder facturar algo hace falta cargar datos fiscales, si no los endpoints rechazan con
+un mensaje claro (400):
+1. `/administracion/fiscal` — RFC/razón social/régimen fiscal de la empresa, y código postal
+   (lugar de expedición) de la sucursal desde la que se vaya a facturar.
+2. En los artículos a facturar, cargar la clave de producto/servicio SAT; en su unidad base
+   (Configuración de Catálogo → Unidades), la clave de unidad SAT.
+3. Recién ahí: vender algo en el POS → Ventas recientes → botón "Facturar", o probar
+   `/facturacion/directa` / `/facturacion/global` directamente.
+
+Las facturas quedan en estado **Pendiente** — el timbrado real ante el SAT es la Fase F,
+todavía no implementada.
+
 ## Qué contiene
 
 ```text
@@ -1250,6 +1342,8 @@ ventix/
 │       │                            obtenerSiguienteFolio (secuencia.service.js), auditoria
 │       └── modules/              ← MOD-001 a MOD-010, cada uno con sus propios
 │                                    <recurso>/{.controller,.service,.routes,.validators}.js
+│                                    (más facturacion/, fuera del plan original — ver
+│                                    "Facturación Electrónica (CFDI México)" arriba)
 └── frontend/
     ├── tailwind.config.js        ← tokens de diseño (colores, tipografía, sombras, radios)
     └── src/
@@ -1347,11 +1441,21 @@ la segunda ronda de QA (ver "Nombre único en Categorías/Marcas/Unidades/Impues
 precio" arriba). Por último, ya se agregó el envío de documentos por correo (Cotización, Compra,
 Ticket de venta, Reportes) vía Resend (ver "Enviar documentos por correo" arriba) — pendiente
 menor: el usuario todavía no verificó un dominio propio en Resend, así que por ahora solo entrega
-al correo de su cuenta (dominio sandbox). **No queda ningún otro pendiente abierto.** A elección:
+al correo de su cuenta (dominio sandbox). Con eso, los 10 módulos del plan original quedaron sin
+ningún pendiente abierto. Fuera de ese plan, ya se construyó el módulo de **Facturación
+Electrónica CFDI** (ver "Facturación Electrónica (CFDI México)" arriba) — Fases A-D completas y
+en producción (schema/catálogos SAT, configuración fiscal incluido el RFC de la empresa que
+ahora sí es editable desde la UI, motor de facturas con los 4 flujos de negocio, y su interfaz).
+**El único pendiente abierto hoy es terminar ese módulo.** A elección:
+- **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
+  de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
+  (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.
+- **Fase F de Facturación**: integración real con un PAC para timbrar ante el SAT — necesita que
+  el usuario elija proveedor de PAC antes de poder arrancar, y manejo seguro del CSD (certificado
+  + llave privada) de la empresa.
 - Una tercera ronda de QA, o profundizar en algún módulo específico.
-- Otros documentos o campos de empresa editables (razón social, RFC, correo, teléfono, sitio
-  web ya existen en el modelo `Empresa` pero solo `nombreComercial`/`logoUrl` son editables
-  desde la UI por ahora).
+- Otros campos de empresa editables (correo, teléfono, sitio web ya existen en el modelo
+  `Empresa` pero no en la UI).
 - Nuevas funcionalidades fuera del plan original.
 - Loading states (spinners) más pulidos — el único ítem del pulido visual que quedó sin tocar.
 - Extender variantes/unidades alternas si hace falta: vender también por unidad alterna (hoy
