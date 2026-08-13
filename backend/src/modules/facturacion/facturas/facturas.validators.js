@@ -95,10 +95,16 @@ const ventasFacturablesSchema = z.object({
   hasta: z.string().optional(),
 });
 
+const sugerenciaSchema = z.object({
+  sucursalId: z.string().min(1),
+  clienteId: z.string().min(1),
+});
+
 module.exports = {
   crearDirectaSchema,
   crearDesdeVentaSchema,
   crearAgrupadaSchema,
   cancelarSchema,
   ventasFacturablesSchema,
+  sugerenciaSchema,
 };

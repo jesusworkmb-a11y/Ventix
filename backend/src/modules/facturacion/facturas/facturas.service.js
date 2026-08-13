@@ -475,6 +475,18 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   return respuestaPaginada(datos, total, paginado);
 }
 
+// Fase 1 de "captura rápida": sugiere repetir la última factura emitida a este cliente desde
+// esta sucursal, para precargar Factura Directa sin necesidad de una tabla de plantillas.
+// include.detalles.impuestos para que el frontend pueda reconstruir un concepto congelado
+// completo si el articuloId ya no existe/está inactivo (ver FacturaDirectaPage).
+async function obtenerSugerencia({ empresaId, sucursalId, clienteId }) {
+  return prisma.factura.findFirst({
+    where: { empresaId, sucursalId, clienteId, estado: { not: 'CANCELADA' } },
+    orderBy: { creadoEn: 'desc' },
+    include: { detalles: { include: { impuestos: true } } },
+  });
+}
+
 async function obtener({ empresaId, facturaId }) {
   const factura = await prisma.factura.findFirst({
     where: { id: facturaId, empresaId },
@@ -489,6 +501,7 @@ module.exports = {
   crearDesdeVenta,
   crearAgrupada,
   listarVentasFacturables,
+  obtenerSugerencia,
   cancelar,
   listar,
   obtener,

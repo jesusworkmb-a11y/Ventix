@@ -9,6 +9,9 @@ export function obtenerFactura(id) {
 export function listarVentasFacturables(params) {
   return api.get('/facturacion/facturas/ventas-facturables', { params }).then((res) => res.data);
 }
+export function obtenerSugerenciaFactura(params) {
+  return api.get('/facturacion/facturas/sugerencia', { params }).then((res) => res.data);
+}
 export function crearFacturaDirecta(datos) {
   return api.post('/facturacion/facturas/directa', datos).then((res) => res.data);
 }

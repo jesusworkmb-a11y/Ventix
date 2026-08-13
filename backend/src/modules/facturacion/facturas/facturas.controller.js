@@ -6,6 +6,7 @@ const {
   crearAgrupadaSchema,
   cancelarSchema,
   ventasFacturablesSchema,
+  sugerenciaSchema,
 } = require('./facturas.validators');
 
 async function listar(req, res) {
@@ -29,6 +30,13 @@ async function ventasFacturables(req, res) {
   if (!parsed.success) throw new AppError(400, 'Filtros inválidos.');
   const ventas = await service.listarVentasFacturables({ empresaId: req.auth.empresaId, ...parsed.data });
   res.json(ventas);
+}
+
+async function sugerencia(req, res) {
+  const parsed = sugerenciaSchema.safeParse(req.query);
+  if (!parsed.success) throw new AppError(400, 'Filtros inválidos.');
+  const factura = await service.obtenerSugerencia({ empresaId: req.auth.empresaId, ...parsed.data });
+  res.json(factura);
 }
 
 async function crearDirecta(req, res) {
@@ -78,5 +86,5 @@ async function cancelar(req, res) {
 }
 
 module.exports = {
-  listar, obtener, ventasFacturables, crearDirecta, crearDesdeVenta, crearAgrupada, cancelar,
+  listar, obtener, ventasFacturables, sugerencia, crearDirecta, crearDesdeVenta, crearAgrupada, cancelar,
 };

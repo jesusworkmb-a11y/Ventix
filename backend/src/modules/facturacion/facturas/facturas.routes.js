@@ -9,6 +9,7 @@ router.use(auth);
 
 router.get('/', requierePermiso('facturacion.ver'), asyncHandler(controller.listar));
 router.get('/ventas-facturables', requierePermiso('facturacion.ver'), asyncHandler(controller.ventasFacturables));
+router.get('/sugerencia', requierePermiso('facturacion.crear'), asyncHandler(controller.sugerencia));
 router.get('/:id', requierePermiso('facturacion.ver'), asyncHandler(controller.obtener));
 
 router.post('/directa', requierePermiso('facturacion.crear'), asyncHandler(controller.crearDirecta));
