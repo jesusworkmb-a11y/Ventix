@@ -75,10 +75,12 @@ Notas del despliegue:
 5. Dile qué sigue: los 10 módulos originales no tienen pendientes abiertos. Además ya se
    construyó el módulo de **Facturación Electrónica CFDI** (fuera del plan original) — Fases A-D
    completas y en producción (schema/catálogos SAT, configuración fiscal, motor de facturas con
-   los 4 flujos de negocio, y su UI), quedan pendientes la Fase E (portal público de
-   autofacturación) y la Fase F (timbrado real contra un PAC — necesita que el usuario elija
-   proveedor antes de arrancar). Ver el detalle en "Facturación Electrónica (CFDI)" y las
-   opciones en "Qué sigue" al final de este README.
+   los 4 flujos de negocio, y su UI), y sobre eso ya se agregó captura rápida (sugerir repetir la
+   última factura o una plantilla nombrada, agregar conceptos clicando el catálogo en vez de
+   tipear claves SAT a mano) más un rediseño visual de Factura Directa. Quedan pendientes la Fase
+   E (portal público de autofacturación) y la Fase F (timbrado real contra un PAC — necesita que
+   el usuario elija proveedor antes de arrancar). Ver el detalle en "Facturación Electrónica
+   (CFDI)" y las opciones en "Qué sigue" al final de este README.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -1324,6 +1326,56 @@ un mensaje claro (400):
 Las facturas quedan en estado **Pendiente** — el timbrado real ante el SAT es la Fase F,
 todavía no implementada.
 
+## Captura rápida de Factura Directa (2026-08-13, sesión posterior)
+
+Sobre las Fases A-D: `/facturacion/directa` era la única pantalla del módulo sin ningún
+autocompletado (sin selector de cliente, cada concepto tipeado a mano incluida la clave SAT). Se
+armó una propuesta UX/arquitectura (inspirada en el mecanismo de Ventas) con 4 fases; se
+implementaron y verificaron en vivo las dos primeras.
+
+**Fase 1** (sin tablas nuevas): selector de **Cliente** en Factura Directa — elegir uno guardado
+llama a `receptorDesdeCliente()` (ya existía, usada solo en Global/Consolidada, ahora también
+acá) para prellenar RFC/régimen/uso CFDI/CP, siempre editable; "Público en general" mantiene la
+captura 100% manual de siempre. Los **conceptos** ahora se arman clicando un Artículo del
+catálogo (autocompleta clave prod/serv, clave de unidad, descripción, precio e impuesto desde el
+`Articulo` — los artículos sin clave SAT cargada aparecen atenuados y no son seleccionables); el
+formulario manual de siempre se mantuvo, colapsado, como alternativa. Endpoint nuevo
+`GET /api/facturacion/facturas/sugerencia?sucursalId&clienteId` sugiere repetir la última factura
+de ese cliente en esa sucursal — aparece como una barra descartable, nunca bloquea.
+
+**Fase 2**: tablas nuevas `FacturaPlantilla`/`FacturaPlantillaConcepto` (plantillas nombradas por
+cliente+sucursal, con una marcada "predeterminada" y contador de uso). Decisión de diseño: una
+`FacturaPlantillaConcepto` solo guarda `{articuloId, cantidadHabitual}` — **nunca congela precio
+ni clave SAT**, siempre se resuelve en vivo contra el `Articulo` actual al aplicarse (mismo
+criterio que `Cliente.listaPrecioId`); si el artículo ya no existe o está inactivo esa línea se
+omite y se avisa, en vez de inventar un valor. `obtenerSugerencia()` prioriza una plantilla
+(predeterminada, o si no hay ninguna la de uso más reciente) y solo si no hay ninguna cae a la
+última Factura (Fase 1). Módulo backend nuevo
+[`plantillas/`](backend/src/modules/facturacion/plantillas), mismo permiso `facturacion.crear`
+que crear la factura. UI: botón "Guardar como plantilla" (solo conceptos ligados a catálogo) y un
+modal "Plantillas de este cliente" (usar cualquiera, marcar/quitar predeterminada, borrar).
+Verificado en vivo con datos de prueba: se subió el precio de un artículo entre guardar una
+sugerencia/plantilla y aplicarla, confirmando que el concepto clonado siempre trae el precio
+**nuevo**, no uno viejo.
+
+**Rediseño visual** (misma sesión, a pedido con una imagen de referencia de otro sistema): se
+acotó el alcance a solo reorganización visual con los campos que ya existían — sin Condiciones de
+pago/Observaciones/Descuento global/"Guardar como borrador"/pestaña "CFDI Relacionados" (habrían
+requerido schema nuevo o cambiar el flujo de creación), y sin cambiar el texto "Crear factura" a
+"Timbrar factura" (la app todavía no integra un PAC). Los botones principales subieron al header
+de la página; la tabla de Conceptos ganó columnas `#`/Código (SKU)/Unidad y Cantidad/Descuento
+pasaron a ser editables directo en la tabla (antes solo se podía borrar la línea); "Pago y
+confirmación" se partió en 3 columnas (forma/método de pago, datos de contacto del cliente de
+solo lectura, totales con un aviso "Todo listo"/"Falta: ...").
+
+**Cómo se verificó sin poder usar los catálogos SAT reales**: `ClaveProdServ`/`ClaveUnidad` no
+están sembrados (ver Fase A), así que no se puede cargar `claveProdServSat`/`claveUnidadSat` en un
+Articulo real vía la UI. Se crearon Artículos/Unidades de prueba directo con Prisma (scripts
+sueltos en `backend/`, borrados al terminar, nombre con sufijo `(ignorar)`), y se llamó a
+`facturas.service.js#crearDirecta` directo para sembrar una "factura previa". También se
+setearon temporalmente RFC/régimen de Empresa y CP de Sucursal (están en `null` en producción),
+revertido a `null` al final.
+
 ## Qué contiene
 
 ```text
@@ -1446,7 +1498,10 @@ ningún pendiente abierto. Fuera de ese plan, ya se construyó el módulo de **F
 Electrónica CFDI** (ver "Facturación Electrónica (CFDI México)" arriba) — Fases A-D completas y
 en producción (schema/catálogos SAT, configuración fiscal incluido el RFC de la empresa que
 ahora sí es editable desde la UI, motor de facturas con los 4 flujos de negocio, y su interfaz).
-**El único pendiente abierto hoy es terminar ese módulo.** A elección:
+Sobre eso, ya se agregó captura rápida en Factura Directa (sugerir repetir la última factura o
+una plantilla nombrada, agregar conceptos clicando el catálogo, ver "Captura rápida de Factura
+Directa" arriba) y su rediseño visual a un layout más compacto. **El único pendiente abierto hoy
+es terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.
