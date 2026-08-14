@@ -27,6 +27,7 @@ const OBJETO_IMPUESTO_OPCIONES = [
 
 const CONCEPTO_VACIO = {
   articuloId: null,
+  codigo: '',
   claveProdServSat: null,
   claveUnidadSat: null,
   descripcion: '',
@@ -52,6 +53,7 @@ function conceptoDesdeArticulo(articulo, cantidad = 1) {
   const tieneImpuesto = articulo.impuesto && Number(articulo.impuesto.tasa) > 0;
   return {
     articuloId: articulo.id,
+    codigo: articulo.sku || articulo.clave || '',
     claveProdServSat: articulo.claveProdServSat,
     claveUnidadSat: articulo.unidadBase?.claveUnidadSat || null,
     descripcion: articulo.nombre,
@@ -72,6 +74,7 @@ function conceptoCongeladoDesdeDetalle(d) {
   const traslado = d.impuestos?.find((i) => i.tipo === 'TRASLADO');
   return {
     articuloId: null,
+    codigo: '',
     claveProdServSat: d.claveProdServSat,
     claveUnidadSat: d.claveUnidadSat,
     descripcion: d.descripcion,
@@ -337,11 +340,28 @@ function FacturaDirectaPage() {
     setConceptos((c) => c.filter((_, i) => i !== index));
   }
 
+  // Cantidad y descuento se editan directo en la tabla (sin modo edición aparte) -- el resto de
+  // un concepto ligado a catálogo se corrige quitando la línea y volviendo a agregar el artículo.
+  function actualizarConceptoCampo(index, campo, valor) {
+    setConceptos((c) => {
+      const copia = [...c];
+      copia[index] = { ...copia[index], [campo]: valor };
+      return copia;
+    });
+  }
+
   const totales = conceptos.reduce((acc, c) => {
     const { importe, impuesto } = importeConcepto(c);
     return { subtotal: acc.subtotal + importe, impuestos: acc.impuestos + impuesto };
   }, { subtotal: 0, impuestos: 0 });
   const total = totales.subtotal + totales.impuestos;
+
+  const clienteSeleccionado = clientes.find((c) => c.id === clienteId);
+
+  const pendientes = [];
+  if (!sucursalId) pendientes.push('sucursal de expedición');
+  if (conceptos.length === 0) pendientes.push('al menos un concepto');
+  if (!formaPago) pendientes.push('forma de pago');
 
   function limpiarFactura() {
     setConceptos([]);
@@ -388,11 +408,6 @@ function FacturaDirectaPage() {
     } finally {
       setGuardando(false);
     }
-  }
-
-  function confirmar(e) {
-    e.preventDefault();
-    crearFactura();
   }
 
   function abrirNuevoCliente() {
@@ -482,14 +497,29 @@ function FacturaDirectaPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Factura directa</h1>
-        <p className="text-sm text-gray-500">Emisión libre de CFDI, sin depender de una venta previa del POS.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Factura directa</h1>
+          <p className="text-sm text-gray-500">Emisión libre de CFDI, sin depender de una venta previa del POS.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {clienteId && (
+            <Button type="button" variant="secondary" onClick={abrirGuardarPlantilla} disabled={conceptosGuardables.length === 0}>
+              <BookmarkPlus size={16} /> Guardar como plantilla
+            </Button>
+          )}
+          <Button type="button" variant="secondary" onClick={limpiarFactura} title="Limpiar (Esc)">
+            Limpiar
+          </Button>
+          <Button type="button" onClick={crearFactura} disabled={guardando}>
+            {guardando ? 'Creando…' : 'Crear factura (F1)'}
+          </Button>
+        </div>
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
-      <Card title="Sucursal y receptor">
+      <Card title="Datos del comprobante">
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Select
@@ -716,19 +746,41 @@ function FacturaDirectaPage() {
         </details>
 
         <div className="mt-5">
-          <Table columnas={['Descripción', 'Cant.', 'V. unitario', 'Importe', '']}>
-            {conceptos.length === 0 && <TablaVacia colSpan={5} />}
+          <Table columnas={['#', 'Código', 'Descripción', 'Cant.', 'Unidad', 'V. unitario', 'Descuento', 'Importe', '']}>
+            {conceptos.length === 0 && <TablaVacia colSpan={9} />}
             {conceptos.map((c, i) => {
               const { importe } = importeConcepto(c);
               return (
                 <Fila key={i}>
+                  <Celda className="text-gray-400">{i + 1}</Celda>
+                  <Celda className="text-gray-500">{c.codigo || '—'}</Celda>
                   <Celda>
                     {c.descripcion}
                     {c.advertencia && <span className="mt-0.5 block text-xs text-warning-700">{c.advertencia}</span>}
                   </Celda>
-                  <Celda>{c.cantidad}</Celda>
+                  <Celda>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={c.cantidad}
+                      onChange={(e) => actualizarConceptoCampo(i, 'cantidad', e.target.value)}
+                      className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </Celda>
+                  <Celda className="text-gray-500">{c.claveUnidadSat || '—'}</Celda>
                   <Celda>{formatoMoneda(c.valorUnitario)}</Celda>
-                  <Celda>{formatoMoneda(importe)}</Celda>
+                  <Celda>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={c.descuento}
+                      onChange={(e) => actualizarConceptoCampo(i, 'descuento', e.target.value)}
+                      className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </Celda>
+                  <Celda className="font-medium text-gray-900">{formatoMoneda(importe)}</Celda>
                   <Celda className="text-right">
                     <button type="button" onClick={() => quitarConcepto(i)} className="text-gray-400 hover:text-danger-600">
                       <Trash2 size={16} />
@@ -742,8 +794,9 @@ function FacturaDirectaPage() {
       </Card>
 
       <Card title="Pago y confirmación">
-        <form onSubmit={confirmar} className="space-y-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Información adicional</p>
             <SelectorCatalogoSat
               id="formaPagoDirecta"
               tipo="FormaPago"
@@ -763,29 +816,51 @@ function FacturaDirectaPage() {
             </Select>
           </div>
 
-          <div className="flex justify-end gap-6 border-t border-gray-100 pt-4 text-sm">
-            <span>Subtotal: <strong>{formatoMoneda(totales.subtotal)}</strong></span>
-            <span>Impuestos: <strong>{formatoMoneda(totales.impuestos)}</strong></span>
-            <span>Total: <strong>{formatoMoneda(total)}</strong></span>
-          </div>
-
-          <div className="flex flex-wrap justify-end gap-2">
-            {clienteId && (
-              <Button type="button" variant="secondary" onClick={abrirGuardarPlantilla} disabled={conceptosGuardables.length === 0}>
-                <BookmarkPlus size={16} /> Guardar como plantilla
-              </Button>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Datos del cliente</p>
+            {clienteSeleccionado ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
+                <p className="font-medium text-gray-800">{clienteSeleccionado.nombre}</p>
+                {clienteSeleccionado.direccion && <p className="mt-1 text-gray-500">{clienteSeleccionado.direccion}</p>}
+                {clienteSeleccionado.correo && <p className="mt-1 text-gray-500">{clienteSeleccionado.correo}</p>}
+                {clienteSeleccionado.telefono && <p className="text-gray-500">{clienteSeleccionado.telefono}</p>}
+                {!clienteSeleccionado.direccion && !clienteSeleccionado.correo && !clienteSeleccionado.telefono && (
+                  <p className="text-gray-400">Sin dirección ni contacto registrados.</p>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-400">
+                Público en general — sin datos de cliente.
+              </div>
             )}
-            <Button type="submit" disabled={guardando}>{guardando ? 'Creando…' : 'Crear factura (F1)'}</Button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-3 text-xs text-gray-400">
-            <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F1</kbd> Crear factura</span>
-            <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F2</kbd> Buscar producto</span>
-            <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F3</kbd> Nuevo cliente</span>
-            {haySugerenciaVisible && <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F4</kbd> Aplicar sugerencia</span>}
-            <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">Esc</kbd> Limpiar</span>
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Totales</p>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{formatoMoneda(totales.subtotal)}</span></div>
+                <div className="flex justify-between text-gray-500"><span>Impuestos</span><span>{formatoMoneda(totales.impuestos)}</span></div>
+                <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-semibold text-gray-900">
+                  <span>Total</span><span>{formatoMoneda(total)}</span>
+                </div>
+              </div>
+            </div>
+            {pendientes.length === 0 ? (
+              <p className="mt-3 text-sm font-medium text-success-700">✓ Todo listo para crear la factura.</p>
+            ) : (
+              <p className="mt-3 text-sm text-gray-400">Falta: {pendientes.join(', ')}.</p>
+            )}
           </div>
-        </form>
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-4 text-xs text-gray-400">
+          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F1</kbd> Crear factura</span>
+          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F2</kbd> Buscar producto</span>
+          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F3</kbd> Nuevo cliente</span>
+          {haySugerenciaVisible && <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F4</kbd> Aplicar sugerencia</span>}
+          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">Esc</kbd> Limpiar</span>
+        </div>
       </Card>
 
       <Modal abierto={nuevoClienteAbierto} onCerrar={() => setNuevoClienteAbierto(false)} titulo="Nuevo cliente">
