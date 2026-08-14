@@ -27,6 +27,7 @@ export const NAVEGACION = [
       { label: 'Ventas', to: '/ventas' },
       { label: 'Ventas recientes', to: '/ventas/recientes' },
       { label: 'Cotizaciones', to: '/ventas/cotizaciones' },
+      { label: 'Cotizaciones recientes', to: '/ventas/cotizaciones/recientes' },
     ],
   },
   { label: 'Caja', to: '/caja', icon: Wallet },

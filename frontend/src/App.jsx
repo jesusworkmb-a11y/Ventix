@@ -23,6 +23,7 @@ import CajaPage from './modules/caja/pages/CajaPage';
 import VentasPage from './modules/ventas/pages/VentasPage';
 import VentasHistorialPage from './modules/ventas/pages/VentasHistorialPage';
 import CotizacionesPage from './modules/ventas/pages/CotizacionesPage';
+import CotizacionesHistorialPage from './modules/ventas/pages/CotizacionesHistorialPage';
 import ReportesPage from './modules/reportes/pages/ReportesPage';
 import HerramientasPage from './modules/herramientas/pages/HerramientasPage';
 import FacturasPage from './modules/facturacion/pages/FacturasPage';
@@ -185,6 +186,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <CotizacionesPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/ventas/cotizaciones/recientes"
+          element={(
+            <ProtectedRoute>
+              <CotizacionesHistorialPage />
             </ProtectedRoute>
           )}
         />
