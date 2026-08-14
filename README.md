@@ -1376,6 +1376,41 @@ sueltos en `backend/`, borrados al terminar, nombre con sufijo `(ignorar)`), y s
 setearon temporalmente RFC/régimen de Empresa y CP de Sucursal (están en `null` en producción),
 revertido a `null` al final.
 
+## Ajustes de navegación en Ventas/Cotizaciones (2026-08-14)
+
+A pedido del usuario, dos cambios chicos de navegación, sin tocar lógica de negocio:
+
+- **Botón "Ver cotizaciones" quitado de [VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx).**
+  Quedaba redundante con el acceso ya existente en el sidebar (Ventas → Cotizaciones); la ruta
+  `/ventas/cotizaciones` y la pantalla siguen existiendo igual.
+- **Cotizaciones separada en captura e historial, mismo patrón ya usado en Ventas** (ver "Pulido
+  post-rediseño" más arriba, donde `VentasPage`/`VentasHistorialPage` se dividieron de la misma
+  forma). [CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx)
+  (`/ventas/cotizaciones`) quedó solo con el formulario de captura (cliente, artículos, descuento
+  manual, crear) — se le agregó un selector explícito de "Sucursal (vía caja)" en la tarjeta de
+  captura, porque antes ese dato salía implícito del selector "Caja para cobrar" que vivía en la
+  tarjeta de conversión, y esa tarjeta se movió a la pantalla nueva. Nuevo
+  [CotizacionesHistorialPage.jsx](frontend/src/modules/ventas/pages/CotizacionesHistorialPage.jsx)
+  en `/ventas/cotizaciones/recientes` con todo lo demás: búsqueda/paginación server-side,
+  descargar PDF, enviar por correo y convertir en venta (con su modal de autorización cuando hay
+  descuento manual). Sidebar
+  ([navigation.js](frontend/src/shared/layout/navigation.js)) y rutas
+  ([App.jsx](frontend/src/App.jsx)) actualizados con el nuevo link "Cotizaciones recientes". Sin
+  cambios de lógica — mismas funciones, mismos endpoints, solo reorganizadas entre las dos
+  pantallas.
+- Verificado en vivo: creación de una cotización de prueba (COT-MAT-000011, Cliente General,
+  $20) desde la pantalla de captura, aparece correctamente en el historial como "Pendiente" con
+  el total con IVA recalculado ($23.20) al abrir el modal de conversión. Sin sesión de caja
+  abierta para completar la conversión en esta verificación, así que la cotización de prueba
+  quedó sin convertir (sin impacto en stock ni caja; no se limpió porque Cotizaciones no tiene
+  cancelar/eliminar, mismo criterio que otros datos de prueba ya presentes en producción).
+- **Gotcha de esta sesión:** el segundo push (la separación de Cotizaciones) no disparó el
+  auto-deploy de Render — el dashboard seguía mostrando como último deploy el commit anterior (el
+  del botón quitado) más de 20 minutos después del push. Se resolvió con un Manual Deploy
+  ("Deploy latest commit") desde el dashboard de `ventix-frontend`. Si un push futuro no se
+  refleja en producción después de varios minutos, revisar el dashboard de Render antes de asumir
+  que el build simplemente está tardando.
+
 ## Qué contiene
 
 ```text
