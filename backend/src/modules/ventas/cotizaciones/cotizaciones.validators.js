@@ -6,6 +6,8 @@ const METODOS_PAGO = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA', 'MIXTO'];
 const crearCotizacionSchema = z.object({
   sucursalId: z.string().min(1),
   clienteId: z.string().min(1),
+  vigencia: z.coerce.date().optional(),
+  observaciones: z.string().trim().max(500).optional(),
   detalles: z
     .array(
       z.object({

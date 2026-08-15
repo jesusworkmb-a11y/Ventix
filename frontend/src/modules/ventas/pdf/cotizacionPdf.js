@@ -6,6 +6,15 @@ const MARGEN_X = 15;
 const ANCHO_PAGINA = 210;
 const DERECHA = ANCHO_PAGINA - MARGEN_X;
 
+// `vigencia` es una fecha de calendario pura (sin hora, ver Cotizacion.vigencia en el schema) —
+// se formatea por substring en vez de con formatoFecha (que usa Intl con hora y zona horaria del
+// navegador) para no mostrar un día distinto al que se capturó.
+function formatoFechaCorta(fechaIso) {
+  if (!fechaIso) return '';
+  const [anio, mes, dia] = fechaIso.slice(0, 10).split('-');
+  return `${dia}/${mes}/${anio}`;
+}
+
 // Cotizacion.total (el campo que guarda el backend) es el subtotal sin impuesto — el impuesto
 // se calcula recién al convertir en venta, con la tasa vigente en ese momento (mismo criterio
 // que CotizacionesPage#abrirConversion). El PDF necesita mostrarle al cliente el total real que
@@ -82,6 +91,10 @@ function construirDocCotizacion(cotizacion, empresa, articulosCompletos) {
     doc.text(sucursalTexto, xTexto, y);
   }
   doc.text(`Fecha: ${formatoFecha(cotizacion.creadoEn)}`, DERECHA, y, { align: 'right' });
+  if (cotizacion.vigencia) {
+    y += 5;
+    doc.text(`Vigencia: ${formatoFechaCorta(cotizacion.vigencia)}`, DERECHA, y, { align: 'right' });
+  }
 
   y += 10;
   doc.setDrawColor(210);
@@ -134,13 +147,28 @@ function construirDocCotizacion(cotizacion, empresa, articulosCompletos) {
   doc.text('Total', 150, finalY);
   doc.text(formatoMoneda(total), DERECHA, finalY, { align: 'right' });
 
+  let yFinal = finalY + 14;
+  if (cotizacion.observaciones) {
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30);
+    doc.text('Observaciones', MARGEN_X, yFinal);
+    yFinal += 5;
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    const lineasObs = doc.splitTextToSize(cotizacion.observaciones, DERECHA - MARGEN_X);
+    doc.text(lineasObs, MARGEN_X, yFinal);
+    yFinal += lineasObs.length * 4 + 6;
+  }
+
   doc.setFont(undefined, 'normal');
   doc.setFontSize(8);
   doc.setTextColor(140);
   doc.text(
     'Cotización sujeta a disponibilidad de stock y a la vigencia de los precios al momento de la compra.',
     MARGEN_X,
-    finalY + 14,
+    yFinal,
   );
 
   return doc;

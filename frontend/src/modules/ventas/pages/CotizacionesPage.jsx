@@ -1,17 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2, FileDown, Percent } from 'lucide-react';
-import { crearCotizacion, obtenerCotizacion } from '../api/cotizaciones.api';
+import { Trash2, Percent } from 'lucide-react';
+import { crearCotizacion } from '../api/cotizaciones.api';
 import { listarCajas } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
-import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
+import Badge from '../../../shared/ui/Badge';
 import Table, { Fila, Celda } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
+
+const VIGENCIA_DEFAULT_DIAS = 15;
+const OBSERVACIONES_MAX = 500;
 
 // Cotizaciones no consume el catálogo de Descuentos/Promociones (a diferencia de Ventas) —
 // solo un descuento manual por línea, %/monto fijo, sin permiso para cargarse (ver
@@ -23,14 +26,39 @@ function calcularDescuentoLinea(linea) {
   return tipo === 'PORCENTAJE' ? bruto * (Number(valor) / 100) : Math.min(Number(valor), bruto);
 }
 
+function hoyMasDias(dias) {
+  const f = new Date();
+  f.setDate(f.getDate() + dias);
+  return f.toISOString().slice(0, 10);
+}
+
+// `vigencia` se trata como fecha de calendario pura (sin hora) — se compara/formatea por
+// substring en vez de con un Date completo para no arrastrar el offset de zona horaria del
+// navegador (Date.UTC de ambos lados evita el mismo problema al calcular la diferencia en días).
+function formatoFechaCorta(fechaIso) {
+  if (!fechaIso) return '';
+  const [anio, mes, dia] = fechaIso.slice(0, 10).split('-');
+  return `${dia}/${mes}/${anio}`;
+}
+
+function diasRestantes(fechaIso) {
+  if (!fechaIso) return null;
+  const hoy = new Date();
+  const hoyUtc = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const [anio, mes, dia] = fechaIso.slice(0, 10).split('-').map(Number);
+  const fechaUtc = Date.UTC(anio, mes - 1, dia);
+  return Math.round((fechaUtc - hoyUtc) / 86400000);
+}
+
 function CotizacionesPage() {
-  const { empresa } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [clienteId, setClienteId] = useState('');
   const [articulos, setArticulos] = useState([]);
   const [articuloId, setArticuloId] = useState('');
   const [cantidad, setCantidad] = useState('1');
   const [carrito, setCarrito] = useState([]);
+  const [vigencia, setVigencia] = useState(() => hoyMasDias(VIGENCIA_DEFAULT_DIAS));
+  const [observaciones, setObservaciones] = useState('');
   const [error, setError] = useState('');
   const [creada, setCreada] = useState(null);
 
@@ -58,22 +86,6 @@ function CotizacionesPage() {
       .catch(() => {});
   }, []);
 
-  // jsPDF (+ sus dependencias, ~250kB gzip) solo se descarga cuando alguien realmente pide un
-  // PDF, vía import() dinámico, para no engordar el bundle inicial de toda la app por una
-  // función que se usa solo en esta pantalla.
-  async function descargarPdf(cotizacionId) {
-    setError('');
-    try {
-      const [detalle, { generarPdfCotizacion }] = await Promise.all([
-        obtenerCotizacion(cotizacionId),
-        import('../pdf/cotizacionPdf'),
-      ]);
-      generarPdfCotizacion(detalle, empresa, articulos);
-    } catch (err) {
-      setError('No se pudo generar el PDF de la cotización.');
-    }
-  }
-
   // Misma resolución de precio por lista que Ventas (ver VentasPage#precioEfectivo) — así el
   // total de la cotización coincide con lo que se cobrará al convertirla.
   function precioEfectivo(articulo) {
@@ -85,16 +97,34 @@ function CotizacionesPage() {
     return Number(articulo.precio);
   }
 
-  function agregarLinea(e) {
-    e.preventDefault();
+  function agregarLinea() {
     const articulo = articulos.find((a) => a.id === articuloId);
     if (!articulo) return;
     setCarrito((c) => [
       ...c,
-      { articuloId, nombre: articulo.nombre, cantidad: Number(cantidad), precio: precioEfectivo(articulo), descuentoManual: null },
+      {
+        articuloId,
+        nombre: articulo.nombre,
+        descripcion: articulo.descripcion,
+        sku: articulo.sku,
+        unidad: articulo.unidadBase?.nombre,
+        cantidad: Number(cantidad),
+        precio: precioEfectivo(articulo),
+        descuentoManual: null,
+      },
     ]);
     setArticuloId('');
     setCantidad('1');
+  }
+
+  function actualizarCantidad(index, valor) {
+    const num = Number(valor);
+    if (!num || num <= 0) return;
+    setCarrito((c) => {
+      const copia = [...c];
+      copia[index] = { ...copia[index], cantidad: num };
+      return copia;
+    });
   }
 
   // Si borrar una línea corre los índices, el mini-formulario de descuento manual (identificado
@@ -145,6 +175,7 @@ function CotizacionesPage() {
   const carritoCalc = carrito.map((l) => ({ ...l, descuentoMonto: calcularDescuentoLinea(l) }));
   const descuentoTotal = carritoCalc.reduce((acc, l) => acc + l.descuentoMonto, 0);
   const total = Math.round(carritoCalc.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0) * 100) / 100;
+  const dias = diasRestantes(vigencia);
 
   async function confirmarCotizacion(e) {
     e.preventDefault();
@@ -163,6 +194,8 @@ function CotizacionesPage() {
       const cotizacion = await crearCotizacion({
         sucursalId: caja.sucursalId,
         clienteId,
+        ...(vigencia && { vigencia: new Date(vigencia).toISOString() }),
+        ...(observaciones.trim() && { observaciones: observaciones.trim() }),
         detalles: carritoCalc.map((l) => ({
           articuloId: l.articuloId,
           cantidad: l.cantidad,
@@ -171,6 +204,8 @@ function CotizacionesPage() {
       });
       setCreada(cotizacion);
       setCarrito([]);
+      setObservaciones('');
+      setVigencia(hoyMasDias(VIGENCIA_DEFAULT_DIAS));
       setManualEditIndex(null);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear la cotización.');
@@ -178,169 +213,231 @@ function CotizacionesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <form onSubmit={confirmarCotizacion} className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Cotizaciones</h1>
-          <p className="text-sm text-gray-500">Creá cotizaciones para tus clientes.</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Cotizaciones</p>
+          <h1 className="mt-1 text-2xl font-bold text-gray-900">Nueva cotización</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
-            to="/ventas"
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Volver a Ventas
-          </Link>
           <Link
             to="/ventas/cotizaciones/recientes"
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            Ver cotizaciones recientes
+            Cancelar
           </Link>
+          <Button type="submit">Crear cotización</Button>
         </div>
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
       {creada && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
-          <p>Cotización {creada.folio} creada. Total: {formatoMoneda(creada.total)}</p>
-          <button
-            type="button"
-            onClick={() => descargarPdf(creada.id)}
-            className="inline-flex items-center gap-1.5 font-medium text-success-800 hover:underline"
-          >
-            <FileDown size={15} /> Descargar PDF
-          </button>
-        </div>
+        <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
+          Cotización {creada.folio} creada. Total: {formatoMoneda(creada.total)} — descargala o convertila en
+          venta desde{' '}
+          <Link to="/ventas/cotizaciones/recientes" className="font-medium underline">Cotizaciones recientes</Link>.
+        </p>
       )}
 
-      <Card title="Nueva cotización">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Select id="clienteCot" label="Cliente" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-            {clientes.filter((c) => c.activo).map((c) => (
-              <option key={c.id} value={c.id}>{c.nombre}{c.esGeneral ? ' (general)' : ''}</option>
-            ))}
-          </Select>
-          {cajas.length > 0 && (
-            <Select id="cajaCot" label="Sucursal (vía caja)" value={cajaId} onChange={(e) => setCajaId(e.target.value)}>
-              {cajas.map((c) => (
-                <option key={c.id} value={c.id}>{c.nombre}</option>
-              ))}
-            </Select>
-          )}
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card title="Datos generales">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Select id="clienteCot" label="Cliente" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
+                {clientes.filter((c) => c.activo).map((c) => (
+                  <option key={c.id} value={c.id}>{c.nombre}{c.esGeneral ? ' (general)' : ''}</option>
+                ))}
+              </Select>
+              {cajas.length > 0 && (
+                <Select id="cajaCot" label="Sucursal (vía caja)" value={cajaId} onChange={(e) => setCajaId(e.target.value)}>
+                  {cajas.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nombre}</option>
+                  ))}
+                </Select>
+              )}
+              <Input
+                id="vigenciaCot"
+                label="Vigencia"
+                type="date"
+                value={vigencia}
+                onChange={(e) => setVigencia(e.target.value)}
+              />
+            </div>
+          </Card>
 
-        <form onSubmit={agregarLinea} className="mt-5 flex flex-wrap items-end gap-3">
-          <Select
-            id="articuloCot"
-            label="Artículo"
-            value={articuloId}
-            onChange={(e) => setArticuloId(e.target.value)}
-            required
-            className="min-w-[220px]"
+          <Card
+            title="Conceptos"
+            action={carrito.length > 0 && (
+              <span className="text-xs font-medium text-gray-400">
+                {carrito.length} línea{carrito.length === 1 ? '' : 's'}
+              </span>
+            )}
           >
-            <option value="">Selecciona un artículo...</option>
-            {articulos.map((a) => (
-              <option key={a.id} value={a.id}>{a.nombre} ({formatoMoneda(precioEfectivo(a))})</option>
-            ))}
-          </Select>
-          <Input
-            id="cantidadCot"
-            label="Cantidad"
-            type="number"
-            step="0.01"
-            min="0.01"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
-            className="w-28"
-            required
-          />
-          <Button type="submit" variant="secondary">Agregar</Button>
-        </form>
+            <div className="flex flex-wrap items-end gap-3">
+              <Select
+                id="articuloCot"
+                label="Artículo"
+                value={articuloId}
+                onChange={(e) => setArticuloId(e.target.value)}
+                className="min-w-[220px]"
+              >
+                <option value="">Selecciona un artículo...</option>
+                {articulos.map((a) => (
+                  <option key={a.id} value={a.id}>{a.nombre} ({formatoMoneda(precioEfectivo(a))})</option>
+                ))}
+              </Select>
+              <Input
+                id="cantidadCot"
+                label="Cantidad"
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); agregarLinea(); }
+                }}
+                className="w-28"
+              />
+              <Button type="button" variant="secondary" onClick={agregarLinea} disabled={!articuloId}>
+                Agregar
+              </Button>
+            </div>
 
-        {carrito.length > 0 && (
-          <div className="mt-4">
-            <Table columnas={['Artículo', 'Cantidad', 'Precio', 'Descuento', '']}>
-              {carritoCalc.map((l, i) => (
-                <Fila key={i}>
-                  <Celda>{l.nombre}</Celda>
-                  <Celda>{l.cantidad}</Celda>
-                  <Celda>{formatoMoneda(l.precio)}</Celda>
-                  <Celda>
-                    {manualEditIndex === i ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <select
-                          value={manualForm.tipo}
-                          onChange={(e) => setManualForm((f) => ({ ...f, tipo: e.target.value }))}
-                          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
-                        >
-                          <option value="PORCENTAJE">%</option>
-                          <option value="MONTO_FIJO">$</option>
-                        </select>
+            {carrito.length > 0 && (
+              <div className="mt-4">
+                <Table columnas={['#', 'Código', 'Descripción', 'Cantidad', 'Unidad', 'Precio unitario', 'Descuento', 'Importe', '']}>
+                  {carritoCalc.map((l, i) => (
+                    <Fila key={i}>
+                      <Celda className="text-gray-400">{i + 1}</Celda>
+                      <Celda className="font-mono text-xs text-gray-500">{l.sku || '—'}</Celda>
+                      <Celda>
+                        <p className="font-medium text-gray-800">{l.nombre}</p>
+                        {l.descripcion && <p className="text-xs text-gray-400">{l.descripcion}</p>}
+                      </Celda>
+                      <Celda>
                         <input
                           type="number"
                           step="0.01"
-                          min="0"
-                          autoFocus
-                          value={manualForm.valor}
-                          onChange={(e) => setManualForm((f) => ({ ...f, valor: e.target.value }))}
-                          className="w-20 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-900"
+                          min="0.01"
+                          value={l.cantidad}
+                          onChange={(e) => actualizarCantidad(i, e.target.value)}
+                          className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-900"
                         />
-                        <button type="button" onClick={aplicarDescuentoManual} className="rounded-md bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700">
-                          Aplicar
-                        </button>
-                        <button type="button" onClick={cerrarDescuentoManual} className="text-xs font-medium text-gray-400 hover:text-gray-600">
-                          Cancelar
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        {l.descuentoMonto > 0 ? (
-                          <>
-                            <span className="text-xs font-medium text-success-700">-{formatoMoneda(l.descuentoMonto)}</span>
-                            <button type="button" onClick={() => abrirDescuentoManual(i)} title="Editar descuento" className="text-primary-600 hover:text-primary-700">
-                              <Percent size={14} />
+                      </Celda>
+                      <Celda>{l.unidad || '—'}</Celda>
+                      <Celda>{formatoMoneda(l.precio)}</Celda>
+                      <Celda>
+                        {manualEditIndex === i ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={manualForm.tipo}
+                              onChange={(e) => setManualForm((f) => ({ ...f, tipo: e.target.value }))}
+                              className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                            >
+                              <option value="PORCENTAJE">%</option>
+                              <option value="MONTO_FIJO">$</option>
+                            </select>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              autoFocus
+                              value={manualForm.valor}
+                              onChange={(e) => setManualForm((f) => ({ ...f, valor: e.target.value }))}
+                              className="w-20 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-900"
+                            />
+                            <button type="button" onClick={aplicarDescuentoManual} className="rounded-md bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700">
+                              Aplicar
                             </button>
-                            <button type="button" onClick={() => quitarDescuentoManual(i)} title="Quitar descuento" className="text-gray-400 hover:text-danger-600">
-                              <Trash2 size={13} />
+                            <button type="button" onClick={cerrarDescuentoManual} className="text-xs font-medium text-gray-400 hover:text-gray-600">
+                              Cancelar
                             </button>
-                          </>
+                          </div>
                         ) : (
-                          <button type="button" onClick={() => abrirDescuentoManual(i)} title="Agregar descuento" className="text-gray-300 hover:text-primary-600">
-                            <Percent size={14} />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {l.descuentoMonto > 0 ? (
+                              <>
+                                <span className="text-xs font-medium text-success-700">-{formatoMoneda(l.descuentoMonto)}</span>
+                                <button type="button" onClick={() => abrirDescuentoManual(i)} title="Editar descuento" className="text-primary-600 hover:text-primary-700">
+                                  <Percent size={14} />
+                                </button>
+                                <button type="button" onClick={() => quitarDescuentoManual(i)} title="Quitar descuento" className="text-gray-400 hover:text-danger-600">
+                                  <Trash2 size={13} />
+                                </button>
+                              </>
+                            ) : (
+                              <button type="button" onClick={() => abrirDescuentoManual(i)} title="Agregar descuento" className="text-gray-300 hover:text-primary-600">
+                                <Percent size={14} />
+                              </button>
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
-                  </Celda>
-                  <Celda className="text-right">
-                    <button type="button" onClick={() => quitarLinea(i)} className="text-gray-400 hover:text-danger-600">
-                      <Trash2 size={16} />
-                    </button>
-                  </Celda>
-                </Fila>
-              ))}
-            </Table>
-          </div>
-        )}
+                      </Celda>
+                      <Celda className="font-medium text-gray-800">
+                        {formatoMoneda(l.cantidad * l.precio - l.descuentoMonto)}
+                      </Celda>
+                      <Celda className="text-right">
+                        <button type="button" onClick={() => quitarLinea(i)} className="text-gray-400 hover:text-danger-600">
+                          <Trash2 size={16} />
+                        </button>
+                      </Celda>
+                    </Fila>
+                  ))}
+                </Table>
+              </div>
+            )}
+          </Card>
 
-        <div className="mt-4 space-y-1 rounded-lg bg-gray-50 px-4 py-3">
-          {descuentoTotal > 0 && (
-            <div className="flex items-center justify-between text-sm text-gray-500">
-              <span>Descuento</span>
-              <span className="font-medium text-success-700">-{formatoMoneda(descuentoTotal)}</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-base font-semibold text-gray-900">Total: {formatoMoneda(total)}</span>
-          </div>
+          <Card title="Observaciones">
+            <textarea
+              id="observacionesCot"
+              rows={3}
+              maxLength={OBSERVACIONES_MAX}
+              value={observaciones}
+              onChange={(e) => setObservaciones(e.target.value)}
+              placeholder="Condiciones, notas para el cliente..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+            <p className="mt-1 text-right text-xs text-gray-400">{observaciones.length} / {OBSERVACIONES_MAX}</p>
+          </Card>
         </div>
 
-        <form onSubmit={confirmarCotizacion} className="mt-4">
-          <Button type="submit">Crear cotización</Button>
-        </form>
-      </Card>
-    </div>
+        <div className="space-y-6">
+          <Card>
+            <p className="text-sm text-gray-500">Total de la cotización</p>
+            <p className="mt-1 text-3xl font-bold text-gray-900">{formatoMoneda(total)}</p>
+            <p className="mt-1 text-xs text-gray-400">Subtotal — el IVA se calcula al convertir en venta.</p>
+            {descuentoTotal > 0 && (
+              <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm text-gray-500">
+                <span>Descuento</span>
+                <span className="font-medium text-success-700">-{formatoMoneda(descuentoTotal)}</span>
+              </div>
+            )}
+          </Card>
+
+          {vigencia && (
+            <Card title="Vigencia">
+              <p className="text-sm text-gray-700">Vence el {formatoFechaCorta(vigencia)}</p>
+              <div className="mt-2">
+                {dias !== null && (
+                  dias < 0
+                    ? <Badge tono="danger">Vencida</Badge>
+                    : <Badge tono={dias <= 3 ? 'warning' : 'primary'}>{dias} día{dias === 1 ? '' : 's'}</Badge>
+                )}
+              </div>
+            </Card>
+          )}
+
+          <Card title="Tip">
+            <p className="text-xs text-gray-500">
+              Al confirmar se genera el folio de la cotización. Después podés descargarla en PDF, enviarla
+              por correo o convertirla en venta desde "Cotizaciones recientes".
+            </p>
+          </Card>
+        </div>
+      </div>
+    </form>
   );
 }
 

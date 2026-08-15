@@ -77,7 +77,7 @@ function calcularDescuentoManual(cantidad, precio, descuentoManual) {
 // chequeo de venta.modificar_precio/aplicar_descuento se aplica al convertir (ver abajo),
 // que es el momento en que el precio sí se vuelve una transacción real. Mismo criterio para el
 // descuento manual por línea.
-async function crear({ empresaId, usuarioId, sucursalId, clienteId, detalles }) {
+async function crear({ empresaId, usuarioId, sucursalId, clienteId, vigencia, observaciones, detalles }) {
   const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, empresaId } });
   if (!sucursal) throw new AppError(400, 'La sucursal indicada no pertenece a esta empresa.');
 
@@ -115,7 +115,7 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, detalles }) 
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId, tipoDocumento: 'COT' });
 
     const cotizacion = await tx.cotizacion.create({
-      data: { empresaId, sucursalId, clienteId, usuarioId, folio, total },
+      data: { empresaId, sucursalId, clienteId, usuarioId, folio, total, vigencia, observaciones },
     });
 
     await tx.cotizacionDetalle.createMany({

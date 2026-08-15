@@ -21,9 +21,26 @@ import { formatoMoneda } from '../../../shared/format';
 const COLUMNAS_COTIZACIONES = [
   { label: 'Folio', clave: 'folio', ordenable: true },
   { label: 'Total', clave: 'total', ordenable: true },
+  { label: 'Vigencia', clave: null },
   { label: 'Estado', clave: null },
   { label: '', clave: null },
 ];
+
+// Mismo criterio de "fecha de calendario pura" que CotizacionesPage — comparar/formatear por
+// substring en vez de con un Date completo evita el corrimiento por zona horaria del navegador.
+function formatoFechaCorta(fechaIso) {
+  if (!fechaIso) return '';
+  const [anio, mes, dia] = fechaIso.slice(0, 10).split('-');
+  return `${dia}/${mes}/${anio}`;
+}
+
+function estaVencida(fechaIso) {
+  if (!fechaIso) return false;
+  const hoy = new Date();
+  const hoyUtc = Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const [anio, mes, dia] = fechaIso.slice(0, 10).split('-').map(Number);
+  return Date.UTC(anio, mes - 1, dia) < hoyUtc;
+}
 
 function CotizacionesHistorialPage() {
   const location = useLocation();
@@ -280,11 +297,18 @@ function CotizacionesHistorialPage() {
             />
           )}
         >
-          {cotizaciones.length === 0 && <TablaVacia colSpan={4} />}
+          {cotizaciones.length === 0 && <TablaVacia colSpan={5} />}
           {cotizaciones.map((c) => (
             <Fila key={c.id}>
               <Celda className="font-medium text-gray-800">{c.folio}</Celda>
               <Celda>{formatoMoneda(c.total)}</Celda>
+              <Celda>
+                {c.vigencia ? (
+                  <span className={estaVencida(c.vigencia) && !c.convertidaEnVentaId ? 'text-danger-600' : 'text-gray-500'}>
+                    {formatoFechaCorta(c.vigencia)}
+                  </span>
+                ) : '—'}
+              </Celda>
               <Celda>
                 <Badge tono={c.convertidaEnVentaId ? 'success' : 'warning'}>
                   {c.convertidaEnVentaId ? 'Convertida' : 'Pendiente'}

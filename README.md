@@ -1411,6 +1411,57 @@ A pedido del usuario, dos cambios chicos de navegación, sin tocar lógica de ne
   refleja en producción después de varios minutos, revisar el dashboard de Render antes de asumir
   que el build simplemente está tardando.
 
+## Rediseño de Nueva cotización + Vigencia/Observaciones (2026-08-14, sesión posterior)
+
+A pedido del usuario, con una imagen de referencia de otro sistema (BOX POS es justamente el
+nombre de marca ya usado en toda la app — `frontend/index.html`, `Sidebar.jsx`, `LoginPage.jsx`,
+etc. —, así que la referencia era del mismo producto, no de uno externo). Antes de tocar código
+se usó `AskUserQuestion` para acotar el alcance: la imagen de referencia traía varios campos que
+no existen en el modelo (Vendedor, Proyecto/Evento, Moneda, Estado tipo Borrador/workflow,
+Condiciones comerciales, Descuento global, Historial tipo timeline, imágenes de producto — esto
+último ni es viable, el proyecto no tiene almacenamiento de archivos). Se acordó con el usuario:
+redisño visual con los datos ya existentes, más dos campos nuevos puntuales (Vigencia y
+Observaciones), sin el resto.
+
+- **Modelo de datos**, migración aditiva: `Cotizacion.vigencia` (`DateTime?`, solo fecha de
+  calendario, sin hora) y `Cotizacion.observaciones` (`String?`, máx. 500). `crearCotizacionSchema`
+  ([cotizaciones.validators.js](backend/src/modules/ventas/cotizaciones/cotizaciones.validators.js))
+  los acepta como opcionales; `cotizaciones.service.js#crear` los persiste sin lógica adicional
+  (`obtener()` ya devolvía el modelo completo sin `select`, así que no necesitó cambios).
+- **`vigencia` se trata como fecha de calendario pura, no como timestamp**: tanto en
+  [CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx) como en
+  [CotizacionesHistorialPage.jsx](frontend/src/modules/ventas/pages/CotizacionesHistorialPage.jsx)
+  y [cotizacionPdf.js](frontend/src/modules/ventas/pdf/cotizacionPdf.js), formatear/comparar la
+  fecha se hace por substring del ISO (`"YYYY-MM-DD"`) o con `Date.UTC(...)` de ambos lados en vez
+  de `new Date(fechaIso)` + `Intl`/`toLocaleDateString` normal — evita el corrimiento de un día que
+  produce el offset de zona horaria de México (UTC-6) al convertir una fecha sin hora.
+- **[CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx) reorganizada**
+  al estilo de la referencia: header con "Cancelar"/"Crear cotización" (reemplaza los links "Volver
+  a Ventas"/"Ver cotizaciones recientes" de antes, redundantes con el sidebar — mismo criterio ya
+  aplicado en "Ajustes de navegación" arriba), tarjeta "Datos generales" (Cliente, Sucursal vía
+  caja, Vigencia con prellenado a 15 días), tabla de Conceptos con columnas #/Código (SKU)/
+  Descripción/Cantidad (ahora editable directo en la fila, no solo al agregar la línea)/Unidad/
+  Precio unitario/Descuento/Importe, tarjeta de Observaciones con contador de caracteres, y una
+  barra lateral con el total (aclarando que es sin IVA — se calcula recién al convertir, como
+  siempre en este módulo), un badge de vigencia ("N días" / "Vencida") y un tip. El formulario de
+  agregar artículo pasó de `<form>` a botón `type="button"` (con Enter en Cantidad disparando el
+  mismo handler) para poder envolver toda la pantalla en un único `<form>` y que el botón "Crear
+  cotización" del header funcione como submit — antes eran dos `<form>` hermanos.
+- **[CotizacionesHistorialPage.jsx](frontend/src/modules/ventas/pages/CotizacionesHistorialPage.jsx)**:
+  nueva columna Vigencia (fecha en rojo si venció y sigue sin convertir).
+- **[cotizacionPdf.js](frontend/src/modules/ventas/pdf/cotizacionPdf.js)**: agrega "Vigencia:"
+  junto a Folio/Fecha en el encabezado, y un bloque "Observaciones" (con salto de línea automático
+  vía `doc.splitTextToSize`) antes del pie de página — se propaga solo al envío por correo, que
+  reusa el mismo builder.
+- Verificado en vivo contra el backend local (misma base de Supabase que producción): cotización
+  de prueba (Coca Cola 600ml ×2, 10% de descuento, vigencia a 15 días, con observaciones) —
+  confirmado por red que el `POST` devolvió `201`, que el total con descuento se calculó bien
+  ($40 → $36), que apareció en el historial con la vigencia correcta, y por inspección directa de
+  los bytes del PDF descargado (mismo truco de interceptar `URL.createObjectURL` ya usado en
+  sesiones anteriores) que el PDF incluye tanto "Vigencia: 29/08/2026" como el texto de
+  observaciones. Sin errores de consola. Cotización de prueba sin convertir/eliminar (Cotizaciones
+  no tiene cancelar/eliminar, mismo criterio ya documentado en "Ajustes de navegación" arriba).
+
 ## Qué contiene
 
 ```text

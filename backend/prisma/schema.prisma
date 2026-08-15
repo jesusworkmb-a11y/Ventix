@@ -946,8 +946,10 @@ model Cotizacion {
   usuarioId           String   @map("usuario_id")
   folio               String?
   total               Decimal
-  convertidaEnVentaId String?  @map("convertida_en_venta_id")
-  creadoEn            DateTime @default(now()) @map("creado_en")
+  convertidaEnVentaId String?   @map("convertida_en_venta_id")
+  vigencia            DateTime? // fecha límite de validez (solo calendario, sin hora) — opcional
+  observaciones       String?
+  creadoEn            DateTime  @default(now()) @map("creado_en")
 
   detalles CotizacionDetalle[]
 
