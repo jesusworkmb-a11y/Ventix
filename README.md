@@ -1491,6 +1491,13 @@ esta pantalla basada en formulario en vez de grilla:
   funciona en producción real vía teclado físico en Ventas); mismo tipo de limitación de
   automatización de este Browser pane ya documentada para clics por `ref` en sesiones anteriores
   (Clientes, Reportes, Artículos).
+- Pusheado a `main` en dos commits (`8007063` rediseño + Vigencia/Observaciones, `67da100`
+  buscador con agregado automático) con permiso explícito del usuario, ambos auto-desplegados por
+  Render sin necesidad de Manual Deploy esta vez. Reverificado ya en producción real
+  (`ventix-frontend.onrender.com/ventas/cotizaciones`): el campo de búsqueda nuevo está en vivo y
+  el dropdown trae resultados reales contra `ventix-backend-yjgv.onrender.com` (búsqueda "coca" →
+  "Coca Cola 600ml — COCA600 — $20.00"), sin crear datos de prueba adicionales ahí porque la
+  verificación local ya escribió contra esa misma base de Supabase.
 
 ## Qué contiene
 
