@@ -1499,6 +1499,55 @@ esta pantalla basada en formulario en vez de grilla:
   "Coca Cola 600ml — COCA600 — $20.00"), sin crear datos de prueba adicionales ahí porque la
   verificación local ya escribió contra esa misma base de Supabase.
 
+## Cotización con impuesto incluido en el total (2026-08-14, sesión posterior)
+
+A pedido del usuario: "no suma los impuestos hasta convertir en venta pero los clientes se
+confundirán al pagar". Hasta ahora `Cotizacion.total` era el subtotal sin impuesto (el impuesto
+se calculaba recién al convertir, con la tasa vigente en ese momento) — el PDF ya recalculaba y
+mostraba el total con impuesto al cliente, pero el número que se veía **durante la captura** y en
+el listado de "Cotizaciones recientes" era el subtotal, inconsistente con lo que terminaba
+cobrándose. Cambio de fondo, no solo de UI:
+
+- **Modelo de datos**, migración aditiva: `CotizacionDetalle.impuestoTasa` (`Decimal`, default 0)
+  — se congela la tasa del `Impuesto` del artículo al crear la cotización, mismo patrón que
+  `VentaDetalle.impuestoTasa` en Ventas. `Cotizacion.total` cambia de significado: ahora es el
+  total **con** impuesto (antes era el subtotal), igual que `Venta.total`.
+- **[cotizaciones.service.js#crear](backend/src/modules/ventas/cotizaciones/cotizaciones.service.js)**:
+  el `findMany` de artículos ahora incluye `impuesto: true`; cada línea calcula y persiste su
+  `impuestoTasa`, y `total = subtotal + impuestos` (redondeado).
+- **Decisión de diseño explícita**: la tasa queda **congelada** en la cotización (lo que se
+  cotiza no se mueve si el catálogo cambia después), pero `convertir()` — que sí cobra dinero
+  real — sigue recalculando con la tasa **vigente** al momento de convertir, sin tocarse (mismo
+  criterio que ya tenía). En el caso normal (tasa sin cambios entre cotizar y convertir, la
+  inmensa mayoría) ambos números coinciden siempre; si la tasa de un artículo cambiara entre
+  medio, se cobra la vigente al convertir, no la congelada — es la decisión correcta para una
+  factura/cobro real. Comentario actualizado en
+  [CotizacionesHistorialPage.jsx#abrirConversion](frontend/src/modules/ventas/pages/CotizacionesHistorialPage.jsx)
+  explicando por qué sigue recalculando en vez de reusar `Cotizacion.total`.
+- **[CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx)**: cada línea
+  del carrito ahora también congela `impuestoTasa` al agregarse; la tarjeta de total pasó de
+  mostrar un solo número con la nota "el IVA se calcula al convertir" a un desglose
+  Subtotal/Impuestos/Total (mismo patrón que el resumen de Ventas), con "Impuestos incluidos — es
+  el monto que pagaría el cliente." como aclaración.
+- **[cotizacionPdf.js](frontend/src/modules/ventas/pdf/cotizacionPdf.js)** se simplificó: antes
+  recalculaba el impuesto de cada línea buscando la tasa vigente en el catálogo completo de
+  artículos (parámetro `articulosCompletos`, que había que cargar y pasar desde las dos páginas
+  que generan el PDF); ahora usa directo `detalle.impuestoTasa`, ya congelada y disponible en la
+  respuesta de `obtenerCotizacion()` — el PDF (y el correo, que reusa el mismo builder) siempre
+  coincide exactamente con `Cotizacion.total`, incluso si el catálogo cambia después y alguien
+  vuelve a descargar el PDF de una cotización vieja. El parámetro `articulosCompletos` se eliminó
+  de `generarPdfCotizacion`/`generarBase64Cotizacion` y de sus dos llamadas en
+  [CotizacionesHistorialPage.jsx](frontend/src/modules/ventas/pages/CotizacionesHistorialPage.jsx)
+  (ese archivo sigue cargando `articulos` para otra cosa: la tasa **vigente** que usa
+  `abrirConversion` para calcular cuánto cobrar).
+- Verificado en vivo contra el backend local (misma base que producción): cotización con Coca
+  Cola 600ml (IVA 16%) — Subtotal $20.00 + Impuestos $3.20 = Total $23.20 mostrado en pantalla
+  durante la captura, `POST` devolvió exactamente `{"total":"23.2", "detalles":[{...,
+  "impuestoTasa":0.16}]}`, el listado de "Cotizaciones recientes" mostró $23.20, y el PDF
+  descargado (inspeccionado por bytes, mismo truco de interceptar `URL.createObjectURL` de
+  siempre) trae "20.00"/"3.20"/"23.20" en el bloque de totales. Sin errores de consola.
+  Cotización de prueba (COT-MAT-000015) sin convertir, mismo criterio ya documentado arriba.
+
 ## Qué contiene
 
 ```text

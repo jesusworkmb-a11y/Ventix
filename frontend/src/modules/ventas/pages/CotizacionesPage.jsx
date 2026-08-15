@@ -117,6 +117,9 @@ function CotizacionesPage() {
           unidad: articulo.unidadBase?.nombre,
           cantidad: 1,
           precio: precioEfectivo(articulo),
+          // Congelada al agregar la línea — mismo criterio que el backend (cotizaciones.service.js
+          // #crear): lo que se cotiza ya incluye el impuesto y no se mueve si el catálogo cambia.
+          impuestoTasa: articulo.impuesto ? Number(articulo.impuesto.tasa) : 0,
           descuentoManual: null,
         },
       ];
@@ -208,7 +211,12 @@ function CotizacionesPage() {
 
   const carritoCalc = carrito.map((l) => ({ ...l, descuentoMonto: calcularDescuentoLinea(l) }));
   const descuentoTotal = carritoCalc.reduce((acc, l) => acc + l.descuentoMonto, 0);
-  const total = Math.round(carritoCalc.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0) * 100) / 100;
+  const subtotal = carritoCalc.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0);
+  const impuestosTotal = carritoCalc.reduce(
+    (acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto) * (l.impuestoTasa || 0),
+    0,
+  );
+  const total = Math.round((subtotal + impuestosTotal) * 100) / 100;
   const dias = diasRestantes(vigencia);
 
   async function confirmarCotizacion(e) {
@@ -444,13 +452,23 @@ function CotizacionesPage() {
           <Card>
             <p className="text-sm text-gray-500">Total de la cotización</p>
             <p className="mt-1 text-3xl font-bold text-gray-900">{formatoMoneda(total)}</p>
-            <p className="mt-1 text-xs text-gray-400">Subtotal — el IVA se calcula al convertir en venta.</p>
-            {descuentoTotal > 0 && (
-              <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm text-gray-500">
-                <span>Descuento</span>
-                <span className="font-medium text-success-700">-{formatoMoneda(descuentoTotal)}</span>
+            <p className="mt-1 text-xs text-gray-400">Impuestos incluidos — es el monto que pagaría el cliente.</p>
+            <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-sm text-gray-500">
+              {descuentoTotal > 0 && (
+                <div className="flex items-center justify-between">
+                  <span>Descuento</span>
+                  <span className="font-medium text-success-700">-{formatoMoneda(descuentoTotal)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between">
+                <span>Subtotal</span>
+                <span>{formatoMoneda(subtotal)}</span>
               </div>
-            )}
+              <div className="flex items-center justify-between">
+                <span>Impuestos</span>
+                <span>{formatoMoneda(impuestosTotal)}</span>
+              </div>
+            </div>
           </Card>
 
           {vigencia && (

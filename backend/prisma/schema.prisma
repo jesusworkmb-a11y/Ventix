@@ -945,7 +945,7 @@ model Cotizacion {
   clienteId           String   @map("cliente_id")
   usuarioId           String   @map("usuario_id")
   folio               String?
-  total               Decimal
+  total               Decimal // con impuesto incluido — igual que Venta.total (ver cotizaciones.service.js#crear)
   convertidaEnVentaId String?   @map("convertida_en_venta_id")
   vigencia            DateTime? // fecha límite de validez (solo calendario, sin hora) — opcional
   observaciones       String?
@@ -963,6 +963,7 @@ model CotizacionDetalle {
   cantidad       Decimal
   precio         Decimal
   descuentoMonto Decimal @default(0) @map("descuento_monto") // solo descuento manual (%/monto), sin catálogo — ver ventas.service.js#resolverDescuentoLinea (rama descuentoManual)
+  impuestoTasa   Decimal @default(0) @map("impuesto_tasa") // congelada al crear la cotización (igual que VentaDetalle) — ver Cotizacion.total
 
   cotizacion Cotizacion @relation(fields: [cotizacionId], references: [id])
 

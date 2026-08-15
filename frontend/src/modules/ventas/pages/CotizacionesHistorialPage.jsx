@@ -124,7 +124,7 @@ function CotizacionesHistorialPage() {
         obtenerCotizacion(cotizacionId),
         import('../pdf/cotizacionPdf'),
       ]);
-      generarPdfCotizacion(detalle, empresa, articulos);
+      generarPdfCotizacion(detalle, empresa);
     } catch (err) {
       setError('No se pudo generar el PDF de la cotización.');
     }
@@ -156,7 +156,7 @@ function CotizacionesHistorialPage() {
     setErrorEnvioCorreo('');
     try {
       const { generarBase64Cotizacion } = await import('../pdf/cotizacionPdf');
-      const { base64, nombreArchivo } = generarBase64Cotizacion(envioCotizacion, empresa, articulos);
+      const { base64, nombreArchivo } = generarBase64Cotizacion(envioCotizacion, empresa);
       await enviarCotizacionPorCorreo(envioCotizacionId, {
         destinatario, asunto, mensaje, adjuntoBase64: base64, nombreArchivo,
       });
@@ -178,11 +178,13 @@ function CotizacionesHistorialPage() {
     }
   }
 
-  // La cotización solo guarda el subtotal (sin impuesto — ver Cotizacion.total en el schema);
-  // el impuesto se calcula recién al convertir, con la tasa vigente en ese momento (igual que
-  // ventasService.crear). Hay que recalcularlo aquí con el mismo criterio para saber cuánto
-  // cobrar antes de convertir, o la suma de pagos no coincide con el total real de la venta.
-  // También hay que restar el descuento manual de cada línea antes de aplicar la tasa.
+  // Cotizacion.total ya incluye impuesto (congelado a la tasa vigente cuando se creó la
+  // cotización — ver cotizaciones.service.js#crear), pero al convertir se cobra dinero real, así
+  // que acá se recalcula con la tasa VIGENTE en este momento (igual que ventasService.crear) en
+  // vez de reusar ese total ya guardado — si la tasa de algún artículo cambió desde que se
+  // cotizó, lo correcto es cobrar la vigente, no la congelada. En el caso normal (tasa sin
+  // cambios) el resultado coincide exactamente con Cotizacion.total. También hay que restar el
+  // descuento manual de cada línea antes de aplicar la tasa.
   async function abrirConversion(cotizacionId) {
     setConvError('');
     setConvTotal(null);

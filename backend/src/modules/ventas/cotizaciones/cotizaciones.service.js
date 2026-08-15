@@ -85,7 +85,10 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, vigencia, ob
   if (!cliente) throw new AppError(400, 'El cliente indicado no pertenece a esta empresa.');
 
   const articuloIds = detalles.map((d) => d.articuloId);
-  const articulos = await prisma.articulo.findMany({ where: { id: { in: articuloIds }, empresaId } });
+  const articulos = await prisma.articulo.findMany({
+    where: { id: { in: articuloIds }, empresaId },
+    include: { impuesto: true },
+  });
   if (articulos.length !== new Set(articuloIds).size) {
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
@@ -98,18 +101,27 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, vigencia, ob
   });
 
   const lineas = detalles.map((d) => {
+    const articulo = articuloPorId.get(d.articuloId);
     const precioCatalogo = preciosLista.has(d.articuloId)
       ? preciosLista.get(d.articuloId)
-      : Number(articuloPorId.get(d.articuloId).precio);
+      : Number(articulo.precio);
     const precio = d.precio !== undefined ? d.precio : precioCatalogo;
     return {
       articuloId: d.articuloId,
       cantidad: d.cantidad,
       precio,
       descuentoMonto: calcularDescuentoManual(d.cantidad, precio, d.descuentoManual),
+      // Congelada al crear la cotización (igual que VentaDetalle.impuestoTasa) — así lo que se
+      // cotiza/muestra al cliente ya incluye el impuesto y no cambia si el catálogo cambia
+      // después. Al convertir en venta se recalcula con la tasa VIGENTE en ese momento (ver
+      // convertir() más abajo), que es la decisión correcta para dinero real — en el caso normal
+      // (tasa sin cambios entre cotizar y convertir) ambos números coinciden siempre.
+      impuestoTasa: articulo.impuesto ? Number(articulo.impuesto.tasa) : 0,
     };
   });
-  const total = redondear(lineas.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0));
+  const subtotal = lineas.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto), 0);
+  const impuestos = lineas.reduce((acc, l) => acc + (l.cantidad * l.precio - l.descuentoMonto) * l.impuestoTasa, 0);
+  const total = redondear(subtotal + impuestos);
 
   return prisma.$transaction(async (tx) => {
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId, tipoDocumento: 'COT' });
@@ -125,6 +137,7 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, vigencia, ob
         cantidad: l.cantidad,
         precio: l.precio,
         descuentoMonto: l.descuentoMonto,
+        impuestoTasa: l.impuestoTasa,
       })),
     });
 

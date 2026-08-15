@@ -15,14 +15,10 @@ function formatoFechaCorta(fechaIso) {
   return `${dia}/${mes}/${anio}`;
 }
 
-// Cotizacion.total (el campo que guarda el backend) es el subtotal sin impuesto — el impuesto
-// se calcula recién al convertir en venta, con la tasa vigente en ese momento (mismo criterio
-// que CotizacionesPage#abrirConversion). El PDF necesita mostrarle al cliente el total real que
-// pagaría, así que recalcula subtotal/impuestos/total línea por línea igual que esa función,
-// resolviendo la tasa desde el catálogo completo de artículos (`articulosCompletos`, ya cargado
-// en la página) porque `obtenerCotizacion` no trae el impuesto de cada artículo.
-function calcularTotales(cotizacion, articulosCompletos) {
-  const articuloPorId = new Map(articulosCompletos.map((a) => [a.id, a]));
+// `impuestoTasa` viaja congelada por línea desde que se crea la cotización (ver
+// cotizaciones.service.js#crear) — así el PDF siempre coincide exactamente con lo que se cotizó
+// (Cotizacion.total, ya con impuesto incluido), sin importar si el catálogo cambia después.
+function calcularTotales(cotizacion) {
   let subtotal = 0;
   let impuestos = 0;
   let descuentoTotal = 0;
@@ -31,7 +27,7 @@ function calcularTotales(cotizacion, articulosCompletos) {
     const precio = Number(d.precio);
     const descuentoMonto = Number(d.descuentoMonto || 0);
     const importe = cantidad * precio - descuentoMonto;
-    const tasa = articuloPorId.get(d.articuloId)?.impuesto ? Number(articuloPorId.get(d.articuloId).impuesto.tasa) : 0;
+    const tasa = Number(d.impuestoTasa || 0);
     subtotal += importe;
     impuestos += importe * tasa;
     descuentoTotal += descuentoMonto;
@@ -48,8 +44,8 @@ const ALTO_LOGO = 16; // mm — ancho se deriva de la proporción real de la ima
 
 // Construye el jsPDF sin ningún efecto lateral (no descarga) — reusado tanto por
 // generarPdfCotizacion (descarga directa) como por generarBase64Cotizacion (envío por correo).
-function construirDocCotizacion(cotizacion, empresa, articulosCompletos) {
-  const { lineas, subtotal, impuestos, descuentoTotal, total } = calcularTotales(cotizacion, articulosCompletos);
+function construirDocCotizacion(cotizacion, empresa) {
+  const { lineas, subtotal, impuestos, descuentoTotal, total } = calcularTotales(cotizacion);
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   let y = 20;
   let xTexto = MARGEN_X;
@@ -174,16 +170,16 @@ function construirDocCotizacion(cotizacion, empresa, articulosCompletos) {
   return doc;
 }
 
-export function generarPdfCotizacion(cotizacion, empresa, articulosCompletos) {
-  const doc = construirDocCotizacion(cotizacion, empresa, articulosCompletos);
+export function generarPdfCotizacion(cotizacion, empresa) {
+  const doc = construirDocCotizacion(cotizacion, empresa);
   doc.save(`${cotizacion.folio || 'cotizacion'}.pdf`);
 }
 
 // Para el envío por correo: el backend no genera PDFs (ver correo.service.js), así que el
 // frontend arma el mismo documento y lo manda en base64 crudo (sin el prefijo `data:...;base64,`
 // del data URI que devuelve jsPDF).
-export function generarBase64Cotizacion(cotizacion, empresa, articulosCompletos) {
-  const doc = construirDocCotizacion(cotizacion, empresa, articulosCompletos);
+export function generarBase64Cotizacion(cotizacion, empresa) {
+  const doc = construirDocCotizacion(cotizacion, empresa);
   const dataUri = doc.output('datauristring');
   const base64 = dataUri.split(',')[1];
   const nombreArchivo = `${cotizacion.folio || 'cotizacion'}.pdf`;
