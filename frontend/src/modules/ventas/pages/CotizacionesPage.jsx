@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Trash2, Percent } from 'lucide-react';
+import { Trash2, Percent, Search } from 'lucide-react';
 import { crearCotizacion } from '../api/cotizaciones.api';
 import { listarCajas } from '../../caja/api/caja.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
@@ -54,8 +54,7 @@ function CotizacionesPage() {
   const [clientes, setClientes] = useState([]);
   const [clienteId, setClienteId] = useState('');
   const [articulos, setArticulos] = useState([]);
-  const [articuloId, setArticuloId] = useState('');
-  const [cantidad, setCantidad] = useState('1');
+  const [busqueda, setBusqueda] = useState('');
   const [carrito, setCarrito] = useState([]);
   const [vigencia, setVigencia] = useState(() => hoyMasDias(VIGENCIA_DEFAULT_DIAS));
   const [observaciones, setObservaciones] = useState('');
@@ -97,24 +96,59 @@ function CotizacionesPage() {
     return Number(articulo.precio);
   }
 
-  function agregarLinea() {
-    const articulo = articulos.find((a) => a.id === articuloId);
-    if (!articulo) return;
-    setCarrito((c) => [
-      ...c,
-      {
-        articuloId,
-        nombre: articulo.nombre,
-        descripcion: articulo.descripcion,
-        sku: articulo.sku,
-        unidad: articulo.unidadBase?.nombre,
-        cantidad: Number(cantidad),
-        precio: precioEfectivo(articulo),
-        descuentoManual: null,
-      },
-    ]);
-    setArticuloId('');
-    setCantidad('1');
+  // Agregar directo al carrito (clic en un resultado o Enter en el buscador) — sin selector ni
+  // botón intermedio, mismo patrón que VentasPage#agregarAlCarrito: si el artículo ya está en el
+  // carrito, escanearlo/agregarlo de nuevo solo suma 1 a esa línea en vez de duplicarla.
+  function agregarArticulo(articulo) {
+    setCarrito((c) => {
+      const idx = c.findIndex((l) => l.articuloId === articulo.id);
+      if (idx !== -1) {
+        const copia = [...c];
+        copia[idx] = { ...copia[idx], cantidad: copia[idx].cantidad + 1 };
+        return copia;
+      }
+      return [
+        ...c,
+        {
+          articuloId: articulo.id,
+          nombre: articulo.nombre,
+          descripcion: articulo.descripcion,
+          sku: articulo.sku,
+          unidad: articulo.unidadBase?.nombre,
+          cantidad: 1,
+          precio: precioEfectivo(articulo),
+          descuentoManual: null,
+        },
+      ];
+    });
+    setBusqueda('');
+  }
+
+  const articulosFiltrados = busqueda.trim()
+    ? articulos.filter((a) => {
+      if (!a.activo) return false;
+      const texto = busqueda.trim().toLowerCase();
+      return (
+        a.nombre.toLowerCase().includes(texto)
+        || (a.sku || '').toLowerCase().includes(texto)
+        || (a.codigoBarras || '').toLowerCase().includes(texto)
+      );
+    }).slice(0, 8)
+    : [];
+
+  // Escaneo por código de barras: al presionar Enter, si hay una coincidencia exacta de
+  // código/SKU o la búsqueda dejó un solo resultado, se agrega directo sin más clics — mismo
+  // criterio que VentasPage#handleBusquedaKeyDown.
+  function handleBusquedaKeyDown(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const texto = busqueda.trim().toLowerCase();
+    if (!texto) return;
+    const exacto = articulos.find(
+      (a) => a.activo && ((a.codigoBarras || '').toLowerCase() === texto || (a.sku || '').toLowerCase() === texto),
+    );
+    if (exacto) { agregarArticulo(exacto); return; }
+    if (articulosFiltrados.length === 1) agregarArticulo(articulosFiltrados[0]);
   }
 
   function actualizarCantidad(index, valor) {
@@ -273,35 +307,38 @@ function CotizacionesPage() {
               </span>
             )}
           >
-            <div className="flex flex-wrap items-end gap-3">
-              <Select
-                id="articuloCot"
-                label="Artículo"
-                value={articuloId}
-                onChange={(e) => setArticuloId(e.target.value)}
-                className="min-w-[220px]"
-              >
-                <option value="">Selecciona un artículo...</option>
-                {articulos.map((a) => (
-                  <option key={a.id} value={a.id}>{a.nombre} ({formatoMoneda(precioEfectivo(a))})</option>
-                ))}
-              </Select>
-              <Input
-                id="cantidadCot"
-                label="Cantidad"
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={cantidad}
-                onChange={(e) => setCantidad(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); agregarLinea(); }
-                }}
-                className="w-28"
-              />
-              <Button type="button" variant="secondary" onClick={agregarLinea} disabled={!articuloId}>
-                Agregar
-              </Button>
+            <div className="relative">
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  id="buscarArticuloCot"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Escaneá un código de barras o escribí para buscar..."
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  onKeyDown={handleBusquedaKeyDown}
+                  className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
+              {articulosFiltrados.length > 0 && (
+                <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                  {articulosFiltrados.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => agregarArticulo(a)}
+                      className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-medium text-gray-800">{a.nombre}</span>
+                        {a.sku && <span className="ml-2 text-xs text-gray-400">{a.sku}</span>}
+                      </span>
+                      <span className="flex-shrink-0 text-gray-600">{formatoMoneda(precioEfectivo(a))}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {carrito.length > 0 && (

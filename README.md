@@ -1462,6 +1462,36 @@ Observaciones), sin el resto.
   observaciones. Sin errores de consola. Cotización de prueba sin convertir/eliminar (Cotizaciones
   no tiene cancelar/eliminar, mismo criterio ya documentado en "Ajustes de navegación" arriba).
 
+## Buscador con agregado automático en Nueva cotización (2026-08-14, sesión posterior)
+
+A pedido del usuario, tras el rediseño de arriba: el selector `<Select>` de artículo (con los ~20
+artículos de la empresa en un dropdown plano) se reemplazó por el mismo patrón de escaneo/búsqueda
+que ya usa el POS de Ventas (`VentasPage.jsx#agregarAlCarrito`/`handleBusquedaKeyDown`), adaptado a
+esta pantalla basada en formulario en vez de grilla:
+
+- **[CotizacionesPage.jsx](frontend/src/modules/ventas/pages/CotizacionesPage.jsx)**: nuevo campo
+  de texto único ("Escaneá un código de barras o escribí para buscar...") que reemplaza al
+  `<Select>` de artículo + el input de Cantidad + el botón "Agregar" de antes. Escribir filtra en
+  vivo y muestra un dropdown con hasta 8 coincidencias (nombre/SKU/código de barras) — clic en
+  cualquiera agrega la línea directo. Presionar Enter con una coincidencia exacta de SKU/código de
+  barras (o si el filtro dejó un solo resultado) agrega directo sin necesidad de tocar el mouse,
+  igual que el flujo de escaneo de Ventas. Escanear/agregar un artículo ya presente en el carrito
+  solo suma 1 a esa línea en vez de duplicarla (mismo criterio que `agregarAlCarrito` en Ventas). El
+  input de Cantidad pre-agregado ya no existe — el ajuste de cantidad se hace directo en la celda
+  editable de la tabla, que ya existía desde el rediseño anterior.
+- Verificado en vivo contra el backend local (misma base que producción): búsqueda "coca" mostró el
+  dropdown con "Coca Cola 600ml — COCA600 — $20.00", clic lo agregó con cantidad 1; escanear
+  después el mismo SKU exacto (`COCA600`) con Enter subió esa misma línea a cantidad 2 en vez de
+  crear una segunda fila; cotización confirmada (COT-MAT-000013, $40.00) con el `POST` devolviendo
+  `201`. Cotizaciones de prueba sin convertir (mismo criterio ya documentado arriba: no hay
+  cancelar/eliminar para este recurso).
+- **Gotcha de esta sesión**: el `key` (Enter) del Browser pane de este entorno no disparó el
+  `onKeyDown` de React sobre el input nuevo — se disparó un `KeyboardEvent('keydown')` sintético vía
+  `javascript_tool` para confirmarlo, que sí funcionó. No es un bug de la app (el mismo patrón ya
+  funciona en producción real vía teclado físico en Ventas); mismo tipo de limitación de
+  automatización de este Browser pane ya documentada para clics por `ref` en sesiones anteriores
+  (Clientes, Reportes, Artículos).
+
 ## Qué contiene
 
 ```text
