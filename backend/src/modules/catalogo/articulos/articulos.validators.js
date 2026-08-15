@@ -33,6 +33,7 @@ const actualizarArticuloSchema = crearArticuloSchema.partial().extend({
   stockMinimo: z.coerce.number().min(0).nullable().optional(),
   stockMaximo: z.coerce.number().min(0).nullable().optional(),
   claveProdServSat: z.string().min(1).nullable().optional(),
+  imagenUrl: z.string().url().nullable().optional(),
 });
 
 const unidadesAlternasSchema = z.object({

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, ImageIcon, Upload, X } from 'lucide-react';
+import { redimensionarImagen } from '../../../shared/imagen';
 import {
   listarArticulos,
   crearArticulo,
@@ -35,6 +36,9 @@ const COLUMNAS = [
   { label: '', clave: null },
 ];
 
+const TAMANO_MAX_ARCHIVO = 8 * 1024 * 1024; // origen antes de redimensionar
+const DIMENSION_MAX_IMAGEN_ARTICULO = 480; // px, lado más largo — de sobra para la tarjeta del POS
+
 const FORM_VACIO = {
   tipo: 'PRODUCTO',
   nombre: '',
@@ -49,6 +53,7 @@ const FORM_VACIO = {
   stockMinimo: '',
   stockMaximo: '',
   claveProdServSat: null,
+  imagenUrl: null,
 };
 
 function articuloAForm(a) {
@@ -67,7 +72,64 @@ function articuloAForm(a) {
     stockMaximo: a.stockMaximo === null || a.stockMaximo === undefined ? '' : String(a.stockMaximo),
     activo: a.activo,
     claveProdServSat: a.claveProdServSat || null,
+    imagenUrl: a.imagenUrl || null,
   };
+}
+
+// Campo de imagen reusado en el alta y en la edición: preview cuadrado + subir/quitar. Mismo
+// patrón (canvas resize -> data URI) que el logo de EmpresaPage, sin almacenamiento en el backend.
+function CampoImagenArticulo({ idInput, imagenUrl, onChange }) {
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
+
+  async function handleArchivo(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError('');
+    if (!file.type.startsWith('image/')) {
+      setError('El archivo debe ser una imagen.');
+      return;
+    }
+    if (file.size > TAMANO_MAX_ARCHIVO) {
+      setError('La imagen es demasiado grande (máximo 8MB).');
+      return;
+    }
+    try {
+      const dataUrl = await redimensionarImagen(file, DIMENSION_MAX_IMAGEN_ARTICULO);
+      onChange(dataUrl);
+    } catch (err) {
+      setError(err.message || 'No se pudo procesar la imagen.');
+    }
+  }
+
+  return (
+    <div className="sm:col-span-2 flex items-center gap-4">
+      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+        {imagenUrl ? (
+          <img src={imagenUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <ImageIcon size={22} className="text-gray-300" />
+        )}
+      </div>
+      <div className="flex flex-col gap-2">
+        <input ref={inputRef} id={idInput} type="file" accept="image/*" onChange={handleArchivo} className="hidden" />
+        <Button type="button" variant="secondary" onClick={() => inputRef.current?.click()}>
+          <Upload size={16} /> {imagenUrl ? 'Cambiar imagen' : 'Subir imagen'}
+        </Button>
+        {imagenUrl && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-danger-600"
+          >
+            <X size={13} /> Quitar imagen
+          </button>
+        )}
+        {error && <p className="text-xs text-danger-600">{error}</p>}
+      </div>
+    </div>
+  );
 }
 
 function ArticulosPage() {
@@ -290,6 +352,7 @@ function ArticulosPage() {
         stockMaximo: editForm.stockMaximo === '' ? null : Number(editForm.stockMaximo),
         activo: editForm.activo,
         claveProdServSat: editForm.claveProdServSat,
+        imagenUrl: editForm.imagenUrl,
       });
       setEditandoId(null);
       cargarArticulos(paginacion.pagina);
@@ -316,6 +379,7 @@ function ArticulosPage() {
         stockMinimo: form.stockMinimo ? Number(form.stockMinimo) : undefined,
         stockMaximo: form.stockMaximo ? Number(form.stockMaximo) : undefined,
         claveProdServSat: form.claveProdServSat || undefined,
+        imagenUrl: form.imagenUrl || undefined,
       });
       setForm(FORM_VACIO);
       cargarArticulos(1);
@@ -413,6 +477,11 @@ function ArticulosPage() {
 
       <Card title="Nuevo artículo">
         <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <CampoImagenArticulo
+            idInput="imagenArticulo"
+            imagenUrl={form.imagenUrl}
+            onChange={(url) => actualizarCampo('imagenUrl', url)}
+          />
           <Select id="tipoArticulo" label="Tipo" value={form.tipo} onChange={(e) => actualizarCampo('tipo', e.target.value)}>
             <option value="PRODUCTO">Producto</option>
             <option value="SERVICIO">Servicio</option>
@@ -481,6 +550,11 @@ function ArticulosPage() {
 
       <Modal abierto={editandoId !== null} onCerrar={cancelarEdicion} titulo="Editar artículo">
         <form onSubmit={guardarEdicion} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <CampoImagenArticulo
+            idInput="imagenEdit"
+            imagenUrl={editForm.imagenUrl}
+            onChange={(url) => setEditForm((f) => ({ ...f, imagenUrl: url }))}
+          />
           <Select id="tipoEdit" label="Tipo" value={editForm.tipo} onChange={(e) => setEditForm((f) => ({ ...f, tipo: e.target.value }))}>
             <option value="PRODUCTO">Producto</option>
             <option value="SERVICIO">Servicio</option>
