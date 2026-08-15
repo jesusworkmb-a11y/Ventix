@@ -1548,6 +1548,39 @@ cobrándose. Cambio de fondo, no solo de UI:
   siempre) trae "20.00"/"3.20"/"23.20" en el bloque de totales. Sin errores de consola.
   Cotización de prueba (COT-MAT-000015) sin convertir, mismo criterio ya documentado arriba.
 
+## Carga de imagen en Artículos (2026-08-14, sesión posterior)
+
+A pedido del usuario: la tarjeta de producto del POS de Ventas (y de Factura Directa) ya tenía un
+recuadro para la imagen (`a.imagenUrl`), pero no existía ninguna forma de cargarla — el campo
+`Articulo.imagenUrl` estaba en el modelo desde siempre pero nunca tuvo UI, ni en el alta ni en la
+edición.
+
+- **Mismo criterio que el logo de empresa**: sin almacenamiento de archivos en el backend, la
+  imagen se redimensiona (máx. 480px de lado — de sobra para la tarjeta de ~150px del POS) y
+  comprime en un `<canvas>` del propio navegador, viaja como data URI dentro del JSON. El helper
+  `redimensionarImagen()` (antes vivía solo, duplicado, en `EmpresaPage.jsx`) se extrajo a
+  [`frontend/src/shared/imagen.js`](frontend/src/shared/imagen.js), reusado ahora por
+  `EmpresaPage.jsx` (logo) y `ArticulosPage.jsx` (imagen de artículo) — sin cambios de
+  comportamiento en Empresa, solo dejó de estar duplicado.
+- **Backend**: sin cambios de lógica — `articulos.service.js#crear`/`actualizar` ya escribían
+  `imagenUrl` porque pasan `...datos` completo a Prisma. Solo hizo falta que
+  [articulos.validators.js](backend/src/modules/catalogo/articulos/articulos.validators.js)
+  aceptara `imagenUrl: null` en `actualizarArticuloSchema` (mismo patrón que sku/categoriaId/etc.)
+  para poder quitar una imagen ya cargada. Confirmado que `z.string().url()` acepta un data URI
+  (`new URL('data:image/png;base64,...')` no tira error), así que no hizo falta relajar la
+  validación existente para el data URI en sí.
+- **Frontend**: nuevo componente local `CampoImagenArticulo` en
+  [ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx) (preview cuadrado +
+  botón subir/cambiar/quitar, igual estética que el logo de Empresa), agregado tanto a la tarjeta
+  "Nuevo artículo" como al modal "Editar artículo".
+- Verificado en vivo contra el backend local (misma base que producción): alta de un artículo
+  nuevo con imagen (`POST` → `201`, `imagenUrl` con el data URI persistido), edición de un
+  artículo existente para agregar la imagen (`PATCH` → `200`, confirmado en la respuesta) y verla
+  aparecer de inmediato en la tarjeta de producto de `/ventas`, y edición para quitarla
+  (`imagenUrl: null` persistido). Reverificado ya en producción
+  (`ventix-frontend.onrender.com/catalogo/articulos`) tras el deploy. Datos de prueba
+  limpiados/revertidos a su estado original en ambos casos.
+
 ## Qué contiene
 
 ```text
@@ -1672,8 +1705,13 @@ en producción (schema/catálogos SAT, configuración fiscal incluido el RFC de 
 ahora sí es editable desde la UI, motor de facturas con los 4 flujos de negocio, y su interfaz).
 Sobre eso, ya se agregó captura rápida en Factura Directa (sugerir repetir la última factura o
 una plantilla nombrada, agregar conceptos clicando el catálogo, ver "Captura rápida de Factura
-Directa" arriba) y su rediseño visual a un layout más compacto. **El único pendiente abierto hoy
-es terminar el módulo de Facturación.** A elección:
+Directa" arriba) y su rediseño visual a un layout más compacto. Por último, Ventas/Cotizaciones
+tuvieron varios ajustes de UX (separación de Cotizaciones en captura/historial, rediseño de Nueva
+cotización con Vigencia/Observaciones, buscador con agregado automático, el total de la cotización
+ahora incluye el impuesto — ver las secciones de esa fecha arriba), y ya se puede cargar la imagen
+de un artículo desde su alta o edición, la misma que se mostraba vacía en la tarjeta de producto
+del POS (ver "Carga de imagen en Artículos" arriba). **El pendiente estructural que queda es
+terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.
