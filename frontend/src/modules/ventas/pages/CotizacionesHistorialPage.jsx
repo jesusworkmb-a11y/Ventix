@@ -7,9 +7,11 @@ import {
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
 import { listarUsuarios } from '../../core/api/core.api';
+import { listarClientes } from '../../clientes/api/clientes.api';
 import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
+import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
@@ -53,6 +55,10 @@ function CotizacionesHistorialPage() {
   const [busqueda, setBusqueda] = useState(() => location.state?.buscar || '');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
+  const [clientes, setClientes] = useState([]);
+  const [clienteId, setClienteId] = useState('');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
 
   const [cajas, setCajas] = useState([]);
   const [cajaId, setCajaId] = useState('');
@@ -80,6 +86,7 @@ function CotizacionesHistorialPage() {
       })
       .catch(() => {});
     listarUsuarios().then(setUsuarios).catch(() => {});
+    listarClientes().then((lista) => setClientes(lista.filter((c) => c.activo))).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -91,6 +98,9 @@ function CotizacionesHistorialPage() {
   function cargarCotizaciones(pagina = 1) {
     listarCotizaciones({
       buscar: busqueda || undefined,
+      clienteId: clienteId || undefined,
+      desde: desde || undefined,
+      hasta: hasta || undefined,
       pagina,
       porPagina: 20,
       ordenarPor: orden.ordenarPor,
@@ -112,7 +122,7 @@ function CotizacionesHistorialPage() {
   useEffect(() => {
     cargarCotizaciones(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busqueda, orden]);
+  }, [busqueda, clienteId, desde, hasta, orden]);
 
   // jsPDF (+ sus dependencias, ~250kB gzip) solo se descarga cuando alguien realmente pide un
   // PDF, vía import() dinámico, para no engordar el bundle inicial de toda la app por una
@@ -272,15 +282,25 @@ function CotizacionesHistorialPage() {
       </Card>
 
       <Card>
-        <div className="relative max-w-sm">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar por folio..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-          />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="relative max-w-sm">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por folio..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+          </div>
+          <Select id="clienteFiltroCot" label="Cliente" value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="min-w-[180px]">
+            <option value="">Todos los clientes</option>
+            {clientes.map((c) => (
+              <option key={c.id} value={c.id}>{c.nombre}</option>
+            ))}
+          </Select>
+          <Input id="desdeFiltroCot" label="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
+          <Input id="hastaFiltroCot" label="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
         </div>
       </Card>
 

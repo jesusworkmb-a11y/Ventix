@@ -4,10 +4,14 @@ const service = require('./cotizaciones.service');
 const { crearCotizacionSchema, convertirCotizacionSchema } = require('./cotizaciones.validators');
 
 async function listar(req, res) {
-  const { buscar, pagina, porPagina, ordenarPor, orden } = req.query;
+  const {
+    buscar, clienteId, desde, hasta, pagina, porPagina, ordenarPor, orden,
+  } = req.query;
   const cotizaciones = await service.listar({
     empresaId: req.auth.empresaId,
-    filtros: { buscar },
+    filtros: {
+      buscar, clienteId, desde, hasta,
+    },
     paginacion: { pagina, porPagina },
     ordenamiento: { ordenarPor, orden },
   });

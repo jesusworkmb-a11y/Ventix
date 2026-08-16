@@ -20,6 +20,12 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   // solo se puede buscar por folio acá sin una consulta manual extra.
   const where = { empresaId };
   if (filtros?.buscar) where.folio = { contains: filtros.buscar, mode: 'insensitive' };
+  if (filtros?.clienteId) where.clienteId = filtros.clienteId;
+  if (filtros?.desde || filtros?.hasta) {
+    where.creadoEn = {};
+    if (filtros.desde) where.creadoEn.gte = new Date(filtros.desde);
+    if (filtros.hasta) where.creadoEn.lte = new Date(filtros.hasta);
+  }
 
   const paginado = parsePaginacion(paginacion);
   const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });

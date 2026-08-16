@@ -6,6 +6,12 @@ export function reporteVentas(params) {
 export function reporteArticulosMasVendidos(params) {
   return api.get('/reportes/articulos-mas-vendidos', { params }).then((res) => res.data);
 }
+export function reporteVentasPorCliente(params) {
+  return api.get('/reportes/ventas-por-cliente', { params }).then((res) => res.data);
+}
+export function reporteProductosSinMovimiento(params) {
+  return api.get('/reportes/productos-sin-movimiento', { params }).then((res) => res.data);
+}
 export function reporteInventarioValorizado(params) {
   return api.get('/reportes/inventario-valorizado', { params }).then((res) => res.data);
 }

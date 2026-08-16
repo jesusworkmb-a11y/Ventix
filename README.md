@@ -1936,6 +1936,53 @@ Quedan las Fases 2-4 del roadmap (reportes nuevos sobre datos existentes, cambio
 Utilidad/Kardex/IVA por tasa/estados de Cotización, y exportación a PDF/Excel/Impresión) — ver el
 detalle completo, con archivo:línea, en la auditoría original.
 
+## Reportes nuevos y filtros adicionales — Fase 2 de la auditoría (2026-08-16, sesión posterior)
+
+Segunda fase del roadmap: reportes que se resuelven con nuevas consultas de agregación sobre
+tablas que ya existían, sin cambios de modelo (esos quedan para la Fase 3 — Utilidad, Kardex con
+saldo corrido, IVA por tasa y estados de Cotización).
+
+- **Ventas por artículo/por servicio**: `reporteArticulosMasVendidos()`
+  ([reportes.service.js](backend/src/modules/reportes/reportes.service.js)) gana un parámetro
+  `tipo` (`PRODUCTO`/`SERVICIO`), filtrado en JS igual que `categoriaId` (mismo criterio de escala
+  que el resto de la función). El `sku` que ya traía la consulta se expone como columna "Código"
+  en [ReportesPage.jsx](frontend/src/modules/reportes/pages/ReportesPage.jsx), con un select
+  nuevo "Tipo" (Todos/Solo productos/Solo servicios) — un solo reporte cubre los dos puntos de la
+  auditoría en vez de duplicar el endpoint.
+- **Ventas por cliente**: nueva `reporteVentasPorCliente()` — agrupa `Venta` confirmada por
+  `clienteId` con `groupBy` de Prisma (acá sí alcanza, a diferencia del reporte de artículos: es
+  una suma simple de `Venta.total`, no un producto cantidad×precio por línea) y resta los
+  reembolsos de `Devolucion` por cliente, mismo criterio de "neto" que `reporteVentas`. Verificado
+  cruzando números: el mismo cliente ("Cliente General") dio 28 compras/$860.36/$318.44 de
+  devoluciones/$541.92 neto tanto acá como filtrando "Ventas por período" por ese cliente.
+- **Productos sin movimiento**: nueva `reporteProductosSinMovimiento()` — `groupBy` con `_max` de
+  `creadoEn` sobre `MovimientoInventario` por artículo, comparado contra un umbral de días
+  (parámetro, default 30); excluye Servicio/Kit a propósito (nunca generan movimiento, listarlos
+  siempre los mostraría como "sin movimiento" sin sentido). Verificado con dos umbrales: 30 días
+  no encontró nada (todo el catálogo de prueba tuvo movimiento reciente) y 1 día sí encontró
+  "Fanta 600ml" (última venta hace 3 días) — confirma que el filtro compara bien, no que siempre
+  esté vacío.
+- **Cortes de caja**: `reporteCaja()` gana `usuarioId` (filtra por `usuarioResponsableId`, mismo
+  select "Usuario / Cajero" que ya usan Ventas/Artículos) y un desglose de Ingreso/Venta/Retiro/
+  Devolución por sesión — `groupBy` sobre `MovimientoCaja` por `sesionCajaId`+`tipo`, reusando el
+  mismo enum `TipoMovimientoCaja` que ya usa el cierre de sesión. También resuelve y muestra el
+  nombre del cajero (antes el reporte no tocaba `Usuario` en absoluto). Verificado que el
+  desglose cuadra exactamente con el saldo ya guardado: fondo + ingresos + ventas − retiros −
+  devoluciones = saldoEsperado, para varias sesiones reales; filtro de cajero probado con un
+  usuario sin sesiones — vacío correcto.
+- **Cotizaciones**: `cotizaciones.service.js#listar` gana `clienteId`/`desde`/`hasta` (antes solo
+  aceptaba `buscar` por folio) — filtros nuevos en
+  [CotizacionesHistorialPage.jsx](frontend/src/modules/ventas/pages/CotizacionesHistorialPage.jsx),
+  reusando `listarClientes` ya cargado en otras pantallas. El filtro de Estado (Cancelada/
+  Expirada) queda para la Fase 3: `Cotizacion` no tiene columna `estado` todavía.
+- Verificado en vivo contra el backend local (misma base de Supabase que producción), los cinco
+  puntos: filtro de cliente en Cotizaciones redujo 20→1 resultado correctamente; el resto según
+  el detalle de cada punto arriba. Sin errores de consola ni de servidor.
+
+Queda la Fase 3 (cambios de modelo: Utilidad de ventas, Kardex con saldo corrido, IVA trasladado
+por tasa, estados de Cotización) y la Fase 4 (exportación a PDF/Excel/Impresión, transversal a
+todos los reportes).
+
 ## Qué contiene
 
 ```text
@@ -2091,10 +2138,12 @@ régimen fiscal y uso de CFDI preferido, los tres ya alimentan el receptor del C
 se auditó la cobertura del módulo de Reportes contra una lista de 15 reportes/filtros típicos de
 un POS y se arrancó su roadmap de integración: la Fase 1 ya está hecha (filtros de Usuario/
 Cajero, Cliente y Categoría, más atajos de fecha Hoy/Ayer/Esta semana/Este mes — ver "Filtros de
-Usuario/Cliente/Categoría y atajos de fecha en Reportes" arriba); quedan las Fases 2-4 (reportes
-nuevos, cambios de modelo para Utilidad/Kardex/IVA por tasa/estados de Cotización, y exportación
-a PDF/Excel/Impresión). **El otro pendiente estructural que queda es terminar el módulo de
-Facturación.** A elección:
+Usuario/Cliente/Categoría y atajos de fecha en Reportes" arriba) y también la Fase 2 (Ventas por
+artículo/servicio con columna Código, Ventas por cliente, Productos sin movimiento, y Cortes de
+caja con filtro de Cajero y desglose de Ingreso/Venta/Retiro/Devolución — ver "Reportes nuevos y
+filtros adicionales — Fase 2 de la auditoría" arriba); quedan las Fases 3-4 (cambios de modelo
+para Utilidad/Kardex/IVA por tasa/estados de Cotización, y exportación a PDF/Excel/Impresión).
+**El otro pendiente estructural que queda es terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.

@@ -3,6 +3,8 @@ import { Download, Mail } from 'lucide-react';
 import {
   reporteVentas,
   reporteArticulosMasVendidos,
+  reporteVentasPorCliente,
+  reporteProductosSinMovimiento,
   reporteInventarioValorizado,
   reporteCompras,
   reporteCaja,
@@ -64,12 +66,26 @@ const REPORTES = {
     etiqueta: 'Ventas por período', fn: reporteVentas, usaFechas: true, usaSucursal: true, usaUsuario: true, usaCliente: true,
   },
   articulos: {
-    etiqueta: 'Artículos más vendidos', fn: reporteArticulosMasVendidos, usaFechas: true, usaSucursal: true, usaUsuario: true, usaCliente: true, usaCategoria: true,
+    etiqueta: 'Artículos más vendidos', fn: reporteArticulosMasVendidos, usaFechas: true, usaSucursal: true, usaUsuario: true, usaCliente: true, usaCategoria: true, usaTipo: true,
+  },
+  ventasPorCliente: {
+    etiqueta: 'Ventas por cliente', fn: reporteVentasPorCliente, usaFechas: true, usaSucursal: true,
+  },
+  sinMovimiento: {
+    etiqueta: 'Productos sin movimiento', fn: reporteProductosSinMovimiento, usaDias: true, usaCategoria: true,
   },
   inventario: { etiqueta: 'Inventario valorizado', fn: reporteInventarioValorizado, usaFechas: false, usaSucursal: true },
   compras: { etiqueta: 'Compras por proveedor', fn: reporteCompras, usaFechas: true, usaSucursal: true },
-  caja: { etiqueta: 'Cortes de caja', fn: reporteCaja, usaFechas: true, usaSucursal: false },
+  caja: {
+    etiqueta: 'Cortes de caja', fn: reporteCaja, usaFechas: true, usaSucursal: false, usaUsuario: true,
+  },
 };
+
+const TIPOS_ARTICULO = [
+  { valor: '', etiqueta: 'Todos los tipos' },
+  { valor: 'PRODUCTO', etiqueta: 'Solo productos' },
+  { valor: 'SERVICIO', etiqueta: 'Solo servicios' },
+];
 
 function fechaISO(date) {
   const y = date.getFullYear();
@@ -117,6 +133,8 @@ function ReportesPage() {
   const [clienteId, setClienteId] = useState('');
   const [categorias, setCategorias] = useState([]);
   const [categoriaId, setCategoriaId] = useState('');
+  const [tipoArticulo, setTipoArticulo] = useState('');
+  const [dias, setDias] = useState('30');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [resultado, setResultado] = useState(null);
@@ -150,6 +168,8 @@ function ReportesPage() {
       if (config.usaUsuario && usuarioId) params.usuarioId = usuarioId;
       if (config.usaCliente && clienteId) params.clienteId = clienteId;
       if (config.usaCategoria && categoriaId) params.categoriaId = categoriaId;
+      if (config.usaTipo && tipoArticulo) params.tipo = tipoArticulo;
+      if (config.usaDias && dias) params.dias = dias;
       const data = await config.fn(params);
       setResultado(data);
     } catch (err) {
@@ -245,6 +265,16 @@ function ReportesPage() {
               ))}
             </Select>
           )}
+          {config.usaTipo && (
+            <Select id="tipoArticuloReporte" label="Tipo" value={tipoArticulo} onChange={(e) => setTipoArticulo(e.target.value)} className="min-w-[160px]">
+              {TIPOS_ARTICULO.map((t) => (
+                <option key={t.valor} value={t.valor}>{t.etiqueta}</option>
+              ))}
+            </Select>
+          )}
+          {config.usaDias && (
+            <Input id="diasReporte" label="Días sin movimiento" type="number" min="1" value={dias} onChange={(e) => setDias(e.target.value)} className="w-40" />
+          )}
           <Button type="submit">Generar</Button>
         </form>
         {config.usaFechas && (
@@ -332,11 +362,13 @@ function ReportesPage() {
               <BotonExportar
                 nombreArchivo="articulos-mas-vendidos.csv"
                 filas={resultado.map((r) => ({
+                  codigo: r.articulo?.sku,
                   articulo: r.articulo?.nombre,
                   cantidad: Number(r.cantidad),
                   monto: Number(r.monto),
                 }))}
                 columnas={[
+                  { clave: 'codigo', label: 'Código' },
                   { clave: 'articulo', label: 'Artículo' },
                   { clave: 'cantidad', label: 'Cantidad' },
                   { clave: 'monto', label: 'Monto' },
@@ -345,11 +377,13 @@ function ReportesPage() {
               <BotonEnviarCorreo
                 nombreArchivo="articulos-mas-vendidos.csv"
                 filas={resultado.map((r) => ({
+                  codigo: r.articulo?.sku,
                   articulo: r.articulo?.nombre,
                   cantidad: Number(r.cantidad),
                   monto: Number(r.monto),
                 }))}
                 columnas={[
+                  { clave: 'codigo', label: 'Código' },
                   { clave: 'articulo', label: 'Artículo' },
                   { clave: 'cantidad', label: 'Cantidad' },
                   { clave: 'monto', label: 'Monto' },
@@ -360,13 +394,122 @@ function ReportesPage() {
             </div>
           )}
         >
-          <Table columnas={['Artículo', 'Cantidad', 'Monto']}>
-            {resultado.length === 0 && <TablaVacia colSpan={3} />}
+          <Table columnas={['Código', 'Artículo', 'Cantidad', 'Monto']}>
+            {resultado.length === 0 && <TablaVacia colSpan={4} />}
             {resultado.map((r) => (
               <Fila key={r.articulo?.id}>
+                <Celda className="text-gray-500">{r.articulo?.sku || '—'}</Celda>
                 <Celda className="font-medium text-gray-800">{r.articulo?.nombre}</Celda>
                 <Celda>{r.cantidad}</Celda>
                 <Celda>{formatoMoneda(r.monto)}</Celda>
+              </Fila>
+            ))}
+          </Table>
+        </Card>
+      )}
+
+      {resultado && tipo === 'ventasPorCliente' && (
+        <Card
+          title="Ventas por cliente"
+          action={(
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="ventas-por-cliente.csv"
+                filas={resultado.map((r) => ({
+                  cliente: r.cliente?.nombre,
+                  compras: Number(r.numeroVentas),
+                  total: Number(r.total),
+                  devoluciones: Number(r.totalDevoluciones),
+                  neto: Number(r.totalNeto),
+                }))}
+                columnas={[
+                  { clave: 'cliente', label: 'Cliente' },
+                  { clave: 'compras', label: 'N° de compras' },
+                  { clave: 'total', label: 'Total' },
+                  { clave: 'devoluciones', label: 'Devoluciones' },
+                  { clave: 'neto', label: 'Neto' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="ventas-por-cliente.csv"
+                filas={resultado.map((r) => ({
+                  cliente: r.cliente?.nombre,
+                  compras: Number(r.numeroVentas),
+                  total: Number(r.total),
+                  devoluciones: Number(r.totalDevoluciones),
+                  neto: Number(r.totalNeto),
+                }))}
+                columnas={[
+                  { clave: 'cliente', label: 'Cliente' },
+                  { clave: 'compras', label: 'N° de compras' },
+                  { clave: 'total', label: 'Total' },
+                  { clave: 'devoluciones', label: 'Devoluciones' },
+                  { clave: 'neto', label: 'Neto' },
+                ]}
+                asunto="Reporte — Ventas por cliente"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
+          )}
+        >
+          <Table columnas={['Cliente', 'N° de compras', 'Total', 'Devoluciones', 'Neto']}>
+            {resultado.length === 0 && <TablaVacia colSpan={5} />}
+            {resultado.map((r) => (
+              <Fila key={r.cliente?.id}>
+                <Celda className="font-medium text-gray-800">{r.cliente?.nombre || '—'}</Celda>
+                <Celda>{r.numeroVentas}</Celda>
+                <Celda>{formatoMoneda(r.total)}</Celda>
+                <Celda>{formatoMoneda(r.totalDevoluciones)}</Celda>
+                <Celda>{formatoMoneda(r.totalNeto)}</Celda>
+              </Fila>
+            ))}
+          </Table>
+        </Card>
+      )}
+
+      {resultado && tipo === 'sinMovimiento' && (
+        <Card
+          title="Productos sin movimiento"
+          action={(
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="productos-sin-movimiento.csv"
+                filas={resultado.map((r) => ({
+                  codigo: r.articulo.sku,
+                  articulo: r.articulo.nombre,
+                  ultimoMovimiento: r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca',
+                }))}
+                columnas={[
+                  { clave: 'codigo', label: 'Código' },
+                  { clave: 'articulo', label: 'Artículo' },
+                  { clave: 'ultimoMovimiento', label: 'Último movimiento' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="productos-sin-movimiento.csv"
+                filas={resultado.map((r) => ({
+                  codigo: r.articulo.sku,
+                  articulo: r.articulo.nombre,
+                  ultimoMovimiento: r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca',
+                }))}
+                columnas={[
+                  { clave: 'codigo', label: 'Código' },
+                  { clave: 'articulo', label: 'Artículo' },
+                  { clave: 'ultimoMovimiento', label: 'Último movimiento' },
+                ]}
+                asunto="Reporte — Productos sin movimiento"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
+          )}
+        >
+          <Table columnas={['Código', 'Artículo', 'Último movimiento']}>
+            {resultado.length === 0 && <TablaVacia colSpan={3} />}
+            {resultado.map((r) => (
+              <Fila key={r.articulo.id}>
+                <Celda className="text-gray-500">{r.articulo.sku || '—'}</Celda>
+                <Celda className="font-medium text-gray-800">{r.articulo.nombre}</Celda>
+                <Celda>{r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca'}</Celda>
               </Fila>
             ))}
           </Table>
@@ -524,7 +667,12 @@ function ReportesPage() {
                 nombreArchivo="cortes-de-caja.csv"
                 filas={resultado.sesiones.map((s) => ({
                   caja: s.caja?.nombre,
+                  cajero: s.cajero?.nombre,
                   fondo: Number(s.fondoInicial),
+                  ingresos: Number(s.movimientos.ingreso),
+                  ventas: Number(s.movimientos.venta),
+                  retiros: Number(s.movimientos.retiro),
+                  devoluciones: Number(s.movimientos.devolucion),
                   esperado: Number(s.saldoEsperado),
                   real: Number(s.saldoReal),
                   diferencia: Number(s.diferencia),
@@ -532,7 +680,12 @@ function ReportesPage() {
                 }))}
                 columnas={[
                   { clave: 'caja', label: 'Caja' },
+                  { clave: 'cajero', label: 'Cajero' },
                   { clave: 'fondo', label: 'Fondo' },
+                  { clave: 'ingresos', label: 'Ingresos' },
+                  { clave: 'ventas', label: 'Ventas' },
+                  { clave: 'retiros', label: 'Retiros' },
+                  { clave: 'devoluciones', label: 'Devoluciones' },
                   { clave: 'esperado', label: 'Esperado' },
                   { clave: 'real', label: 'Real' },
                   { clave: 'diferencia', label: 'Diferencia' },
@@ -543,7 +696,12 @@ function ReportesPage() {
                 nombreArchivo="cortes-de-caja.csv"
                 filas={resultado.sesiones.map((s) => ({
                   caja: s.caja?.nombre,
+                  cajero: s.cajero?.nombre,
                   fondo: Number(s.fondoInicial),
+                  ingresos: Number(s.movimientos.ingreso),
+                  ventas: Number(s.movimientos.venta),
+                  retiros: Number(s.movimientos.retiro),
+                  devoluciones: Number(s.movimientos.devolucion),
                   esperado: Number(s.saldoEsperado),
                   real: Number(s.saldoReal),
                   diferencia: Number(s.diferencia),
@@ -551,7 +709,12 @@ function ReportesPage() {
                 }))}
                 columnas={[
                   { clave: 'caja', label: 'Caja' },
+                  { clave: 'cajero', label: 'Cajero' },
                   { clave: 'fondo', label: 'Fondo' },
+                  { clave: 'ingresos', label: 'Ingresos' },
+                  { clave: 'ventas', label: 'Ventas' },
+                  { clave: 'retiros', label: 'Retiros' },
+                  { clave: 'devoluciones', label: 'Devoluciones' },
                   { clave: 'esperado', label: 'Esperado' },
                   { clave: 'real', label: 'Real' },
                   { clave: 'diferencia', label: 'Diferencia' },
@@ -566,12 +729,17 @@ function ReportesPage() {
           <p className="mb-4 text-sm text-gray-500">
             Diferencia acumulada: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.totalDiferencias)}</span>
           </p>
-          <Table columnas={['Caja', 'Fondo', 'Esperado', 'Real', 'Diferencia', 'Cerrada']}>
-            {resultado.sesiones.length === 0 && <TablaVacia colSpan={6} />}
+          <Table columnas={['Caja', 'Cajero', 'Fondo', 'Ingresos', 'Ventas', 'Retiros', 'Devoluciones', 'Esperado', 'Real', 'Diferencia', 'Cerrada']}>
+            {resultado.sesiones.length === 0 && <TablaVacia colSpan={11} />}
             {resultado.sesiones.map((s) => (
               <Fila key={s.id}>
                 <Celda className="font-medium text-gray-800">{s.caja?.nombre}</Celda>
+                <Celda>{s.cajero?.nombre || '—'}</Celda>
                 <Celda>{formatoMoneda(s.fondoInicial)}</Celda>
+                <Celda>{formatoMoneda(s.movimientos.ingreso)}</Celda>
+                <Celda>{formatoMoneda(s.movimientos.venta)}</Celda>
+                <Celda>{formatoMoneda(s.movimientos.retiro)}</Celda>
+                <Celda>{formatoMoneda(s.movimientos.devolucion)}</Celda>
                 <Celda>{formatoMoneda(s.saldoEsperado)}</Celda>
                 <Celda>{formatoMoneda(s.saldoReal)}</Celda>
                 <Celda>{formatoMoneda(s.diferencia)}</Celda>
