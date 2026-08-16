@@ -1730,6 +1730,67 @@ compra directa sin orden (compra de mostrador) sigue funcionando idéntico.
   (~30-50s, ya documentado), resuelto recargando. Todos los datos de prueba (órdenes y sus
   compras) cancelados/cerrados al terminar, en ambos entornos.
 
+## Renombrar Compras a "Recepción de mercancía" (2026-08-16)
+
+El usuario pidió un cambio de nombre para que el submódulo sea más entendible tras agregar
+Órdenes de Compra: "Compras" (captura) → **Recepción de mercancía**, "Compras recientes"
+(historial) → **Recepciones recientes**. Antes de tocar código se confirmaron con el usuario
+dos puntos ambiguos vía `AskUserQuestion`: el grupo padre del menú lateral (que agrupa
+Recepción de mercancía + Órdenes de compra) se queda como "Compras", y el reporte "Compras
+por proveedor" en Reportes tampoco se toca.
+
+Cambio puramente de texto visible, sin tocar rutas (`/compras`, `/compras/recientes`),
+nombres de archivo/función/variables ni el modelo de datos (`Compra` sigue llamándose así en
+el backend, folio sigue siendo `COM-...`): menú lateral
+([navigation.js](frontend/src/shared/layout/navigation.js)), título y textos de
+[ComprasPage.jsx](frontend/src/modules/compras/pages/ComprasPage.jsx) (eyebrow, `<h1>`,
+botón "Registrar recepción", mensaje de éxito, card "Datos de la recepción", tip) y de
+[ComprasHistorialPage.jsx](frontend/src/modules/compras/pages/ComprasHistorialPage.jsx)
+(`<h1>`, subtítulo, botón "Volver a recepción de mercancía", mensajes de error, título y
+asunto por defecto del modal de envío por correo). Verificado en vivo contra el backend local
+(misma base de Supabase que producción): menú, pantalla de captura, historial y el modal de
+correo (asunto "Recepción COM-MAT-000018" confirmado) — sin romper folios, rutas ni datos
+existentes. Confirmado también en producción tras el deploy (menú lateral).
+
+## Un artículo tipo Servicio ya no genera movimiento de stock (2026-08-16, sesión posterior)
+
+El usuario preguntó si una Orden de Compra podía generarse para un servicio. Investigando la
+respuesta se encontró un gap real: `Articulo.tipo` (`PRODUCTO`/`SERVICIO`, en el catálogo desde
+Fase 2) era **puramente decorativo** — ningún flujo (Compras, Ventas, Devoluciones,
+cancelaciones, Ajustes, Transferencias, Conteos, Existencia inicial) lo consultaba, así que un
+"servicio" terminaba llevando `Existencia`/Kardex exactamente igual que un producto físico, y
+podía disparar alertas de stock mínimo/máximo sin sentido. El usuario pidió cerrar el gap.
+
+Fix centralizado en
+[`aplicarMovimiento`](backend/src/shared/services/inventario.service.js) — único punto de
+escritura de stock del proyecto (§ya documentado arriba): si el artículo es `SERVICIO`, omite
+la escritura de `Existencia`/`MovimientoInventario` sin fallar (devuelve
+`{ existencia: null, movimiento: null, omitido: true }`); el documento que originó el
+movimiento (Compra/Venta/Devolución/cancelación) sigue su curso normal, solo que sin tocar
+stock — comprar o vender un servicio sigue siendo válido, es exactamente el caso que motivó la
+pregunta. Como ningún caller de `aplicarMovimiento` desestructura su resultado salvo
+`existencias.service.js#establecerInicial`, cubrir el gap en ese único punto alcanzó para
+Compras/Ventas/Devoluciones/cancelaciones sin tocarlos.
+
+**Ajustes, Transferencias, Conteos y Existencia inicial son operaciones exclusivamente de
+inventario** (a diferencia de Compras/Ventas, donde un servicio es un ítem legítimo del
+documento) — ahí un servicio se **rechaza explícitamente** con un `AppError` claro ("Un
+artículo tipo Servicio no lleva inventario.") en vez de omitirse en silencio, agregado en
+`ajustes.service.js#crear`, `transferencias.service.js#crear`,
+`conteos.service.js#reemplazarDetalles` y `existencias.service.js#establecerInicial` (los
+tres primeros ya cargaban los `Articulo` completos para otra validación, así que el chequeo
+fue agregar una condición más). Frontend: las 4 pantallas de Inventario
+(Existencias/Ajustes/Transferencias/Conteos) ya filtran `tipo !== 'SERVICIO'` al cargar el
+selector de artículos, para que el usuario no llegue a chocar con el rechazo del backend.
+
+Verificado en vivo contra el backend local (misma base de Supabase que producción) con un
+script temporal (borrado al terminar): una Compra con una línea de servicio se registró
+normal (folio, total) pero **sin** crear `Existencia` ni `MovimientoInventario` para ese
+artículo; un Ajuste con el mismo servicio fue rechazado con el mensaje esperado; llamar
+`aplicarMovimiento` directo sobre el servicio confirmó `omitido:true`. También verificado en
+el navegador: el artículo de prueba tipo Servicio no aparece en el selector de Ajustes pero sí
+en el buscador de Recepción de mercancía. Datos de prueba limpiados en ambos entornos.
+
 ## Qué contiene
 
 ```text
@@ -1866,8 +1927,15 @@ con IVA y descuento por línea, folio del proveedor y observaciones — antes so
 una línea a la vez pese a que el backend ya soportaba varias (ver "Rediseño de Nueva compra"
 arriba). Sobre eso, ya se agregó Órdenes de Compra como paso previo opcional a la compra (la
 solicitud al proveedor, sin efecto de stock/dinero), con recepción parcial en varias entregas y
-envío por correo (ver "Órdenes de Compra" arriba). **El pendiente estructural que queda es
-terminar el módulo de Facturación.** A elección:
+envío por correo (ver "Órdenes de Compra" arriba). Por último, el submódulo de Compras (captura
+e historial) se renombró en el frontend a "Recepción de mercancía"/"Recepciones recientes" para
+que quede claro que es la recepción, no la solicitud (ver "Renombrar Compras a 'Recepción de
+mercancía'" arriba), y se cerró un gap real: un artículo tipo Servicio ya no genera movimiento
+de stock (`Existencia`/Kardex) en ningún flujo — sigue siendo comprable/vendible, solo que sin
+tocar inventario, y las operaciones exclusivamente de inventario (Ajustes/Transferencias/
+Conteos/Existencia inicial) lo rechazan explícitamente (ver "Un artículo tipo Servicio ya no
+genera movimiento de stock" arriba). **El pendiente estructural que queda es terminar el módulo
+de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.
