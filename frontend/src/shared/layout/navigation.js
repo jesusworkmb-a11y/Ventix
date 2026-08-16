@@ -31,7 +31,15 @@ export const NAVEGACION = [
     ],
   },
   { label: 'Caja', to: '/caja', icon: Wallet },
-  { label: 'Compras', to: '/compras', icon: Package },
+  {
+    label: 'Compras',
+    to: '/compras',
+    icon: Package,
+    hijos: [
+      { label: 'Compras', to: '/compras' },
+      { label: 'Compras recientes', to: '/compras/recientes' },
+    ],
+  },
   {
     label: 'Inventario',
     to: '/inventario/existencias',

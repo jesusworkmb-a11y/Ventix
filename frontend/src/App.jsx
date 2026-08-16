@@ -19,6 +19,7 @@ import AjustesPage from './modules/inventario/pages/AjustesPage';
 import TransferenciasPage from './modules/inventario/pages/TransferenciasPage';
 import ConteosPage from './modules/inventario/pages/ConteosPage';
 import ComprasPage from './modules/compras/pages/ComprasPage';
+import ComprasHistorialPage from './modules/compras/pages/ComprasHistorialPage';
 import CajaPage from './modules/caja/pages/CajaPage';
 import VentasPage from './modules/ventas/pages/VentasPage';
 import VentasHistorialPage from './modules/ventas/pages/VentasHistorialPage';
@@ -162,6 +163,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <ComprasPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/compras/recientes"
+          element={(
+            <ProtectedRoute>
+              <ComprasHistorialPage />
             </ProtectedRoute>
           )}
         />
