@@ -39,7 +39,7 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
   const [datos, total] = await Promise.all([
     prisma.compra.findMany({
       where,
-      include: { proveedor: true, sucursal: true },
+      include: { proveedor: true, sucursal: true, ordenCompra: { select: { folio: true } } },
       orderBy,
       skip: paginado.skip,
       take: paginado.take,
@@ -106,7 +106,7 @@ function calcularDescuentoManual(cantidad, costo, descuentoManual) {
 }
 
 async function crear({
-  empresaId, usuarioId, sucursalId, proveedorId, folioProveedor, observaciones, detalles,
+  empresaId, usuarioId, sucursalId, proveedorId, folioProveedor, observaciones, detalles, ordenCompraId,
 }) {
   const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, empresaId } });
   if (!sucursal) throw new AppError(400, 'La sucursal indicada no pertenece a esta empresa.');
@@ -114,6 +114,25 @@ async function crear({
   const proveedor = await prisma.proveedor.findFirst({ where: { id: proveedorId, empresaId } });
   if (!proveedor) throw new AppError(400, 'El proveedor indicado no pertenece a esta empresa.');
   if (!proveedor.activo) throw new AppError(400, 'El proveedor está inactivo y no se le pueden registrar compras.');
+
+  // Recepción contra una Orden de Compra — siempre opcional (ver ordenes/ordenes.service.js).
+  // Se valida que la orden coincida en empresa/proveedor/sucursal y esté en un estado que
+  // todavía puede recibir algo; el resto (qué líneas de la orden se completan) se resuelve
+  // dentro de la transacción, con los detalles ya cargados acá para no repetir la consulta.
+  let ordenCompra = null;
+  if (ordenCompraId) {
+    ordenCompra = await prisma.ordenCompra.findFirst({
+      where: { id: ordenCompraId, empresaId },
+      include: { detalles: true },
+    });
+    if (!ordenCompra) throw new AppError(400, 'La orden de compra indicada no existe.');
+    if (ordenCompra.proveedorId !== proveedorId || ordenCompra.sucursalId !== sucursalId) {
+      throw new AppError(400, 'La orden de compra indicada es de otro proveedor o sucursal.');
+    }
+    if (!['ENVIADA', 'PARCIAL'].includes(ordenCompra.estado)) {
+      throw new AppError(400, 'Esta orden de compra ya no admite más recepciones.');
+    }
+  }
 
   const articuloIds = detalles.map((d) => d.articuloId);
   const articulos = await prisma.articulo.findMany({
@@ -155,6 +174,7 @@ async function crear({
     const compra = await tx.compra.create({
       data: {
         empresaId, sucursalId, proveedorId, usuarioId, folio, subtotal, impuestos, total, folioProveedor, observaciones,
+        ordenCompraId: ordenCompra?.id,
       },
     });
 
@@ -190,6 +210,31 @@ async function crear({
         where: { id: linea.articuloId },
         data: { costo: linea.costo / linea.factor },
       });
+    }
+
+    // Si esta compra es la recepción de una orden, acredita lo recibido contra cada línea que
+    // coincida por artículo (una compra "desde orden" puede además traer artículos que no
+    // estaban pedidos — no rompen nada, solo no afectan el conteo de pendientes) y recalcula el
+    // estado de la orden. Todo dentro de la misma transacción para que orden y compra queden
+    // consistentes o fallen juntas.
+    if (ordenCompra) {
+      const detallePorArticulo = new Map(ordenCompra.detalles.map((d) => [d.articuloId, d]));
+      for (const linea of lineas) {
+        const detalleOrden = detallePorArticulo.get(linea.articuloId);
+        if (!detalleOrden) continue;
+        await tx.ordenCompraDetalle.update({
+          where: { id: detalleOrden.id },
+          data: { cantidadRecibidaBase: { increment: linea.cantidadBase } },
+        });
+      }
+
+      const detallesActualizados = await tx.ordenCompraDetalle.findMany({ where: { ordenCompraId: ordenCompra.id } });
+      const completa = detallesActualizados.every((d) => Number(d.cantidadRecibidaBase) >= Number(d.cantidadBase));
+      const algoRecibido = detallesActualizados.some((d) => Number(d.cantidadRecibidaBase) > 0);
+      const nuevoEstado = completa ? 'RECIBIDA' : (algoRecibido ? 'PARCIAL' : ordenCompra.estado);
+      if (nuevoEstado !== ordenCompra.estado) {
+        await tx.ordenCompra.update({ where: { id: ordenCompra.id }, data: { estado: nuevoEstado } });
+      }
     }
 
     await registrarAuditoria(tx, {
@@ -234,6 +279,14 @@ async function cancelar({ empresaId, usuarioId, compraId }) {
     reversiones.push({ articuloId: detalle.articuloId, cantidadBase: Number(detalle.cantidad) * factor });
   }
 
+  // Si esta compra fue una recepción, cancelarla debe liberar lo acreditado contra la orden
+  // (si no, la orden quedaría "Recibida"/"Parcial" con mercancía que en realidad se devolvió).
+  // Se resuelve antes de la transacción para no repetir esta consulta; el estado real se
+  // recalcula ya dentro de la transacción con los datos frescos.
+  const ordenCompra = compra.ordenCompraId
+    ? await prisma.ordenCompra.findUnique({ where: { id: compra.ordenCompraId }, include: { detalles: true } })
+    : null;
+
   return prisma.$transaction(async (tx) => {
     // El check de arriba no es atómico con el resto: dos cancelar() casi simultáneos pasaban
     // ambos el check y aplicaban la reversión de stock dos veces (mismo patrón que
@@ -259,6 +312,30 @@ async function cancelar({ empresaId, usuarioId, compraId }) {
         referenciaId: compra.id,
         usuarioId,
       });
+    }
+
+    // Simétrico a la acreditación en crear(): descuenta lo que esta compra había sumado a cada
+    // línea de la orden y recalcula el estado — salvo que la orden ya esté CERRADA a mano (una
+    // decisión manual de que "no va a llegar más" no debe reabrirse solo porque se canceló una
+    // recepción vieja).
+    if (ordenCompra && ordenCompra.estado !== 'CERRADA') {
+      const detallePorArticulo = new Map(ordenCompra.detalles.map((d) => [d.articuloId, d]));
+      for (const reversion of reversiones) {
+        const detalleOrden = detallePorArticulo.get(reversion.articuloId);
+        if (!detalleOrden) continue;
+        await tx.ordenCompraDetalle.update({
+          where: { id: detalleOrden.id },
+          data: { cantidadRecibidaBase: { decrement: reversion.cantidadBase } },
+        });
+      }
+
+      const detallesActualizados = await tx.ordenCompraDetalle.findMany({ where: { ordenCompraId: ordenCompra.id } });
+      const completa = detallesActualizados.every((d) => Number(d.cantidadRecibidaBase) >= Number(d.cantidadBase));
+      const algoRecibido = detallesActualizados.some((d) => Number(d.cantidadRecibidaBase) > 0);
+      const nuevoEstado = completa ? 'RECIBIDA' : (algoRecibido ? 'PARCIAL' : 'ENVIADA');
+      if (nuevoEstado !== ordenCompra.estado) {
+        await tx.ordenCompra.update({ where: { id: ordenCompra.id }, data: { estado: nuevoEstado } });
+      }
     }
 
     const actualizada = await tx.compra.findUnique({ where: { id: compraId } });
@@ -312,4 +389,8 @@ async function enviar({
 
 module.exports = {
   listar, obtener, crear, cancelar, enviar,
+  // Reusada por ordenes/ordenes.service.js (mismo módulo top-level "compras", no viola §3.1) —
+  // una Orden de Compra necesita el mismo cálculo de factor unidad→base al congelar
+  // OrdenCompraDetalle.cantidadBase.
+  resolverFactor,
 };

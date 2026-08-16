@@ -21,6 +21,9 @@ const crearCompraSchema = z.object({
   proveedorId: z.string().min(1),
   folioProveedor: z.string().trim().max(100).optional(),
   observaciones: z.string().trim().max(500).optional(),
+  // Recepción de una Orden de Compra — siempre opcional (ver "Órdenes de compra" en el README),
+  // una Compra puede seguir registrándose sin ninguna orden detrás.
+  ordenCompraId: z.string().min(1).optional(),
   detalles: z
     .array(
       z.object({

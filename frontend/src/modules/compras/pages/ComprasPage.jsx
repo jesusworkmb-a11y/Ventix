@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Trash2, Percent, Search } from 'lucide-react';
 import { crearCompra } from '../api/compras.api';
+import { obtenerOrdenCompra } from '../api/ordenes.api';
 import { listarProveedores } from '../../proveedores/api/proveedores.api';
 import { listarSucursales } from '../../core/api/core.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
@@ -26,6 +27,7 @@ function calcularDescuentoLinea(linea) {
 }
 
 function ComprasPage() {
+  const location = useLocation();
   const [proveedores, setProveedores] = useState([]);
   const [proveedorId, setProveedorId] = useState('');
   const [sucursales, setSucursales] = useState([]);
@@ -42,16 +44,69 @@ function ComprasPage() {
   const [manualEditIndex, setManualEditIndex] = useState(null);
   const [manualForm, setManualForm] = useState({ tipo: 'PORCENTAJE', valor: '' });
 
+  // Recepción de una Orden de Compra (opcional — llegó acá desde el botón "Recibir" de
+  // OrdenesCompraHistorialPage.jsx, que manda el id por location.state). Mientras haya una orden
+  // vinculada, Proveedor/Sucursal quedan fijos a los de la orden (el backend los valida igual,
+  // pero fijarlos en la UI evita un 400 confuso) y el carrito arranca con lo pendiente de recibir.
+  const [ordenCompraIdInicial, setOrdenCompraIdInicial] = useState(() => location.state?.ordenCompraId || null);
+  const [ordenCompra, setOrdenCompra] = useState(null);
+  const [errorOrden, setErrorOrden] = useState('');
+
   useEffect(() => {
     listarProveedores().then(setProveedores).catch(() => {});
     listarSucursales()
       .then((data) => {
         setSucursales(data);
-        if (data.length) setSucursalId((actual) => actual || data[0].id);
+        if (!ordenCompraIdInicial && data.length) setSucursalId((actual) => actual || data[0].id);
       })
       .catch(() => {});
     listarArticulos().then(setArticulos).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Espera a tener el catálogo completo de artículos (necesita costo/impuesto/unidades, que la
+  // orden en sí no trae) antes de armar el carrito inicial con las líneas pendientes.
+  useEffect(() => {
+    if (!ordenCompraIdInicial || ordenCompra || articulos.length === 0) return;
+    obtenerOrdenCompra(ordenCompraIdInicial)
+      .then((detalle) => {
+        setOrdenCompra(detalle);
+        setProveedorId(detalle.proveedorId);
+        setSucursalId(detalle.sucursalId);
+        const lineasPendientes = detalle.detalles
+          .map((d) => {
+            const pendienteBase = Number(d.cantidadBase) - Number(d.cantidadRecibidaBase);
+            if (pendienteBase <= 0) return null;
+            const articulo = articulos.find((a) => a.id === d.articuloId);
+            if (!articulo) return null;
+            return {
+              articuloId: articulo.id,
+              nombre: articulo.nombre,
+              descripcion: articulo.descripcion,
+              sku: articulo.sku,
+              unidadId: articulo.unidadBaseId,
+              unidadBaseId: articulo.unidadBaseId,
+              unidadBaseNombre: articulo.unidadBase?.nombre,
+              unidadesAlternas: articulo.unidadesAlternas || [],
+              cantidad: pendienteBase,
+              costo: d.costoEstimado !== null && d.costoEstimado !== undefined
+                ? Number(d.costoEstimado) : (Number(articulo.costo) || 0),
+              impuestoTasa: articulo.impuesto ? Number(articulo.impuesto.tasa) : 0,
+              descuentoManual: null,
+            };
+          })
+          .filter(Boolean);
+        setCarrito(lineasPendientes);
+      })
+      .catch(() => setErrorOrden('No se pudo cargar la orden de compra indicada.'));
+  }, [ordenCompraIdInicial, ordenCompra, articulos]);
+
+  function quitarVinculoOrden() {
+    setOrdenCompraIdInicial(null);
+    setOrdenCompra(null);
+    setCarrito([]);
+    setProveedorId('');
+  }
 
   // Agregar directo al carrito (clic en un resultado o Enter en el buscador) — sin selector ni
   // botón intermedio, mismo patrón que VentasPage/CotizacionesPage#agregarAlCarrito: si el
@@ -191,6 +246,7 @@ function ComprasPage() {
         sucursalId,
         ...(folioProveedor.trim() && { folioProveedor: folioProveedor.trim() }),
         ...(observaciones.trim() && { observaciones: observaciones.trim() }),
+        ...(ordenCompra && { ordenCompraId: ordenCompra.id }),
         detalles: carritoCalc.map((l) => ({
           articuloId: l.articuloId,
           unidadId: l.unidadId,
@@ -199,11 +255,15 @@ function ComprasPage() {
           ...(l.descuentoManual && { descuentoManual: { tipo: l.descuentoManual.tipo, valor: Number(l.descuentoManual.valor) } }),
         })),
       });
-      setCreada(compra);
+      setCreada({ ...compra, ordenCompraFolio: ordenCompra?.folio || null });
       setCarrito([]);
       setFolioProveedor('');
       setObservaciones('');
       setManualEditIndex(null);
+      // La orden ya quedó consumida (parcial o totalmente) — se desvincula para que Proveedor/
+      // Sucursal vuelvan a quedar editables, sin resetear lo que ya estaba elegido.
+      setOrdenCompraIdInicial(null);
+      setOrdenCompra(null);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo registrar la compra.');
     }
@@ -214,7 +274,9 @@ function ComprasPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Compras</p>
-          <h1 className="mt-1 text-2xl font-bold text-gray-900">Nueva compra</h1>
+          <h1 className="mt-1 text-2xl font-bold text-gray-900">
+            {ordenCompra ? 'Recibir mercancía' : 'Nueva compra'}
+          </h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -228,24 +290,52 @@ function ComprasPage() {
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
+      {errorOrden && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{errorOrden}</p>}
       {creada && (
         <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
-          Compra {creada.folio} registrada. Total: {formatoMoneda(creada.total)} — vela en{' '}
+          Compra {creada.folio} registrada
+          {creada.ordenCompraFolio && <> como recepción de la orden {creada.ordenCompraFolio}</>}.
+          Total: {formatoMoneda(creada.total)} — vela en{' '}
           <Link to="/compras/recientes" className="font-medium underline">Compras recientes</Link>.
         </p>
+      )}
+      {ordenCompra && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-primary-50 px-4 py-2.5 text-sm text-primary-700">
+          <p>
+            Recibiendo la orden <strong>{ordenCompra.folio}</strong> de {ordenCompra.proveedor?.nombre} — el
+            carrito se prellenó con lo pendiente, editalo si la entrega vino distinta.
+          </p>
+          <button type="button" onClick={quitarVinculoOrden} className="font-medium underline">
+            Quitar vínculo
+          </button>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card title="Datos de la compra">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <Select id="proveedorCompra" label="Proveedor" value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} required>
+              <Select
+                id="proveedorCompra"
+                label="Proveedor"
+                value={proveedorId}
+                onChange={(e) => setProveedorId(e.target.value)}
+                disabled={!!ordenCompra}
+                required
+              >
                 <option value="">Selecciona...</option>
-                {proveedores.filter((p) => p.activo).map((p) => (
+                {proveedores.filter((p) => p.activo || p.id === proveedorId).map((p) => (
                   <option key={p.id} value={p.id}>{p.nombre}</option>
                 ))}
               </Select>
-              <Select id="sucursalCompra" label="Sucursal" value={sucursalId} onChange={(e) => setSucursalId(e.target.value)} required>
+              <Select
+                id="sucursalCompra"
+                label="Sucursal"
+                value={sucursalId}
+                onChange={(e) => setSucursalId(e.target.value)}
+                disabled={!!ordenCompra}
+                required
+              >
                 <option value="">Selecciona...</option>
                 {sucursales.map((s) => (
                   <option key={s.id} value={s.id}>{s.nombre}</option>

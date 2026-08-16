@@ -38,6 +38,8 @@ export const NAVEGACION = [
     hijos: [
       { label: 'Compras', to: '/compras' },
       { label: 'Compras recientes', to: '/compras/recientes' },
+      { label: 'Órdenes de compra', to: '/compras/ordenes' },
+      { label: 'Órdenes recientes', to: '/compras/ordenes/recientes' },
     ],
   },
   {

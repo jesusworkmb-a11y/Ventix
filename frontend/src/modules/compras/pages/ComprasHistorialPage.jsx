@@ -18,6 +18,7 @@ const COLUMNAS = [
   { label: 'Folio', clave: 'folio', ordenable: true },
   { label: 'Proveedor', clave: 'proveedor', ordenable: true },
   { label: 'Sucursal', clave: null },
+  { label: 'Orden', clave: null },
   { label: 'Total', clave: 'total', ordenable: true },
   { label: 'Estado', clave: 'estado', ordenable: true },
   { label: '', clave: null },
@@ -174,12 +175,13 @@ function ComprasHistorialPage() {
             />
           )}
         >
-          {compras.length === 0 && <TablaVacia colSpan={6} />}
+          {compras.length === 0 && <TablaVacia colSpan={7} />}
           {compras.map((c) => (
             <Fila key={c.id}>
               <Celda className="font-medium text-gray-800">{c.folio}</Celda>
               <Celda>{c.proveedor?.nombre}</Celda>
               <Celda>{c.sucursal?.nombre}</Celda>
+              <Celda className="text-gray-500">{c.ordenCompra?.folio || '—'}</Celda>
               <Celda>{formatoMoneda(c.total)}</Celda>
               <Celda><Badge tono={ESTADO_TONO[c.estado] || 'gray'}>{c.estado}</Badge></Celda>
               <Celda className="text-right">

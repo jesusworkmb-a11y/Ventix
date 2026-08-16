@@ -55,26 +55,27 @@ model Empresa {
   creadoEn           DateTime      @default(now()) @map("creado_en")
   actualizadoEn      DateTime      @updatedAt @map("actualizado_en")
 
-  sucursales      Sucursal[]
-  usuariosEmpresa UsuarioEmpresa[]
-  roles           Rol[]
-  configuraciones Configuracion[]
-  secuencias      Secuencia[]
-  auditorias      Auditoria[]
-  notificaciones  NotificacionInterna[]
-  articulos       Articulo[]
-  categorias      Categoria[]
-  marcas          Marca[]
-  unidades        Unidad[]
-  impuestos       Impuesto[]
-  listasPrecio    ListaPrecio[]
-  descuentos      Descuento[]
-  promociones     Promocion[]
-  atributos       Atributo[]
-  clientes        Cliente[]
-  proveedores     Proveedor[]
-  compras         Compra[]
-  existencias     Existencia[]
+  sucursales         Sucursal[]
+  usuariosEmpresa    UsuarioEmpresa[]
+  roles              Rol[]
+  configuraciones    Configuracion[]
+  secuencias         Secuencia[]
+  auditorias         Auditoria[]
+  notificaciones     NotificacionInterna[]
+  articulos          Articulo[]
+  categorias         Categoria[]
+  marcas             Marca[]
+  unidades           Unidad[]
+  impuestos          Impuesto[]
+  listasPrecio       ListaPrecio[]
+  descuentos         Descuento[]
+  promociones        Promocion[]
+  atributos          Atributo[]
+  clientes           Cliente[]
+  proveedores        Proveedor[]
+  compras            Compra[]
+  ordenesCompra      OrdenCompra[]
+  existencias        Existencia[]
   ventas             Venta[]
   facturas           Factura[]
   facturasPlantillas FacturaPlantilla[]
@@ -104,13 +105,14 @@ model Sucursal {
   // expedición tiene el suyo. Obligatorio solo si la sucursal va a facturar.
   codigoPostal       String? @map("codigo_postal")
 
-  empresa          Empresa           @relation(fields: [empresaId], references: [id])
-  cajas            Caja[]
-  existencias      Existencia[]
-  ventas           Venta[]
-  compras          Compra[]
-  usuariosSucursal UsuarioSucursal[]
-  facturas         Factura[]
+  empresa            Empresa            @relation(fields: [empresaId], references: [id])
+  cajas              Caja[]
+  existencias        Existencia[]
+  ventas             Venta[]
+  compras            Compra[]
+  ordenesCompra      OrdenCompra[]
+  usuariosSucursal   UsuarioSucursal[]
+  facturas           Factura[]
   facturasPlantillas FacturaPlantilla[]
 
   @@unique([empresaId, clave])
@@ -597,9 +599,10 @@ model Proveedor {
   activo    Boolean  @default(true)
   creadoEn  DateTime @default(now()) @map("creado_en")
 
-  empresa   Empresa             @relation(fields: [empresaId], references: [id])
-  compras   Compra[]
-  articulos ArticuloProveedor[]
+  empresa       Empresa             @relation(fields: [empresaId], references: [id])
+  compras       Compra[]
+  ordenesCompra OrdenCompra[]
+  articulos     ArticuloProveedor[]
 
   @@map("proveedores")
 }
@@ -753,12 +756,18 @@ model Compra {
   total          Decimal
   folioProveedor String?      @map("folio_proveedor") // factura/remito del proveedor, solo referencia — no valida unicidad
   observaciones  String?
+  // Recepción de una Orden de Compra (opcional — ver OrdenCompra más abajo). Sin @unique a
+  // propósito, a diferencia de Venta.facturaId/Cotizacion.convertidaEnVentaId: una orden acepta
+  // VARIAS recepciones parciales, así que varias Compra legítimamente comparten el mismo
+  // ordenCompraId.
+  ordenCompraId  String?      @map("orden_compra_id")
   creadoEn       DateTime     @default(now()) @map("creado_en")
 
-  empresa   Empresa         @relation(fields: [empresaId], references: [id])
-  sucursal  Sucursal        @relation(fields: [sucursalId], references: [id])
-  proveedor Proveedor       @relation(fields: [proveedorId], references: [id])
-  detalles  CompraDetalle[]
+  empresa     Empresa         @relation(fields: [empresaId], references: [id])
+  sucursal    Sucursal        @relation(fields: [sucursalId], references: [id])
+  proveedor   Proveedor       @relation(fields: [proveedorId], references: [id])
+  ordenCompra OrdenCompra?    @relation(fields: [ordenCompraId], references: [id])
+  detalles    CompraDetalle[]
 
   @@map("compras")
 }
@@ -776,6 +785,63 @@ model CompraDetalle {
   compra Compra @relation(fields: [compraId], references: [id])
 
   @@map("compras_detalle")
+}
+
+// Orden de Compra: solicitud al proveedor (costo/existencia/disponibilidad), SIN efecto de
+// stock ni dinero — mismo rol que Cotizacion frente a Venta, salvo que acá la relación con el
+// documento real (Compra, la recepción) es 1-a-N en vez de 1-a-1: una orden puede recibirse en
+// varias entregas parciales hasta completarse o cerrarse manualmente. Siempre opcional: una
+// Compra puede seguir registrándose sin ninguna orden detrás (compra de mostrador), como ya
+// funcionaba antes de este modelo.
+enum EstadoOrdenCompra {
+  ENVIADA // recién creada — nada recibido todavía
+  PARCIAL // al menos una línea con recepción parcial
+  RECIBIDA // todas las líneas completaron su cantidad solicitada
+  CERRADA // cerrada a mano sin completar (el proveedor no va a mandar el resto)
+  CANCELADA // cancelada sin haber recibido nada (solo posible desde ENVIADA)
+}
+
+model OrdenCompra {
+  id            String            @id @default(uuid())
+  empresaId     String            @map("empresa_id")
+  sucursalId    String            @map("sucursal_id")
+  proveedorId   String            @map("proveedor_id")
+  usuarioId     String            @map("usuario_id")
+  folio         String?
+  estado        EstadoOrdenCompra @default(ENVIADA)
+  observaciones String?
+  creadoEn      DateTime          @default(now()) @map("creado_en")
+
+  empresa   Empresa              @relation(fields: [empresaId], references: [id])
+  sucursal  Sucursal             @relation(fields: [sucursalId], references: [id])
+  proveedor Proveedor            @relation(fields: [proveedorId], references: [id])
+  detalles  OrdenCompraDetalle[]
+  compras   Compra[]
+
+  @@map("ordenes_compra")
+}
+
+model OrdenCompraDetalle {
+  id                   String   @id @default(uuid())
+  ordenCompraId        String   @map("orden_compra_id")
+  articuloId           String   @map("articulo_id")
+  unidadId             String   @map("unidad_id") // unidad en que se solicitó (solo para mostrarla igual al recibir)
+  cantidad             Decimal // cantidad solicitada, en unidadId
+  // Cantidad solicitada normalizada a la unidad BASE del artículo, congelada al crear la orden
+  // (mismo criterio que impuestoTasa/costo en el resto del proyecto: lo que se pidió no se mueve
+  // si alguien reconfigura las unidades alternas del artículo después). Permite comparar contra
+  // cantidadRecibidaBase sin volver a resolver el factor cada vez.
+  cantidadBase         Decimal  @map("cantidad_base")
+  // Acumulado de todo lo recibido contra esta línea (de todas las Compra vinculadas a la orden),
+  // siempre en unidad base — cada recepción puede usar una unidad distinta a la solicitada.
+  cantidadRecibidaBase Decimal  @default(0) @map("cantidad_recibida_base")
+  // Solo referencia para negociar con el proveedor — nunca se usa en ningún cálculo real; el
+  // costo de verdad es el que se capture en cada Compra/recepción.
+  costoEstimado        Decimal? @map("costo_estimado")
+
+  ordenCompra OrdenCompra @relation(fields: [ordenCompraId], references: [id])
+
+  @@map("ordenes_compra_detalle")
 }
 
 // =============================================================================
@@ -946,11 +1012,11 @@ model DevolucionDetalle {
 }
 
 model Cotizacion {
-  id                  String   @id @default(uuid())
-  empresaId           String   @map("empresa_id")
-  sucursalId          String   @map("sucursal_id")
-  clienteId           String   @map("cliente_id")
-  usuarioId           String   @map("usuario_id")
+  id                  String    @id @default(uuid())
+  empresaId           String    @map("empresa_id")
+  sucursalId          String    @map("sucursal_id")
+  clienteId           String    @map("cliente_id")
+  usuarioId           String    @map("usuario_id")
   folio               String?
   total               Decimal // con impuesto incluido — igual que Venta.total (ver cotizaciones.service.js#crear)
   convertidaEnVentaId String?   @map("convertida_en_venta_id")
@@ -1150,17 +1216,17 @@ model FacturaDetalleImpuesto {
 // EN VIVO del Articulo, nunca un valor guardado acá -- mismo criterio que Cliente.listaPrecioId,
 // para que una plantilla vieja no "resucite" un precio desactualizado.
 model FacturaPlantilla {
-  id               String   @id @default(uuid())
-  empresaId        String   @map("empresa_id")
-  sucursalId       String   @map("sucursal_id")
-  clienteId        String   @map("cliente_id")
+  id               String    @id @default(uuid())
+  empresaId        String    @map("empresa_id")
+  sucursalId       String    @map("sucursal_id")
+  clienteId        String    @map("cliente_id")
   nombre           String
-  formaPago        String?  @map("forma_pago")
-  metodoPago       String?  @map("metodo_pago")
-  esPredeterminada Boolean  @default(false) @map("es_predeterminada")
-  usoContador      Int      @default(0) @map("uso_contador")
+  formaPago        String?   @map("forma_pago")
+  metodoPago       String?   @map("metodo_pago")
+  esPredeterminada Boolean   @default(false) @map("es_predeterminada")
+  usoContador      Int       @default(0) @map("uso_contador")
   ultimoUso        DateTime? @map("ultimo_uso")
-  creadoEn         DateTime @default(now()) @map("creado_en")
+  creadoEn         DateTime  @default(now()) @map("creado_en")
 
   empresa   Empresa                    @relation(fields: [empresaId], references: [id])
   sucursal  Sucursal                   @relation(fields: [sucursalId], references: [id])

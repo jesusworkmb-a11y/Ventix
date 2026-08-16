@@ -20,6 +20,8 @@ import TransferenciasPage from './modules/inventario/pages/TransferenciasPage';
 import ConteosPage from './modules/inventario/pages/ConteosPage';
 import ComprasPage from './modules/compras/pages/ComprasPage';
 import ComprasHistorialPage from './modules/compras/pages/ComprasHistorialPage';
+import OrdenCompraPage from './modules/compras/pages/OrdenCompraPage';
+import OrdenesCompraHistorialPage from './modules/compras/pages/OrdenesCompraHistorialPage';
 import CajaPage from './modules/caja/pages/CajaPage';
 import VentasPage from './modules/ventas/pages/VentasPage';
 import VentasHistorialPage from './modules/ventas/pages/VentasHistorialPage';
@@ -171,6 +173,22 @@ function App() {
           element={(
             <ProtectedRoute>
               <ComprasHistorialPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/compras/ordenes"
+          element={(
+            <ProtectedRoute>
+              <OrdenCompraPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/compras/ordenes/recientes"
+          element={(
+            <ProtectedRoute>
+              <OrdenesCompraHistorialPage />
             </ProtectedRoute>
           )}
         />

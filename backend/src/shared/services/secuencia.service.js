@@ -29,7 +29,7 @@ async function obtenerSiguienteFolio(tx, { empresaId, sucursalId = null, tipoDoc
 // (el UPDATE no encuentra fila -> excepción sin capturar). Verificado en vivo al crear una
 // venta de prueba en una sucursal nueva.
 function buildSecuenciasPorSucursal(empresaId, sucursal) {
-  return ['VTA', 'COM', 'COT', 'DEV', 'AJU', 'FAC'].map((tipoDocumento) => ({
+  return ['VTA', 'COM', 'COT', 'DEV', 'AJU', 'FAC', 'OC'].map((tipoDocumento) => ({
     empresaId,
     sucursalId: sucursal.id,
     tipoDocumento,
