@@ -265,7 +265,7 @@ function ComprasPage() {
       setOrdenCompraIdInicial(null);
       setOrdenCompra(null);
     } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo registrar la compra.');
+      setError(err.response?.data?.error || 'No se pudo registrar la recepción.');
     }
   }
 
@@ -273,9 +273,9 @@ function ComprasPage() {
     <form onSubmit={agregar} className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Compras</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Recepción de mercancía</p>
           <h1 className="mt-1 text-2xl font-bold text-gray-900">
-            {ordenCompra ? 'Recibir mercancía' : 'Nueva compra'}
+            {ordenCompra ? 'Recibir mercancía' : 'Nueva recepción'}
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -285,7 +285,7 @@ function ComprasPage() {
           >
             Cancelar
           </Link>
-          <Button type="submit">Registrar compra</Button>
+          <Button type="submit">Registrar recepción</Button>
         </div>
       </div>
 
@@ -293,10 +293,10 @@ function ComprasPage() {
       {errorOrden && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{errorOrden}</p>}
       {creada && (
         <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
-          Compra {creada.folio} registrada
+          Recepción {creada.folio} registrada
           {creada.ordenCompraFolio && <> como recepción de la orden {creada.ordenCompraFolio}</>}.
           Total: {formatoMoneda(creada.total)} — vela en{' '}
-          <Link to="/compras/recientes" className="font-medium underline">Compras recientes</Link>.
+          <Link to="/compras/recientes" className="font-medium underline">Recepciones recientes</Link>.
         </p>
       )}
       {ordenCompra && (
@@ -313,7 +313,7 @@ function ComprasPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
-          <Card title="Datos de la compra">
+          <Card title="Datos de la recepción">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <Select
                 id="proveedorCompra"
@@ -513,7 +513,7 @@ function ComprasPage() {
               maxLength={OBSERVACIONES_MAX}
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
-              placeholder="Notas internas sobre esta compra..."
+              placeholder="Notas internas sobre esta recepción..."
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
             <p className="mt-1 text-right text-xs text-gray-400">{observaciones.length} / {OBSERVACIONES_MAX}</p>
@@ -522,7 +522,7 @@ function ComprasPage() {
 
         <div className="space-y-6">
           <Card>
-            <p className="text-sm text-gray-500">Total de la compra</p>
+            <p className="text-sm text-gray-500">Total de la recepción</p>
             <p className="mt-1 text-3xl font-bold text-gray-900">{formatoMoneda(total)}</p>
             <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-sm text-gray-500">
               {descuentoTotal > 0 && (
@@ -544,9 +544,9 @@ function ComprasPage() {
 
           <Card title="Tip">
             <p className="text-xs text-gray-500">
-              Al confirmar se genera el folio de la compra y se actualiza el inventario de inmediato.
+              Al confirmar se genera el folio de la recepción y se actualiza el inventario de inmediato.
               Después podés descargarla en PDF, enviarla por correo o cancelarla desde
-              &quot;Compras recientes&quot;.
+              &quot;Recepciones recientes&quot;.
             </p>
           </Card>
         </div>

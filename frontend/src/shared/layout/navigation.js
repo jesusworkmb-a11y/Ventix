@@ -36,8 +36,8 @@ export const NAVEGACION = [
     to: '/compras',
     icon: Package,
     hijos: [
-      { label: 'Compras', to: '/compras' },
-      { label: 'Compras recientes', to: '/compras/recientes' },
+      { label: 'Recepción de mercancía', to: '/compras' },
+      { label: 'Recepciones recientes', to: '/compras/recientes' },
       { label: 'Órdenes de compra', to: '/compras/ordenes' },
       { label: 'Órdenes recientes', to: '/compras/ordenes/recientes' },
     ],

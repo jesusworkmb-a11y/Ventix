@@ -79,7 +79,7 @@ function ComprasHistorialPage() {
       ]);
       generarPdfCompra(detalle, empresa);
     } catch (err) {
-      setError('No se pudo generar el PDF de la compra.');
+      setError('No se pudo generar el PDF de la recepción.');
     }
   }
 
@@ -92,7 +92,7 @@ function ComprasHistorialPage() {
       setEnvioCompra(detalle);
       setEnvioCompraId(compraId);
     } catch (err) {
-      setError('No se pudo cargar la compra para enviarla.');
+      setError('No se pudo cargar la recepción para enviarla.');
     }
   }
 
@@ -110,7 +110,7 @@ function ComprasHistorialPage() {
       await enviarCompraPorCorreo(envioCompraId, {
         destinatario, asunto, mensaje, adjuntoBase64: base64, nombreArchivo,
       });
-      setExitoEnvioCorreo(`Compra enviada a ${destinatario}.`);
+      setExitoEnvioCorreo(`Recepción enviada a ${destinatario}.`);
       cerrarEnvioCorreo();
     } catch (err) {
       setErrorEnvioCorreo(err.response?.data?.error || 'No se pudo enviar el correo.');
@@ -125,7 +125,7 @@ function ComprasHistorialPage() {
       await cancelarCompra(compraId);
       cargarCompras(paginacion.pagina);
     } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo cancelar la compra.');
+      setError(err.response?.data?.error || 'No se pudo cancelar la recepción.');
     }
   }
 
@@ -133,14 +133,14 @@ function ComprasHistorialPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Compras recientes</h1>
-          <p className="text-sm text-gray-500">Historial de compras, PDF, envío por correo y cancelación.</p>
+          <h1 className="text-2xl font-bold text-gray-900">Recepciones recientes</h1>
+          <p className="text-sm text-gray-500">Historial de recepciones, PDF, envío por correo y cancelación.</p>
         </div>
         <Link
           to="/compras"
           className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
-          Volver a compras
+          Volver a recepción de mercancía
         </Link>
       </div>
 
@@ -217,9 +217,9 @@ function ComprasHistorialPage() {
       <EnviarCorreoModal
         abierto={envioCompraId !== null}
         onCerrar={cerrarEnvioCorreo}
-        titulo="Enviar compra por correo"
+        titulo="Enviar recepción por correo"
         destinatarioSugerido={envioCompra?.proveedor?.correo || ''}
-        asuntoSugerido={envioCompra ? `Compra ${envioCompra.folio}` : ''}
+        asuntoSugerido={envioCompra ? `Recepción ${envioCompra.folio}` : ''}
         enviando={enviandoCorreo}
         error={errorEnvioCorreo}
         onEnviar={enviarCorreoCompra}
