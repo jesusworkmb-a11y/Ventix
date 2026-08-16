@@ -285,6 +285,7 @@ model NotificacionInterna {
 enum TipoArticulo {
   PRODUCTO
   SERVICIO
+  KIT
 }
 
 model Categoria {
@@ -407,9 +408,34 @@ model Articulo {
   promociones      Promocion[]
   valoresAtributo  ArticuloValorAtributo[]
 
+  // Kits (tipo KIT, agregado 2026-08-16): qué otros artículos lo componen (`kitComponentes`,
+  // esta fila es el kit) y en qué kits participa como pieza (`usadoEnKits`, esta fila es el
+  // componente). Ver ArticuloKitDetalle.
+  kitComponentes ArticuloKitDetalle[] @relation("Kit")
+  usadoEnKits    ArticuloKitDetalle[] @relation("ComponenteDeKit")
+
   @@unique([empresaId, sku])
   @@unique([empresaId, codigoBarras])
   @@map("articulos")
+}
+
+// Composición de un Articulo tipo KIT: qué artículos lo integran y en qué cantidad (en la
+// unidad base de cada componente). Un Kit no lleva Existencia propia — venderlo/devolverlo
+// descuenta/acredita stock de cada componente vía aplicarMovimiento (shared/services/
+// inventario.service.js), que expande automáticamente cualquier movimiento sobre un artículo
+// tipo KIT en uno por componente. El componente siempre debe ser tipo PRODUCTO (validado en
+// articulos.service.js#setKitDetalle) — sin kits anidados ni componentes tipo Servicio.
+model ArticuloKitDetalle {
+  id                   String  @id @default(uuid())
+  kitId                String  @map("kit_id")
+  articuloComponenteId String  @map("articulo_componente_id")
+  cantidad             Decimal
+
+  kit                Articulo @relation("Kit", fields: [kitId], references: [id])
+  articuloComponente Articulo @relation("ComponenteDeKit", fields: [articuloComponenteId], references: [id])
+
+  @@unique([kitId, articuloComponenteId])
+  @@map("articulos_kit_detalle")
 }
 
 // Catálogo reusable de atributos de variante (§ Variantes, agregado 2026-08-11): "Color",

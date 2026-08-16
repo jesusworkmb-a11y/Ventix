@@ -60,8 +60,8 @@ function ExistenciasPage() {
 
   useEffect(() => {
     listarSucursales().then(setSucursales).catch(() => {});
-    // Un artículo tipo Servicio no lleva inventario (backend lo rechaza) — se excluye acá.
-    listarArticulos().then((data) => setArticulos(data.filter((a) => a.tipo !== 'SERVICIO'))).catch(() => {});
+    // Un artículo tipo Servicio o Kit no lleva inventario directo (backend lo rechaza) — se excluyen acá.
+    listarArticulos().then((data) => setArticulos(data.filter((a) => a.tipo !== 'SERVICIO' && a.tipo !== 'KIT'))).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

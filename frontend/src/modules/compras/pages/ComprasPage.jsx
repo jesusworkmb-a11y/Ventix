@@ -145,7 +145,9 @@ function ComprasPage() {
 
   const articulosFiltrados = busqueda.trim()
     ? articulos.filter((a) => {
-      if (!a.activo) return false;
+      // Un Kit no se recibe de un proveedor como unidad — se descompone en sus componentes al
+      // venderse, no tiene sentido comprarlo directo (backend lo rechaza igual).
+      if (!a.activo || a.tipo === 'KIT') return false;
       const texto = busqueda.trim().toLowerCase();
       return (
         a.nombre.toLowerCase().includes(texto)
@@ -164,7 +166,8 @@ function ComprasPage() {
     const texto = busqueda.trim().toLowerCase();
     if (!texto) return;
     const exacto = articulos.find(
-      (a) => a.activo && ((a.codigoBarras || '').toLowerCase() === texto || (a.sku || '').toLowerCase() === texto),
+      (a) => a.activo && a.tipo !== 'KIT'
+        && ((a.codigoBarras || '').toLowerCase() === texto || (a.sku || '').toLowerCase() === texto),
     );
     if (exacto) { agregarArticulo(exacto); return; }
     if (articulosFiltrados.length === 1) agregarArticulo(articulosFiltrados[0]);

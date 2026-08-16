@@ -90,6 +90,9 @@ async function obtener({ empresaId, articuloId }) {
         include: { valoresAtributo: { include: { valorAtributo: { include: { atributo: true } } } } },
         orderBy: { nombre: 'asc' },
       },
+      kitComponentes: {
+        include: { articuloComponente: { select: { id: true, nombre: true, sku: true, precio: true, unidadBase: true } } },
+      },
     },
   });
   if (!articulo) throw new AppError(404, 'Artículo no encontrado.');
@@ -250,6 +253,50 @@ async function setPrecios({ empresaId, usuarioEjecutorId, articuloId, precios })
   });
 }
 
+// Reemplaza el set completo de componentes de un Kit (mismo patrón que setUnidadesAlternas/
+// setPrecios: se borra y se vuelve a crear dentro de la transacción). Cada componente debe ser
+// un Articulo tipo PRODUCTO de la misma empresa — sin kits anidados (evita recursión infinita
+// en aplicarMovimiento) ni componentes tipo Servicio (no llevan Existencia que descontar).
+async function setKitDetalle({ empresaId, usuarioEjecutorId, articuloId, componentes }) {
+  const kit = await prisma.articulo.findFirst({ where: { id: articuloId, empresaId } });
+  if (!kit) throw new AppError(404, 'Artículo no encontrado.');
+  if (kit.tipo !== 'KIT') throw new AppError(400, 'Solo un artículo tipo Kit puede tener componentes.');
+
+  const componenteIds = componentes.map((c) => c.articuloComponenteId);
+  if (componenteIds.includes(articuloId)) {
+    throw new AppError(400, 'Un kit no puede tener a sí mismo como componente.');
+  }
+  if (componenteIds.length) {
+    const componentesValidos = await prisma.articulo.findMany({ where: { id: { in: componenteIds }, empresaId } });
+    if (componentesValidos.length !== new Set(componenteIds).size) {
+      throw new AppError(400, 'Algún componente indicado no pertenece a esta empresa o está repetido.');
+    }
+    if (componentesValidos.some((a) => a.tipo !== 'PRODUCTO')) {
+      throw new AppError(400, 'Los componentes de un kit deben ser artículos tipo Producto (sin kits anidados ni servicios).');
+    }
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const anteriores = await tx.articuloKitDetalle.findMany({ where: { kitId: articuloId } });
+    await tx.articuloKitDetalle.deleteMany({ where: { kitId: articuloId } });
+    if (componentes.length) {
+      await tx.articuloKitDetalle.createMany({
+        data: componentes.map((c) => ({ kitId: articuloId, articuloComponenteId: c.articuloComponenteId, cantidad: c.cantidad })),
+      });
+    }
+    await registrarAuditoria(tx, {
+      empresaId,
+      usuarioEjecutorId,
+      accion: 'ACTUALIZAR',
+      entidad: 'ArticuloKitDetalle',
+      entidadId: articuloId,
+      valoresAntes: toJson(anteriores),
+      valoresDespues: toJson(componentes),
+    });
+    return componentes;
+  });
+}
+
 // Genera, para el artículo padre, un Articulo hijo (variante) por cada combinación nueva de los
 // valores de atributo indicados (producto cartesiano entre atributos distintos — ej. Color x
 // Talla). Aditiva e idempotente: combinaciones que ya existen como hijos se dejan intactas (no
@@ -337,4 +384,6 @@ async function generarVariantes({ empresaId, usuarioEjecutorId, articuloId, valo
   return obtener({ empresaId, articuloId });
 }
 
-module.exports = { listar, obtener, crear, actualizar, setUnidadesAlternas, setPrecios, generarVariantes };
+module.exports = {
+  listar, obtener, crear, actualizar, setUnidadesAlternas, setPrecios, setKitDetalle, generarVariantes,
+};

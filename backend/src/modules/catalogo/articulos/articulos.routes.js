@@ -22,5 +22,6 @@ router.put(
   requierePermiso('catalogo.articulos.gestionar'),
   asyncHandler(controller.actualizarVariantes),
 );
+router.put('/:id/kit', requierePermiso('catalogo.articulos.gestionar'), asyncHandler(controller.actualizarKit));
 
 module.exports = router;

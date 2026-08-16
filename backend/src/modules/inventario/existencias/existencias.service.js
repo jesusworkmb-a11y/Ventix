@@ -65,8 +65,8 @@ async function establecerInicial({ empresaId, usuarioId, sucursalId, articuloId,
 
   const articulo = await prisma.articulo.findFirst({ where: { id: articuloId, empresaId } });
   if (!articulo) throw new AppError(400, 'El artículo indicado no pertenece a esta empresa.');
-  if (articulo.tipo === 'SERVICIO') {
-    throw new AppError(400, 'Un artículo tipo Servicio no lleva inventario.');
+  if (articulo.tipo === 'SERVICIO' || articulo.tipo === 'KIT') {
+    throw new AppError(400, 'Un artículo tipo Servicio o Kit no lleva inventario directo.');
   }
 
   const existente = await prisma.existencia.findUnique({

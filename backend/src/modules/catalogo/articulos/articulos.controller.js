@@ -6,6 +6,7 @@ const {
   unidadesAlternasSchema,
   preciosSchema,
   generarVariantesSchema,
+  kitDetalleSchema,
 } = require('./articulos.validators');
 
 async function listar(req, res) {
@@ -88,6 +89,18 @@ async function actualizarVariantes(req, res) {
   res.json(resultado);
 }
 
+async function actualizarKit(req, res) {
+  const parsed = kitDetalleSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Datos de componentes de kit inválidos.');
+  const resultado = await service.setKitDetalle({
+    empresaId: req.auth.empresaId,
+    usuarioEjecutorId: req.auth.usuarioId,
+    articuloId: req.params.id,
+    componentes: parsed.data.componentes,
+  });
+  res.json(resultado);
+}
+
 module.exports = {
   listar,
   obtener,
@@ -96,4 +109,5 @@ module.exports = {
   actualizarUnidadesAlternas,
   actualizarPrecios,
   actualizarVariantes,
+  actualizarKit,
 };

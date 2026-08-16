@@ -1,6 +1,6 @@
 const { z } = require('zod');
 
-const TIPOS = ['PRODUCTO', 'SERVICIO'];
+const TIPOS = ['PRODUCTO', 'SERVICIO', 'KIT'];
 
 const crearArticuloSchema = z.object({
   tipo: z.enum(TIPOS),
@@ -58,10 +58,20 @@ const generarVariantesSchema = z.object({
   valorIds: z.array(z.string().min(1)).min(1),
 });
 
+const kitDetalleSchema = z.object({
+  componentes: z.array(
+    z.object({
+      articuloComponenteId: z.string().min(1),
+      cantidad: z.coerce.number().positive(),
+    }),
+  ),
+});
+
 module.exports = {
   crearArticuloSchema,
   actualizarArticuloSchema,
   unidadesAlternasSchema,
   preciosSchema,
   generarVariantesSchema,
+  kitDetalleSchema,
 };

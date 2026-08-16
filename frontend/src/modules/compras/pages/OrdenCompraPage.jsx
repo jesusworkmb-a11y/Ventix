@@ -67,7 +67,9 @@ function OrdenCompraPage() {
 
   const articulosFiltrados = busqueda.trim()
     ? articulos.filter((a) => {
-      if (!a.activo) return false;
+      // Igual que en la recepción (ComprasPage): un Kit no se solicita a un proveedor como
+      // unidad, se pide sus componentes por separado.
+      if (!a.activo || a.tipo === 'KIT') return false;
       const texto = busqueda.trim().toLowerCase();
       return (
         a.nombre.toLowerCase().includes(texto)
@@ -83,7 +85,8 @@ function OrdenCompraPage() {
     const texto = busqueda.trim().toLowerCase();
     if (!texto) return;
     const exacto = articulos.find(
-      (a) => a.activo && ((a.codigoBarras || '').toLowerCase() === texto || (a.sku || '').toLowerCase() === texto),
+      (a) => a.activo && a.tipo !== 'KIT'
+        && ((a.codigoBarras || '').toLowerCase() === texto || (a.sku || '').toLowerCase() === texto),
     );
     if (exacto) { agregarArticulo(exacto); return; }
     if (articulosFiltrados.length === 1) agregarArticulo(articulosFiltrados[0]);

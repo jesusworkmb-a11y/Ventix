@@ -102,7 +102,14 @@ function ArticuloNuevoPage() {
           <Select id="tipoArticulo" label="Tipo" value={form.tipo} onChange={(e) => actualizarCampo('tipo', e.target.value)}>
             <option value="PRODUCTO">Producto</option>
             <option value="SERVICIO">Servicio</option>
+            <option value="KIT">Kit (combo de otros artículos)</option>
           </Select>
+          {form.tipo === 'KIT' && (
+            <p className="sm:col-span-2 rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-700">
+              Un Kit se vende como un solo artículo, con su propio precio. Después de crearlo,
+              agregá sus componentes desde el botón "Componentes" en el listado de Artículos.
+            </p>
+          )}
           <Input id="nombreArticulo" label="Nombre" value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
           <Input id="skuArticulo" label="SKU" value={form.sku} onChange={(e) => actualizarCampo('sku', e.target.value)} />
           <Input id="codigoBarrasArticulo" label="Código de barras" value={form.codigoBarras} onChange={(e) => actualizarCampo('codigoBarras', e.target.value)} />

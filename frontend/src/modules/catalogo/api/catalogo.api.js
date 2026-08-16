@@ -72,6 +72,10 @@ export function generarVariantesArticulo(articuloId, valorIds) {
   return api.put(`/catalogo/articulos/${articuloId}/variantes`, { valorIds }).then((res) => res.data);
 }
 
+export function actualizarKitDetalle(articuloId, componentes) {
+  return api.put(`/catalogo/articulos/${articuloId}/kit`, { componentes }).then((res) => res.data);
+}
+
 export function listarAtributos() {
   return api.get('/catalogo/atributos').then((res) => res.data);
 }

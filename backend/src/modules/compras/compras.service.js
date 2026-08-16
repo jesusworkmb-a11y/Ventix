@@ -142,6 +142,11 @@ async function crear({
   if (articulos.length !== new Set(articuloIds).size) {
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
+  // Un Kit no tiene existencia propia (se descompone en sus componentes al venderse) — no se
+  // recibe de un proveedor como una unidad; lo que llega son sus componentes por separado.
+  if (articulos.some((a) => a.tipo === 'KIT')) {
+    throw new AppError(400, 'Un artículo tipo Kit no se puede comprar directamente — recibe sus componentes por separado.');
+  }
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
 
   const lineas = [];

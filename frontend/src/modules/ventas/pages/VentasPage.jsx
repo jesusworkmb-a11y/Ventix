@@ -763,7 +763,9 @@ function VentasPage() {
                         ) : (
                           <>
                             <span className="mt-1 text-sm font-semibold text-primary-700">{formatoMoneda(precioEfectivo(a))}</span>
-                            <span className="text-xs text-gray-400">Stock: {existencias[a.id] ?? 0}</span>
+                            {a.tipo !== 'KIT' && (
+                              <span className="text-xs text-gray-400">Stock: {existencias[a.id] ?? 0}</span>
+                            )}
                           </>
                         )}
                       </button>

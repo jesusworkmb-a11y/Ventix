@@ -47,7 +47,7 @@ function AjustesPage() {
       })
       .catch(() => {});
     // Un artículo tipo Servicio no lleva inventario (backend lo rechaza) — se excluye acá.
-    listarArticulos().then((data) => setArticulos(data.filter((a) => a.tipo !== 'SERVICIO'))).catch(() => {});
+    listarArticulos().then((data) => setArticulos(data.filter((a) => a.tipo !== 'SERVICIO' && a.tipo !== 'KIT'))).catch(() => {});
     listarUsuarios().then(setUsuarios).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import {
   listarArticulos,
   actualizarArticulo,
@@ -14,6 +14,7 @@ import {
   listarAtributos,
   obtenerArticulo,
   generarVariantesArticulo,
+  actualizarKitDetalle,
 } from '../api/catalogo.api';
 import CampoImagenArticulo from '../components/CampoImagenArticulo';
 import Card from '../../../shared/ui/Card';
@@ -103,6 +104,16 @@ function ArticulosPage() {
   const [variantesError, setVariantesError] = useState('');
   const [generandoVariantes, setGenerandoVariantes] = useState(false);
 
+  // Catálogo completo (sin paginar) solo para el buscador de componentes del modal de Kits —
+  // `articulos` de arriba trae únicamente la página actual, no alcanza para buscar cualquier
+  // producto de la empresa.
+  const [catalogoCompleto, setCatalogoCompleto] = useState([]);
+  const [kitArticuloId, setKitArticuloId] = useState(null);
+  const [kitComponentes, setKitComponentes] = useState([]);
+  const [kitBusqueda, setKitBusqueda] = useState('');
+  const [kitError, setKitError] = useState('');
+  const [kitCargando, setKitCargando] = useState(false);
+
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState(FORM_VACIO);
   const [errorEdit, setErrorEdit] = useState('');
@@ -135,6 +146,7 @@ function ArticulosPage() {
     listarImpuestos().then(setImpuestos).catch(() => {});
     listarListasPrecio().then(setListasPrecio).catch(() => {});
     listarAtributos().then(setAtributos).catch(() => {});
+    listarArticulos().then(setCatalogoCompleto).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -147,6 +159,7 @@ function ArticulosPage() {
     cancelarEdicion();
     cerrarUnidades();
     cerrarVariantes();
+    cerrarKit();
     setPreciosError('');
     setPreciosArticuloId(articulo.id);
     const inicial = {};
@@ -178,6 +191,7 @@ function ArticulosPage() {
     cancelarEdicion();
     cerrarPrecios();
     cerrarVariantes();
+    cerrarKit();
     setUnidadesError('');
     setUnidadesArticuloId(articulo.id);
     const inicial = {};
@@ -209,6 +223,7 @@ function ArticulosPage() {
     cancelarEdicion();
     cerrarPrecios();
     cerrarUnidades();
+    cerrarKit();
     setVariantesError('');
     setValorIdsSeleccionados([]);
     setVariantesArticuloId(articulo.id);
@@ -223,6 +238,72 @@ function ArticulosPage() {
     setVariantesDetalle(null);
     setValorIdsSeleccionados([]);
     setVariantesError('');
+  }
+
+  function abrirKit(articulo) {
+    cancelarEdicion();
+    cerrarPrecios();
+    cerrarUnidades();
+    cerrarVariantes();
+    setKitError('');
+    setKitBusqueda('');
+    setKitComponentes([]);
+    setKitArticuloId(articulo.id);
+    setKitCargando(true);
+    obtenerArticulo(articulo.id)
+      .then((detalle) => {
+        setKitComponentes(
+          (detalle.kitComponentes || []).map((c) => ({
+            articuloComponenteId: c.articuloComponenteId,
+            cantidad: String(c.cantidad),
+            nombre: c.articuloComponente?.nombre,
+            sku: c.articuloComponente?.sku,
+          })),
+        );
+      })
+      .catch(() => setKitError('No se pudo cargar los componentes del kit.'))
+      .finally(() => setKitCargando(false));
+  }
+
+  function cerrarKit() {
+    setKitArticuloId(null);
+    setKitComponentes([]);
+    setKitBusqueda('');
+    setKitError('');
+  }
+
+  function agregarComponenteKit(articulo) {
+    setKitComponentes((c) => (
+      c.some((x) => x.articuloComponenteId === articulo.id)
+        ? c
+        : [...c, { articuloComponenteId: articulo.id, cantidad: '1', nombre: articulo.nombre, sku: articulo.sku }]
+    ));
+    setKitBusqueda('');
+  }
+
+  function quitarComponenteKit(articuloComponenteId) {
+    setKitComponentes((c) => c.filter((x) => x.articuloComponenteId !== articuloComponenteId));
+  }
+
+  function actualizarCantidadComponenteKit(articuloComponenteId, cantidad) {
+    setKitComponentes((c) => c.map((x) => (
+      x.articuloComponenteId === articuloComponenteId ? { ...x, cantidad } : x
+    )));
+  }
+
+  async function guardarKit(e) {
+    e.preventDefault();
+    setKitError('');
+    const componentes = kitComponentes
+      .filter((c) => c.cantidad !== '' && Number(c.cantidad) > 0)
+      .map((c) => ({ articuloComponenteId: c.articuloComponenteId, cantidad: Number(c.cantidad) }));
+    try {
+      await actualizarKitDetalle(kitArticuloId, componentes);
+      cerrarKit();
+      cargarArticulos(paginacion.pagina);
+    } catch (err) {
+      setKitError(err.response?.data?.error || 'No se pudieron guardar los componentes.');
+    }
   }
 
   function toggleValor(valorId) {
@@ -255,6 +336,7 @@ function ArticulosPage() {
     cerrarPrecios();
     cerrarUnidades();
     cerrarVariantes();
+    cerrarKit();
     setErrorEdit('');
     setEditandoId(articulo.id);
     setEditForm(articuloAForm(articulo));
@@ -304,6 +386,22 @@ function ArticulosPage() {
 
   const articuloEnPrecios = articulos.find((a) => a.id === preciosArticuloId);
   const articuloEnUnidades = articulos.find((a) => a.id === unidadesArticuloId);
+
+  // Candidatos a componente: solo Producto activo de esta empresa, sin el kit mismo ni lo que
+  // ya está agregado — un kit no puede tener kits ni servicios como pieza (mismo criterio que
+  // valida el backend en setKitDetalle).
+  const componentesFiltrados = kitBusqueda.trim()
+    ? catalogoCompleto.filter((a) => {
+      if (a.tipo !== 'PRODUCTO' || !a.activo || a.id === kitArticuloId) return false;
+      if (kitComponentes.some((c) => c.articuloComponenteId === a.id)) return false;
+      const texto = kitBusqueda.trim().toLowerCase();
+      return (
+        a.nombre.toLowerCase().includes(texto)
+        || (a.sku || '').toLowerCase().includes(texto)
+        || (a.codigoBarras || '').toLowerCase().includes(texto)
+      );
+    }).slice(0, 8)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -385,6 +483,11 @@ function ArticulosPage() {
                       Variantes{a._count?.variantes > 0 ? ` (${a._count.variantes})` : ''}
                     </button>
                   )}
+                  {a.tipo === 'KIT' && (
+                    <button type="button" onClick={() => abrirKit(a)} className="text-sm text-primary-600 hover:underline">
+                      Componentes
+                    </button>
+                  )}
                 </div>
               </Celda>
             </Fila>
@@ -402,6 +505,7 @@ function ArticulosPage() {
           <Select id="tipoEdit" label="Tipo" value={editForm.tipo} onChange={(e) => setEditForm((f) => ({ ...f, tipo: e.target.value }))}>
             <option value="PRODUCTO">Producto</option>
             <option value="SERVICIO">Servicio</option>
+            <option value="KIT">Kit (combo de otros artículos)</option>
           </Select>
           <Input id="nombreEdit" label="Nombre" value={editForm.nombre} onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))} required />
           <Input id="skuEdit" label="SKU" value={editForm.sku} onChange={(e) => setEditForm((f) => ({ ...f, sku: e.target.value }))} />
@@ -606,6 +710,82 @@ function ArticulosPage() {
         )}
         {variantesError && !variantesDetalle && (
           <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{variantesError}</p>
+        )}
+      </Modal>
+
+      <Modal abierto={kitArticuloId !== null} onCerrar={cerrarKit} titulo="Componentes del kit">
+        {kitCargando && <p className="text-sm text-gray-500">Cargando...</p>}
+        {!kitCargando && (
+          <form onSubmit={guardarKit} className="flex flex-col gap-3">
+            <p className="text-sm text-gray-500">
+              Elegí qué artículos integran este kit y en qué cantidad (en su unidad base). Al
+              vender el kit se descuenta stock de cada componente automáticamente.
+            </p>
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute left-3 top-3 text-gray-400" />
+              <Input
+                id="buscarComponenteKit"
+                placeholder="Buscar producto por nombre, SKU o código de barras"
+                value={kitBusqueda}
+                onChange={(e) => setKitBusqueda(e.target.value)}
+                className="pl-9"
+              />
+              {componentesFiltrados.length > 0 && (
+                <ul className="absolute z-10 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
+                  {componentesFiltrados.map((a) => (
+                    <li key={a.id}>
+                      <button
+                        type="button"
+                        onClick={() => agregarComponenteKit(a)}
+                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-primary-50"
+                      >
+                        <span className="text-gray-800">{a.nombre}</span>
+                        <span className="shrink-0 text-xs text-gray-400">{a.sku || '—'}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <ul className="divide-y divide-gray-100">
+              {kitComponentes.map((c) => (
+                <li key={c.articuloComponenteId} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-gray-800">{c.nombre}</p>
+                    <p className="text-xs text-gray-500">{c.sku || 'Sin SKU'}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Input
+                      id={`cantidad-${c.articuloComponenteId}`}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={c.cantidad}
+                      onChange={(e) => actualizarCantidadComponenteKit(c.articuloComponenteId, e.target.value)}
+                      className="w-24"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => quitarComponenteKit(c.articuloComponenteId)}
+                      className="text-gray-400 hover:text-danger-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </li>
+              ))}
+              {kitComponentes.length === 0 && (
+                <li className="py-2 text-sm text-gray-400">Este kit todavía no tiene componentes.</li>
+              )}
+            </ul>
+
+            {kitError && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{kitError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={cerrarKit}>Cancelar</Button>
+              <Button type="submit">Guardar componentes</Button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>
