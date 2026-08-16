@@ -62,6 +62,9 @@ async function crear({ empresaId, usuarioId, sucursalId, motivo, autorizadoPorId
   if (articulosValidos.length !== new Set(articuloIds).size) {
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
+  if (articulosValidos.some((a) => a.tipo === 'SERVICIO')) {
+    throw new AppError(400, 'Un artículo tipo Servicio no lleva inventario.');
+  }
 
   if (autorizadoPorId) {
     const autorizador = await prisma.usuarioEmpresa.findUnique({

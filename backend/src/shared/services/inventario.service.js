@@ -17,6 +17,15 @@ const DIRECCION_POR_TIPO = {
 // transacción del documento que origina el movimiento (Ajuste, Transferencia, y más adelante
 // Compra/Venta) — Existencia y el Kardex se confirman o fallan juntos.
 async function aplicarMovimiento(tx, { empresaId, sucursalId, articuloId, tipo, cantidad, referenciaTipo, referenciaId, usuarioId }) {
+  // Un artículo tipo SERVICIO no lleva inventario (no se guarda en almacén) — se omite a
+  // propósito, no es un error: el documento que originó el movimiento (Compra/Venta/Devolución/
+  // etc.) sigue su curso normal, solo que sin tocar Existencia/Kardex. Único punto de escritura
+  // de stock del proyecto, así que basta chequearlo acá para cubrir a todos los llamadores.
+  const articulo = await tx.articulo.findUnique({ where: { id: articuloId }, select: { tipo: true } });
+  if (articulo?.tipo === 'SERVICIO') {
+    return { existencia: null, movimiento: null, omitido: true };
+  }
+
   const delta = cantidad * DIRECCION_POR_TIPO[tipo];
 
   const existencia = await tx.existencia.upsert({

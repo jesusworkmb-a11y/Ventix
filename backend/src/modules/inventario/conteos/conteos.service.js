@@ -77,6 +77,9 @@ async function reemplazarDetalles({ empresaId, usuarioEjecutorId, conteoId, deta
   if (articulosValidos.length !== new Set(articuloIds).size) {
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
+  if (articulosValidos.some((a) => a.tipo === 'SERVICIO')) {
+    throw new AppError(400, 'Un artículo tipo Servicio no lleva inventario.');
+  }
 
   const existencias = await prisma.existencia.findMany({
     where: { sucursalId: conteo.sucursalId, articuloId: { in: articuloIds } },

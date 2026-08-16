@@ -58,6 +58,9 @@ async function crear({ empresaId, usuarioId, sucursalOrigenId, sucursalDestinoId
   if (articulosValidos.length !== new Set(articuloIds).size) {
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
+  if (articulosValidos.some((a) => a.tipo === 'SERVICIO')) {
+    throw new AppError(400, 'Un artículo tipo Servicio no lleva inventario.');
+  }
 
   return prisma.$transaction(async (tx) => {
     // TRA vive a nivel empresa (sucursalId: null) — una transferencia no pertenece a una
