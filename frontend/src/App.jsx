@@ -14,6 +14,7 @@ import ArticulosPage from './modules/catalogo/pages/ArticulosPage';
 import ArticuloNuevoPage from './modules/catalogo/pages/ArticuloNuevoPage';
 import ConfiguracionCatalogoPage from './modules/catalogo/pages/ConfiguracionCatalogoPage';
 import ClientesPage from './modules/clientes/pages/ClientesPage';
+import ClienteNuevoPage from './modules/clientes/pages/ClienteNuevoPage';
 import ProveedoresPage from './modules/proveedores/pages/ProveedoresPage';
 import ExistenciasPage from './modules/inventario/pages/ExistenciasPage';
 import AjustesPage from './modules/inventario/pages/AjustesPage';
@@ -126,6 +127,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <ClientesPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/clientes/nuevo"
+          element={(
+            <ProtectedRoute>
+              <ClienteNuevoPage />
             </ProtectedRoute>
           )}
         />

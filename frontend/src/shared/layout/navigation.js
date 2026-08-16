@@ -63,7 +63,15 @@ export const NAVEGACION = [
       { label: 'Configuración', to: '/catalogo/configuracion' },
     ],
   },
-  { label: 'Clientes', to: '/clientes', icon: Users },
+  {
+    label: 'Clientes',
+    to: '/clientes',
+    icon: Users,
+    hijos: [
+      { label: 'Nuevo cliente', to: '/clientes/nuevo' },
+      { label: 'Clientes', to: '/clientes' },
+    ],
+  },
   { label: 'Proveedores', to: '/proveedores', icon: Truck },
   { label: 'Reportes', to: '/reportes', icon: BarChart3 },
   {

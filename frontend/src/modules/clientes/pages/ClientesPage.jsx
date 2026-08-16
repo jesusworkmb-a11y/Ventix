@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import { listarClientes, crearCliente, actualizarCliente } from '../api/clientes.api';
+import { listarClientes, actualizarCliente } from '../api/clientes.api';
 import { listarListasPrecio } from '../../catalogo/api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
@@ -44,7 +44,6 @@ function ClientesPage() {
   const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
-  const [form, setForm] = useState(FORM_VACIO);
   const [error, setError] = useState('');
 
   const [editandoId, setEditandoId] = useState(null);
@@ -81,29 +80,6 @@ function ClientesPage() {
     cargar(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orden]);
-
-  function actualizarCampo(campo, valor) {
-    setForm((f) => ({ ...f, [campo]: valor }));
-  }
-
-  async function agregar(e) {
-    e.preventDefault();
-    setError('');
-    try {
-      await crearCliente({
-        nombre: form.nombre,
-        telefono: form.telefono || undefined,
-        correo: form.correo || undefined,
-        rfc: form.rfc || undefined,
-        direccion: form.direccion || undefined,
-        listaPrecioId: form.listaPrecioId || undefined,
-      });
-      setForm(FORM_VACIO);
-      cargar(1);
-    } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo crear el cliente.');
-    }
-  }
 
   async function cambiarListaPrecio(cliente, listaPrecioId) {
     setError('');
@@ -155,9 +131,17 @@ function ClientesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
-        <p className="text-sm text-gray-500">Directorio de clientes y sus listas de precio asignadas.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
+          <p className="text-sm text-gray-500">Directorio de clientes y sus listas de precio asignadas.</p>
+        </div>
+        <Link
+          to="/clientes/nuevo"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+        >
+          Nuevo cliente
+        </Link>
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
@@ -226,25 +210,6 @@ function ClientesPage() {
             </Fila>
           ))}
         </Table>
-      </Card>
-
-      <Card title="Nuevo cliente">
-        <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input id="nombreCliente" label="Nombre" value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
-          <Input id="telefonoCliente" label="Teléfono" value={form.telefono} onChange={(e) => actualizarCampo('telefono', e.target.value)} />
-          <Input id="correoCliente" label="Correo" type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} />
-          <Input id="rfcCliente" label="RFC" value={form.rfc} onChange={(e) => actualizarCampo('rfc', e.target.value)} />
-          <Input id="direccionCliente" label="Dirección" value={form.direccion} onChange={(e) => actualizarCampo('direccion', e.target.value)} />
-          <Select id="listaPrecioCliente" label="Lista de precio" value={form.listaPrecioId} onChange={(e) => actualizarCampo('listaPrecioId', e.target.value)}>
-            <option value="">Precio base</option>
-            {listasPrecio.map((l) => (
-              <option key={l.id} value={l.id}>{l.nombre}</option>
-            ))}
-          </Select>
-          <div className="sm:col-span-2">
-            <Button type="submit">Crear cliente</Button>
-          </div>
-        </form>
       </Card>
 
       <Modal abierto={editandoId !== null} onCerrar={cancelarEdicion} titulo="Editar cliente">
