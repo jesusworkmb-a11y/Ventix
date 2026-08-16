@@ -6,9 +6,18 @@ import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
+import SelectorCatalogoSat from '../../../shared/ui/SelectorCatalogoSat';
 
 const FORM_VACIO = {
-  nombre: '', telefono: '', correo: '', rfc: '', direccion: '', domicilioFiscalCp: '', listaPrecioId: '',
+  nombre: '',
+  telefono: '',
+  correo: '',
+  rfc: '',
+  direccion: '',
+  domicilioFiscalCp: '',
+  regimenFiscalClave: null,
+  usoCfdiPreferido: null,
+  listaPrecioId: '',
 };
 
 function ClienteNuevoPage() {
@@ -37,6 +46,8 @@ function ClienteNuevoPage() {
         rfc: form.rfc || undefined,
         direccion: form.direccion || undefined,
         domicilioFiscalCp: form.domicilioFiscalCp || undefined,
+        regimenFiscalClave: form.regimenFiscalClave || undefined,
+        usoCfdiPreferido: form.usoCfdiPreferido || undefined,
         listaPrecioId: form.listaPrecioId || undefined,
       });
       setForm(FORM_VACIO);
@@ -65,6 +76,22 @@ function ClienteNuevoPage() {
             label="Código postal (domicilio fiscal)"
             value={form.domicilioFiscalCp}
             onChange={(e) => actualizarCampo('domicilioFiscalCp', e.target.value)}
+          />
+          <SelectorCatalogoSat
+            id="regimenFiscalCliente"
+            tipo="RegimenFiscal"
+            label="Régimen fiscal (opcional)"
+            value={form.regimenFiscalClave}
+            onChange={(v) => actualizarCampo('regimenFiscalClave', v)}
+            placeholder="Buscar régimen fiscal…"
+          />
+          <SelectorCatalogoSat
+            id="usoCfdiCliente"
+            tipo="UsoCfdi"
+            label="Uso del CFDI preferido (opcional)"
+            value={form.usoCfdiPreferido}
+            onChange={(v) => actualizarCampo('usoCfdiPreferido', v)}
+            placeholder="Buscar uso de CFDI…"
           />
           <Select id="listaPrecioCliente" label="Lista de precio" value={form.listaPrecioId} onChange={(e) => actualizarCampo('listaPrecioId', e.target.value)}>
             <option value="">Precio base</option>

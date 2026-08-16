@@ -10,6 +10,10 @@ const crearClienteSchema = z.object({
   // Código postal del domicilio fiscal — distinto de `direccion` (contacto general): lo usa
   // Facturación para prellenar el receptor del CFDI (ver receptorDesdeCliente en el frontend).
   domicilioFiscalCp: z.string().optional(),
+  // Solo defaults para prellenar el receptor al facturar (mismo criterio que domicilioFiscalCp)
+  // — no se validan contra el catálogo CatalogoSat acá, igual que Empresa/Sucursal.
+  regimenFiscalClave: z.string().optional(),
+  usoCfdiPreferido: z.string().optional(),
   listaPrecioId: z.string().min(1).optional(),
 });
 

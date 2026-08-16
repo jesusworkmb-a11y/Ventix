@@ -11,6 +11,7 @@ import Badge from '../../../shared/ui/Badge';
 import Modal from '../../../shared/ui/Modal';
 import Paginacion from '../../../shared/ui/Paginacion';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import SelectorCatalogoSat from '../../../shared/ui/SelectorCatalogoSat';
 
 const COLUMNAS = [
   { label: 'Nombre', clave: 'nombre', ordenable: true },
@@ -22,7 +23,15 @@ const COLUMNAS = [
 ];
 
 const FORM_VACIO = {
-  nombre: '', telefono: '', correo: '', rfc: '', direccion: '', domicilioFiscalCp: '', listaPrecioId: '',
+  nombre: '',
+  telefono: '',
+  correo: '',
+  rfc: '',
+  direccion: '',
+  domicilioFiscalCp: '',
+  regimenFiscalClave: null,
+  usoCfdiPreferido: null,
+  listaPrecioId: '',
 };
 
 function clienteAForm(c) {
@@ -33,6 +42,8 @@ function clienteAForm(c) {
     rfc: c.rfc || '',
     direccion: c.direccion || '',
     domicilioFiscalCp: c.domicilioFiscalCp || '',
+    regimenFiscalClave: c.regimenFiscalClave || null,
+    usoCfdiPreferido: c.usoCfdiPreferido || null,
     listaPrecioId: c.listaPrecioId || '',
     activo: c.activo,
   };
@@ -116,6 +127,8 @@ function ClientesPage() {
         rfc: editForm.rfc || undefined,
         direccion: editForm.direccion || undefined,
         domicilioFiscalCp: editForm.domicilioFiscalCp || undefined,
+        regimenFiscalClave: editForm.regimenFiscalClave || undefined,
+        usoCfdiPreferido: editForm.usoCfdiPreferido || undefined,
         listaPrecioId: editForm.listaPrecioId || null,
         activo: editForm.activo,
       });
@@ -228,6 +241,22 @@ function ClientesPage() {
             label="Código postal (domicilio fiscal)"
             value={editForm.domicilioFiscalCp}
             onChange={(e) => setEditForm((f) => ({ ...f, domicilioFiscalCp: e.target.value }))}
+          />
+          <SelectorCatalogoSat
+            id="regimenFiscalEditCliente"
+            tipo="RegimenFiscal"
+            label="Régimen fiscal (opcional)"
+            value={editForm.regimenFiscalClave}
+            onChange={(v) => setEditForm((f) => ({ ...f, regimenFiscalClave: v }))}
+            placeholder="Buscar régimen fiscal…"
+          />
+          <SelectorCatalogoSat
+            id="usoCfdiEditCliente"
+            tipo="UsoCfdi"
+            label="Uso del CFDI preferido (opcional)"
+            value={editForm.usoCfdiPreferido}
+            onChange={(v) => setEditForm((f) => ({ ...f, usoCfdiPreferido: v }))}
+            placeholder="Buscar uso de CFDI…"
           />
           <Select id="listaPrecioEditCliente" label="Lista de precio" value={editForm.listaPrecioId} onChange={(e) => setEditForm((f) => ({ ...f, listaPrecioId: e.target.value }))}>
             <option value="">Precio base</option>
