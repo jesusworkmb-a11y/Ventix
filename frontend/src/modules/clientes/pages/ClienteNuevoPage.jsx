@@ -7,7 +7,9 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 
-const FORM_VACIO = { nombre: '', telefono: '', correo: '', rfc: '', direccion: '', listaPrecioId: '' };
+const FORM_VACIO = {
+  nombre: '', telefono: '', correo: '', rfc: '', direccion: '', domicilioFiscalCp: '', listaPrecioId: '',
+};
 
 function ClienteNuevoPage() {
   const [listasPrecio, setListasPrecio] = useState([]);
@@ -34,6 +36,7 @@ function ClienteNuevoPage() {
         correo: form.correo || undefined,
         rfc: form.rfc || undefined,
         direccion: form.direccion || undefined,
+        domicilioFiscalCp: form.domicilioFiscalCp || undefined,
         listaPrecioId: form.listaPrecioId || undefined,
       });
       setForm(FORM_VACIO);
@@ -57,6 +60,12 @@ function ClienteNuevoPage() {
           <Input id="correoCliente" label="Correo" type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} />
           <Input id="rfcCliente" label="RFC" value={form.rfc} onChange={(e) => actualizarCampo('rfc', e.target.value)} />
           <Input id="direccionCliente" label="Dirección" value={form.direccion} onChange={(e) => actualizarCampo('direccion', e.target.value)} />
+          <Input
+            id="domicilioFiscalCpCliente"
+            label="Código postal (domicilio fiscal)"
+            value={form.domicilioFiscalCp}
+            onChange={(e) => actualizarCampo('domicilioFiscalCp', e.target.value)}
+          />
           <Select id="listaPrecioCliente" label="Lista de precio" value={form.listaPrecioId} onChange={(e) => actualizarCampo('listaPrecioId', e.target.value)}>
             <option value="">Precio base</option>
             {listasPrecio.map((l) => (

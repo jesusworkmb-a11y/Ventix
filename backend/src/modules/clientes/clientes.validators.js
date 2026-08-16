@@ -7,6 +7,9 @@ const crearClienteSchema = z.object({
   correo: z.string().email().optional(),
   rfc: z.string().optional(),
   direccion: z.string().optional(),
+  // Código postal del domicilio fiscal — distinto de `direccion` (contacto general): lo usa
+  // Facturación para prellenar el receptor del CFDI (ver receptorDesdeCliente en el frontend).
+  domicilioFiscalCp: z.string().optional(),
   listaPrecioId: z.string().min(1).optional(),
 });
 

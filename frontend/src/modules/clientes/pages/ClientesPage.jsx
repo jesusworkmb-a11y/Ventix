@@ -21,7 +21,9 @@ const COLUMNAS = [
   { label: '', clave: null },
 ];
 
-const FORM_VACIO = { nombre: '', telefono: '', correo: '', rfc: '', direccion: '', listaPrecioId: '' };
+const FORM_VACIO = {
+  nombre: '', telefono: '', correo: '', rfc: '', direccion: '', domicilioFiscalCp: '', listaPrecioId: '',
+};
 
 function clienteAForm(c) {
   return {
@@ -30,6 +32,7 @@ function clienteAForm(c) {
     correo: c.correo || '',
     rfc: c.rfc || '',
     direccion: c.direccion || '',
+    domicilioFiscalCp: c.domicilioFiscalCp || '',
     listaPrecioId: c.listaPrecioId || '',
     activo: c.activo,
   };
@@ -112,6 +115,7 @@ function ClientesPage() {
         correo: editForm.correo || undefined,
         rfc: editForm.rfc || undefined,
         direccion: editForm.direccion || undefined,
+        domicilioFiscalCp: editForm.domicilioFiscalCp || undefined,
         listaPrecioId: editForm.listaPrecioId || null,
         activo: editForm.activo,
       });
@@ -219,6 +223,12 @@ function ClientesPage() {
           <Input id="correoEditCliente" label="Correo" type="email" value={editForm.correo} onChange={(e) => setEditForm((f) => ({ ...f, correo: e.target.value }))} />
           <Input id="rfcEditCliente" label="RFC" value={editForm.rfc} onChange={(e) => setEditForm((f) => ({ ...f, rfc: e.target.value }))} />
           <Input id="direccionEditCliente" label="Dirección" value={editForm.direccion} onChange={(e) => setEditForm((f) => ({ ...f, direccion: e.target.value }))} />
+          <Input
+            id="domicilioFiscalCpEditCliente"
+            label="Código postal (domicilio fiscal)"
+            value={editForm.domicilioFiscalCp}
+            onChange={(e) => setEditForm((f) => ({ ...f, domicilioFiscalCp: e.target.value }))}
+          />
           <Select id="listaPrecioEditCliente" label="Lista de precio" value={editForm.listaPrecioId} onChange={(e) => setEditForm((f) => ({ ...f, listaPrecioId: e.target.value }))}>
             <option value="">Precio base</option>
             {listasPrecio.map((l) => (
