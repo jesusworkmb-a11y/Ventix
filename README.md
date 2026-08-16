@@ -1668,6 +1668,68 @@ soportaba un array `detalles` desde siempre. Quedó resuelto junto con el resto.
   síntoma en este valor. Compra de prueba cancelada al terminar (revierte stock automáticamente,
   lógica sin cambios).
 
+## Órdenes de Compra (solicitud al proveedor, opcional) y recepción parcial (2026-08-16)
+
+El usuario notó un gap de proceso real: `Compra` fusionaba en un solo paso la solicitud al
+proveedor (que debería confirmar costo/existencia/disponibilidad antes) con la recepción de
+mercancía (lo que realmente llega, que puede variar de lo pedido y llegar en varias entregas).
+Antes de tocar código se discutió el diseño en chat y se confirmaron con `AskUserQuestion` dos
+decisiones que sí cambiaban el modelo: **recepción parcial** (una orden admite varias Compra
+hasta completarse o cerrarse a mano) y **envío por correo** de la orden al proveedor (mismo
+patrón PDF+correo que el resto de los documentos). Compra ya se comportaba exactamente como la
+recepción, así que se agregó `OrdenCompra` como paso previo **siempre opcional** — el flujo de
+compra directa sin orden (compra de mostrador) sigue funcionando idéntico.
+
+- **Modelo de datos**, migración aditiva: `OrdenCompra` (folio, proveedor, sucursal, estado,
+  observaciones) + `OrdenCompraDetalle` (`cantidad`/`unidadId` solicitados, `cantidadBase`
+  congelada al crear para comparar sin depender de que las unidades alternas no cambien después,
+  `cantidadRecibidaBase` acumulado de todas las recepciones, `costoEstimado` opcional solo para
+  negociar — nunca se usa en ningún cálculo real). `Compra.ordenCompraId` opcional y **sin**
+  `@unique` a propósito (mismo criterio que `Venta.facturaId` con Global/Consolidada): una orden
+  admite N recepciones parciales. Estados: `ENVIADA` → `PARCIAL` (algo recibido, no todo) →
+  `RECIBIDA` (automático al completarse) o `CERRADA` (a mano, cuando no va a llegar más);
+  `CANCELADA` solo posible desde `ENVIADA` (nada recibido todavía) — una vez que algo llegó, ya
+  es real, así que la salida es "Cerrar" en vez de "Cancelar".
+- **Backend**: nuevo submódulo
+  [`compras/ordenes/`](backend/src/modules/compras/ordenes) (listar/obtener/crear/cancelar/
+  cerrar/enviar), montado dentro de `compras.routes.js` (mismo patrón que
+  cotizaciones/devoluciones dentro de `ventas.routes.js`, salvo que acá no se movieron los
+  archivos existentes de Compra a una subcarpeta propia — cambio más chico, mismo resultado).
+  [`compras.service.js#crear`](backend/src/modules/compras/compras.service.js) acredita lo
+  recibido contra la orden (cuando se manda `ordenCompraId`) y recalcula su estado dentro de la
+  misma transacción que crea la Compra; `#cancelar` revierte esa acreditación de forma
+  simétrica — salvo que la orden ya esté `CERRADA` a mano, que no se reabre solo porque se
+  canceló una recepción vieja. Folio `OC` nuevo
+  ([secuencia.service.js](backend/src/shared/services/secuencia.service.js) +
+  [seedSecuenciasOrdenesCompra.js](backend/src/shared/bootstrap/seedSecuenciasOrdenesCompra.js),
+  mismo patrón de autorreparación al arrancar que ya se usó para `FAC`). Permisos nuevos
+  `compra.orden.crear/cancelar/ver`, asignados a Supervisor (los tres) y Almacenista (crear/ver,
+  sin cerrar/cancelar).
+- **Frontend**: nuevas
+  [OrdenCompraPage.jsx](frontend/src/modules/compras/pages/OrdenCompraPage.jsx) (captura, mismo
+  buscador/escaneo que Compras pero sin impuesto/descuento — una orden no es un documento
+  fiscal) y
+  [OrdenesCompraHistorialPage.jsx](frontend/src/modules/compras/pages/OrdenesCompraHistorialPage.jsx)
+  (listado, PDF, envío por correo, y Recibir/Cerrar/Cancelar según el estado). El botón
+  "Recibir" navega a `/compras` con el id de la orden en `location.state`;
+  [ComprasPage.jsx](frontend/src/modules/compras/pages/ComprasPage.jsx) lo detecta, bloquea
+  Proveedor/Sucursal a los de la orden y precarga el carrito con lo pendiente de cada línea (en
+  unidad base, editable) — el título cambia a "Recibir mercancía" y un banner explica de qué
+  orden viene, con un link para "Quitar vínculo" y volver a una compra libre. Nueva columna
+  "Orden" en Compras recientes para trazabilidad (folio de la orden si la compra vino de una).
+- Verificado en vivo contra el backend local (misma base de Supabase que producción): orden con 2
+  líneas (Coca Cola ×20, Sprite ×5) → recepción parcial de 12+5 → estado `Parcial` → recepción
+  del resto (8 pendientes de Coca Cola, Sprite ya no aparece por estar completo) → estado
+  `Recibida`; cancelar la última recepción revirtió correctamente a `Parcial`; `Cerrar` sobre una
+  orden `Parcial` la cortó a `Cerrada`; cancelar después una recepción vieja de esa misma orden
+  **no** la reabrió (confirma la excepción de `CERRADA`); orden nueva sin nada recibido
+  cancelada limpio. PDF de la orden con el desglose de costo estimado correcto. Repetido contra
+  producción (`https://ventix-frontend.onrender.com`) tras el deploy — folio `OC-MAT-000003`
+  generado en producción confirmó que la migración y la secuencia nueva ya estaban activas; el
+  primer intento de leer el listado dio "Sin resultados" por el cold start del backend
+  (~30-50s, ya documentado), resuelto recargando. Todos los datos de prueba (órdenes y sus
+  compras) cancelados/cerrados al terminar, en ambos entornos.
+
 ## Qué contiene
 
 ```text
@@ -1802,7 +1864,9 @@ captura e historial, mismo patrón que Ventas/Cotizaciones (ver "Separar Compras
 historial" arriba), y su pantalla de captura se rediseñó para permitir varias líneas por compra
 con IVA y descuento por línea, folio del proveedor y observaciones — antes solo se podía cargar
 una línea a la vez pese a que el backend ya soportaba varias (ver "Rediseño de Nueva compra"
-arriba). **El pendiente estructural que queda es
+arriba). Sobre eso, ya se agregó Órdenes de Compra como paso previo opcional a la compra (la
+solicitud al proveedor, sin efecto de stock/dinero), con recepción parcial en varias entregas y
+envío por correo (ver "Órdenes de Compra" arriba). **El pendiente estructural que queda es
 terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
