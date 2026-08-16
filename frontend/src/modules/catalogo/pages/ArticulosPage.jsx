@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, ImageIcon, Upload, X } from 'lucide-react';
-import { redimensionarImagen } from '../../../shared/imagen';
+import { Search } from 'lucide-react';
 import {
   listarArticulos,
-  crearArticulo,
   actualizarArticulo,
   listarCategorias,
   listarMarcas,
@@ -17,6 +15,7 @@ import {
   obtenerArticulo,
   generarVariantesArticulo,
 } from '../api/catalogo.api';
+import CampoImagenArticulo from '../components/CampoImagenArticulo';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -36,9 +35,8 @@ const COLUMNAS = [
   { label: '', clave: null },
 ];
 
-const TAMANO_MAX_ARCHIVO = 8 * 1024 * 1024; // origen antes de redimensionar
-const DIMENSION_MAX_IMAGEN_ARTICULO = 480; // px, lado más largo — de sobra para la tarjeta del POS
-
+// Placeholder para editForm antes de que iniciarEdicion() lo sobrescriba con articuloAForm() —
+// el alta real vive en ArticuloNuevoPage.jsx.
 const FORM_VACIO = {
   tipo: 'PRODUCTO',
   nombre: '',
@@ -76,62 +74,6 @@ function articuloAForm(a) {
   };
 }
 
-// Campo de imagen reusado en el alta y en la edición: preview cuadrado + subir/quitar. Mismo
-// patrón (canvas resize -> data URI) que el logo de EmpresaPage, sin almacenamiento en el backend.
-function CampoImagenArticulo({ idInput, imagenUrl, onChange }) {
-  const [error, setError] = useState('');
-  const inputRef = useRef(null);
-
-  async function handleArchivo(e) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    setError('');
-    if (!file.type.startsWith('image/')) {
-      setError('El archivo debe ser una imagen.');
-      return;
-    }
-    if (file.size > TAMANO_MAX_ARCHIVO) {
-      setError('La imagen es demasiado grande (máximo 8MB).');
-      return;
-    }
-    try {
-      const dataUrl = await redimensionarImagen(file, DIMENSION_MAX_IMAGEN_ARTICULO);
-      onChange(dataUrl);
-    } catch (err) {
-      setError(err.message || 'No se pudo procesar la imagen.');
-    }
-  }
-
-  return (
-    <div className="sm:col-span-2 flex items-center gap-4">
-      <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-        {imagenUrl ? (
-          <img src={imagenUrl} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <ImageIcon size={22} className="text-gray-300" />
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <input ref={inputRef} id={idInput} type="file" accept="image/*" onChange={handleArchivo} className="hidden" />
-        <Button type="button" variant="secondary" onClick={() => inputRef.current?.click()}>
-          <Upload size={16} /> {imagenUrl ? 'Cambiar imagen' : 'Subir imagen'}
-        </Button>
-        {imagenUrl && (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-danger-600"
-          >
-            <X size={13} /> Quitar imagen
-          </button>
-        )}
-        {error && <p className="text-xs text-danger-600">{error}</p>}
-      </div>
-    </div>
-  );
-}
-
 function ArticulosPage() {
   const location = useLocation();
   const [articulos, setArticulos] = useState([]);
@@ -146,8 +88,6 @@ function ArticulosPage() {
   const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
-  const [form, setForm] = useState(FORM_VACIO);
-  const [error, setError] = useState('');
 
   const [preciosArticuloId, setPreciosArticuloId] = useState(null);
   const [preciosForm, setPreciosForm] = useState({});
@@ -311,10 +251,6 @@ function ArticulosPage() {
     }
   }
 
-  function actualizarCampo(campo, valor) {
-    setForm((f) => ({ ...f, [campo]: valor }));
-  }
-
   function iniciarEdicion(articulo) {
     cerrarPrecios();
     cerrarUnidades();
@@ -361,33 +297,6 @@ function ArticulosPage() {
     }
   }
 
-  async function agregar(e) {
-    e.preventDefault();
-    setError('');
-    try {
-      await crearArticulo({
-        tipo: form.tipo,
-        nombre: form.nombre,
-        sku: form.sku || undefined,
-        codigoBarras: form.codigoBarras || undefined,
-        unidadBaseId: form.unidadBaseId,
-        categoriaId: form.categoriaId || undefined,
-        marcaId: form.marcaId || undefined,
-        impuestoId: form.impuestoId || undefined,
-        costo: form.costo ? Number(form.costo) : undefined,
-        precio: form.precio ? Number(form.precio) : undefined,
-        stockMinimo: form.stockMinimo ? Number(form.stockMinimo) : undefined,
-        stockMaximo: form.stockMaximo ? Number(form.stockMaximo) : undefined,
-        claveProdServSat: form.claveProdServSat || undefined,
-        imagenUrl: form.imagenUrl || undefined,
-      });
-      setForm(FORM_VACIO);
-      cargarArticulos(1);
-    } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo crear el artículo.');
-    }
-  }
-
   function buscarSubmit(e) {
     e.preventDefault();
     cargarArticulos(1);
@@ -398,9 +307,17 @@ function ArticulosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Artículos y servicios</h1>
-        <p className="text-sm text-gray-500">Catálogo de productos y servicios que se pueden vender.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Artículos y servicios</h1>
+          <p className="text-sm text-gray-500">Catálogo de productos y servicios que se pueden vender.</p>
+        </div>
+        <Link
+          to="/catalogo/articulos/nuevo"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+        >
+          Nuevo artículo
+        </Link>
       </div>
 
       {unidades.length === 0 && (
@@ -473,79 +390,6 @@ function ArticulosPage() {
             </Fila>
           ))}
         </Table>
-      </Card>
-
-      <Card title="Nuevo artículo">
-        <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <CampoImagenArticulo
-            idInput="imagenArticulo"
-            imagenUrl={form.imagenUrl}
-            onChange={(url) => actualizarCampo('imagenUrl', url)}
-          />
-          <Select id="tipoArticulo" label="Tipo" value={form.tipo} onChange={(e) => actualizarCampo('tipo', e.target.value)}>
-            <option value="PRODUCTO">Producto</option>
-            <option value="SERVICIO">Servicio</option>
-          </Select>
-          <Input id="nombreArticulo" label="Nombre" value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
-          <Input id="skuArticulo" label="SKU" value={form.sku} onChange={(e) => actualizarCampo('sku', e.target.value)} />
-          <Input id="codigoBarrasArticulo" label="Código de barras" value={form.codigoBarras} onChange={(e) => actualizarCampo('codigoBarras', e.target.value)} />
-          <Select id="unidadArticulo" label="Unidad base" value={form.unidadBaseId} onChange={(e) => actualizarCampo('unidadBaseId', e.target.value)} required>
-            <option value="">Selecciona...</option>
-            {unidades.map((u) => (
-              <option key={u.id} value={u.id}>{u.nombre}</option>
-            ))}
-          </Select>
-          <Select id="categoriaArticulo" label="Categoría" value={form.categoriaId} onChange={(e) => actualizarCampo('categoriaId', e.target.value)}>
-            <option value="">Sin categoría</option>
-            {categorias.map((c) => (
-              <option key={c.id} value={c.id}>{c.nombre}</option>
-            ))}
-          </Select>
-          <Select id="marcaArticulo" label="Marca" value={form.marcaId} onChange={(e) => actualizarCampo('marcaId', e.target.value)}>
-            <option value="">Sin marca</option>
-            {marcas.map((m) => (
-              <option key={m.id} value={m.id}>{m.nombre}</option>
-            ))}
-          </Select>
-          <Select id="impuestoArticulo" label="Impuesto" value={form.impuestoId} onChange={(e) => actualizarCampo('impuestoId', e.target.value)}>
-            <option value="">Sin impuesto</option>
-            {impuestos.map((i) => (
-              <option key={i.id} value={i.id}>{i.nombre}</option>
-            ))}
-          </Select>
-          <Input id="costoArticulo" label="Costo" type="number" step="0.01" value={form.costo} onChange={(e) => actualizarCampo('costo', e.target.value)} />
-          <Input id="precioArticulo" label="Precio" type="number" step="0.01" value={form.precio} onChange={(e) => actualizarCampo('precio', e.target.value)} />
-          <Input
-            id="stockMinimoArticulo"
-            label="Stock mínimo (opcional)"
-            type="number"
-            step="0.01"
-            min="0"
-            value={form.stockMinimo}
-            onChange={(e) => actualizarCampo('stockMinimo', e.target.value)}
-          />
-          <SelectorCatalogoSat
-            id="claveProdServArticulo"
-            tipo="ClaveProdServ"
-            label="Clave prod/serv SAT (opcional)"
-            value={form.claveProdServSat}
-            onChange={(v) => actualizarCampo('claveProdServSat', v)}
-            placeholder="Buscar clave SAT…"
-          />
-          <Input
-            id="stockMaximoArticulo"
-            label="Stock máximo (opcional)"
-            type="number"
-            step="0.01"
-            min="0"
-            value={form.stockMaximo}
-            onChange={(e) => actualizarCampo('stockMaximo', e.target.value)}
-          />
-          {error && <p className="sm:col-span-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
-          <div className="sm:col-span-2">
-            <Button type="submit">Crear artículo</Button>
-          </div>
-        </form>
       </Card>
 
       <Modal abierto={editandoId !== null} onCerrar={cancelarEdicion} titulo="Editar artículo">

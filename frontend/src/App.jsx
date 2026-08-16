@@ -11,6 +11,7 @@ import RolesPage from './modules/core/pages/RolesPage';
 import AuditoriaPage from './modules/core/pages/AuditoriaPage';
 import DashboardPage from './modules/dashboard/pages/DashboardPage';
 import ArticulosPage from './modules/catalogo/pages/ArticulosPage';
+import ArticuloNuevoPage from './modules/catalogo/pages/ArticuloNuevoPage';
 import ConfiguracionCatalogoPage from './modules/catalogo/pages/ConfiguracionCatalogoPage';
 import ClientesPage from './modules/clientes/pages/ClientesPage';
 import ProveedoresPage from './modules/proveedores/pages/ProveedoresPage';
@@ -101,6 +102,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <ArticulosPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/catalogo/articulos/nuevo"
+          element={(
+            <ProtectedRoute>
+              <ArticuloNuevoPage />
             </ProtectedRoute>
           )}
         />

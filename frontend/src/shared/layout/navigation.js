@@ -58,6 +58,7 @@ export const NAVEGACION = [
     to: '/catalogo/articulos',
     icon: Tag,
     hijos: [
+      { label: 'Nuevo artículo', to: '/catalogo/articulos/nuevo' },
       { label: 'Artículos', to: '/catalogo/articulos' },
       { label: 'Configuración', to: '/catalogo/configuracion' },
     ],
