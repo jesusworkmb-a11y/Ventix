@@ -9,22 +9,28 @@ const ALTO_LOGO = 16; // mm — ancho se deriva de la proporción real de la ima
 
 // Construye el jsPDF sin ningún efecto lateral (no descarga) — reusado tanto por
 // generarPdfCompra (descarga directa) como por generarBase64Compra (envío por correo).
-// A diferencia de Cotizacion, CompraDetalle.costo no lleva un impuesto separado (§17.5) — el
-// costo congelado en la línea ya es el importe total por unidad, así que no hace falta
-// recalcular subtotal/impuestos como en cotizacionPdf.js, solo sumar cantidad × costo.
+// A diferencia de Cotizacion (que no tiene columnas subtotal/impuestos propias y recalcula desde
+// las líneas), Compra sí las persiste directo — se usan tal cual, sin recalcular, para que el PDF
+// siempre coincida exactamente con lo que se guardó (compras registradas antes de este campo
+// quedaron con impuestos=0 y subtotal=total, ver el backfill de la migración).
 function construirDocCompra(compra, empresa) {
   const lineas = compra.detalles.map((d) => {
     const cantidad = Number(d.cantidad);
     const costo = Number(d.costo);
+    const descuentoMonto = Number(d.descuentoMonto || 0);
     return {
       nombre: d.articulo?.nombre || d.articuloId,
       unidad: d.unidad?.abreviatura || d.unidad?.nombre || '',
       cantidad,
       costo,
-      importe: cantidad * costo,
+      descuentoMonto,
+      importe: cantidad * costo - descuentoMonto,
     };
   });
-  const total = Math.round(lineas.reduce((acc, l) => acc + l.importe, 0) * 100) / 100;
+  const descuentoTotal = Math.round(lineas.reduce((acc, l) => acc + l.descuentoMonto, 0) * 100) / 100;
+  const subtotal = Number(compra.subtotal);
+  const impuestos = Number(compra.impuestos);
+  const total = Number(compra.total);
 
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
   let y = 20;
@@ -64,6 +70,10 @@ function construirDocCompra(compra, empresa) {
     doc.text(sucursalTexto, xTexto, y);
   }
   doc.text(`Fecha: ${formatoFecha(compra.creadoEn)}`, DERECHA, y, { align: 'right' });
+  if (compra.folioProveedor) {
+    y += 5;
+    doc.text(`Folio del proveedor: ${compra.folioProveedor}`, DERECHA, y, { align: 'right' });
+  }
 
   if (compra.estado === 'CANCELADA') {
     y += 6;
@@ -95,14 +105,20 @@ function construirDocCompra(compra, empresa) {
 
   autoTable(doc, {
     startY: y,
-    head: [['Artículo', 'Unidad', 'Cantidad', 'Costo unit.', 'Importe']],
+    head: [['Artículo', 'Unidad', 'Cantidad', 'Costo unit.', 'Descuento', 'Importe']],
     body: lineas.map((l) => [
-      l.nombre, l.unidad, String(l.cantidad), formatoMoneda(l.costo), formatoMoneda(l.importe),
+      l.nombre,
+      l.unidad,
+      String(l.cantidad),
+      formatoMoneda(l.costo),
+      l.descuentoMonto > 0 ? `-${formatoMoneda(l.descuentoMonto)}` : '—',
+      formatoMoneda(l.importe),
     ]),
     columnStyles: {
       2: { halign: 'right' },
       3: { halign: 'right' },
       4: { halign: 'right' },
+      5: { halign: 'right' },
     },
     styles: { fontSize: 10, cellPadding: 3 },
     headStyles: { fillColor: [15, 23, 42] },
@@ -110,10 +126,36 @@ function construirDocCompra(compra, empresa) {
   });
 
   let finalY = doc.lastAutoTable.finalY + 8;
+  doc.setFontSize(10);
+  if (descuentoTotal > 0) {
+    doc.text('Descuento', 150, finalY);
+    doc.text(`-${formatoMoneda(descuentoTotal)}`, DERECHA, finalY, { align: 'right' });
+    finalY += 6;
+  }
+  doc.text('Subtotal', 150, finalY);
+  doc.text(formatoMoneda(subtotal), DERECHA, finalY, { align: 'right' });
+  finalY += 6;
+  doc.text('Impuestos', 150, finalY);
+  doc.text(formatoMoneda(impuestos), DERECHA, finalY, { align: 'right' });
+  finalY += 7;
   doc.setFont(undefined, 'bold');
   doc.setFontSize(12);
   doc.text('Total', 150, finalY);
   doc.text(formatoMoneda(total), DERECHA, finalY, { align: 'right' });
+
+  let yFinal = finalY + 14;
+  if (compra.observaciones) {
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(30);
+    doc.text('Observaciones', MARGEN_X, yFinal);
+    yFinal += 5;
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    const lineasObs = doc.splitTextToSize(compra.observaciones, DERECHA - MARGEN_X);
+    doc.text(lineasObs, MARGEN_X, yFinal);
+  }
 
   return doc;
 }

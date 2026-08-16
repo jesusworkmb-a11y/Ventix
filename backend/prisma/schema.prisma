@@ -740,15 +740,20 @@ enum EstadoCompra {
 }
 
 model Compra {
-  id          String       @id @default(uuid())
-  empresaId   String       @map("empresa_id")
-  sucursalId  String       @map("sucursal_id")
-  proveedorId String       @map("proveedor_id")
-  usuarioId   String       @map("usuario_id")
-  folio       String?
-  estado      EstadoCompra @default(CONFIRMADA)
-  total       Decimal
-  creadoEn    DateTime     @default(now()) @map("creado_en")
+  id             String       @id @default(uuid())
+  empresaId      String       @map("empresa_id")
+  sucursalId     String       @map("sucursal_id")
+  proveedorId    String       @map("proveedor_id")
+  usuarioId      String       @map("usuario_id")
+  folio          String?
+  estado         EstadoCompra @default(CONFIRMADA)
+  subtotal       Decimal      @default(0) // sin impuesto — igual que Venta.subtotal (retrocompatible: en compras
+  // previas a este campo, subtotal se respalda con total vía backfill de la migración, ver migration.sql)
+  impuestos      Decimal      @default(0)
+  total          Decimal
+  folioProveedor String?      @map("folio_proveedor") // factura/remito del proveedor, solo referencia — no valida unicidad
+  observaciones  String?
+  creadoEn       DateTime     @default(now()) @map("creado_en")
 
   empresa   Empresa         @relation(fields: [empresaId], references: [id])
   sucursal  Sucursal        @relation(fields: [sucursalId], references: [id])
@@ -759,12 +764,14 @@ model Compra {
 }
 
 model CompraDetalle {
-  id         String  @id @default(uuid())
-  compraId   String  @map("compra_id")
-  articuloId String  @map("articulo_id")
-  unidadId   String  @map("unidad_id") // unidad capturada (puede ser alterna)
-  cantidad   Decimal
-  costo      Decimal // costo congelado en el detalle (§3.14)
+  id             String  @id @default(uuid())
+  compraId       String  @map("compra_id")
+  articuloId     String  @map("articulo_id")
+  unidadId       String  @map("unidad_id") // unidad capturada (puede ser alterna)
+  cantidad       Decimal
+  costo          Decimal // costo unitario congelado, SIN impuesto (§3.14) — igual que VentaDetalle.precio
+  descuentoMonto Decimal @default(0) @map("descuento_monto") // solo descuento manual por línea, sin catálogo (Compras no tiene Descuento/Promocion) — mismo criterio que CotizacionDetalle
+  impuestoTasa   Decimal @default(0) @map("impuesto_tasa") // tasa del Articulo.impuesto, congelada al registrar la compra
 
   compra Compra @relation(fields: [compraId], references: [id])
 

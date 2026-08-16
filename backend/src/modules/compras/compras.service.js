@@ -95,7 +95,19 @@ async function resolverFactor({ articulo, unidadId }) {
   return Number(alterna.factor);
 }
 
-async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }) {
+// Descuento manual por línea (sin catálogo — Compras no tiene Descuento/Promocion) — mismo
+// cálculo que cotizaciones.service.js#calcularDescuentoManual. Se aplica sobre cantidad×costo,
+// ANTES del impuesto (igual que Ventas/Cotizaciones).
+function calcularDescuentoManual(cantidad, costo, descuentoManual) {
+  if (!descuentoManual) return 0;
+  const { tipo, valor } = descuentoManual;
+  const bruto = cantidad * costo;
+  return tipo === 'PORCENTAJE' ? bruto * (Number(valor) / 100) : Math.min(Number(valor), bruto);
+}
+
+async function crear({
+  empresaId, usuarioId, sucursalId, proveedorId, folioProveedor, observaciones, detalles,
+}) {
   const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, empresaId } });
   if (!sucursal) throw new AppError(400, 'La sucursal indicada no pertenece a esta empresa.');
 
@@ -104,7 +116,10 @@ async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }
   if (!proveedor.activo) throw new AppError(400, 'El proveedor está inactivo y no se le pueden registrar compras.');
 
   const articuloIds = detalles.map((d) => d.articuloId);
-  const articulos = await prisma.articulo.findMany({ where: { id: { in: articuloIds }, empresaId } });
+  const articulos = await prisma.articulo.findMany({
+    where: { id: { in: articuloIds }, empresaId },
+    include: { impuesto: true },
+  });
   if (articulos.length !== new Set(articuloIds).size) {
     throw new AppError(400, 'Algún artículo indicado no pertenece a esta empresa o está repetido.');
   }
@@ -114,16 +129,33 @@ async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }
   for (const detalle of detalles) {
     const articulo = articuloPorId.get(detalle.articuloId);
     const factor = await resolverFactor({ articulo, unidadId: detalle.unidadId });
-    lineas.push({ ...detalle, factor, cantidadBase: detalle.cantidad * factor });
+    lineas.push({
+      ...detalle,
+      factor,
+      cantidadBase: detalle.cantidad * factor,
+      descuentoMonto: calcularDescuentoManual(detalle.cantidad, detalle.costo, detalle.descuentoManual),
+      // Tasa del impuesto configurado en el artículo, congelada al registrar la compra — mismo
+      // criterio que VentaDetalle/CotizacionDetalle.impuestoTasa (§3.14). Simplificación
+      // consciente: igual que Facturación (ver facturas.service.js), se asume que el impuesto
+      // del artículo es IVA; si en el futuro se necesitan otros impuestos por línea de compra,
+      // revisar acá primero.
+      impuestoTasa: articulo.impuesto ? Number(articulo.impuesto.tasa) : 0,
+    });
   }
 
-  const total = redondear(lineas.reduce((acc, l) => acc + l.cantidad * l.costo, 0));
+  const subtotal = redondear(lineas.reduce((acc, l) => acc + (l.cantidad * l.costo - l.descuentoMonto), 0));
+  const impuestos = redondear(
+    lineas.reduce((acc, l) => acc + (l.cantidad * l.costo - l.descuentoMonto) * l.impuestoTasa, 0),
+  );
+  const total = redondear(subtotal + impuestos);
 
   return prisma.$transaction(async (tx) => {
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId, tipoDocumento: 'COM' });
 
     const compra = await tx.compra.create({
-      data: { empresaId, sucursalId, proveedorId, usuarioId, folio, total },
+      data: {
+        empresaId, sucursalId, proveedorId, usuarioId, folio, subtotal, impuestos, total, folioProveedor, observaciones,
+      },
     });
 
     await tx.compraDetalle.createMany({
@@ -133,6 +165,8 @@ async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }
         unidadId: l.unidadId,
         cantidad: l.cantidad,
         costo: l.costo,
+        descuentoMonto: l.descuentoMonto,
+        impuestoTasa: l.impuestoTasa,
       })),
     });
 
@@ -148,7 +182,9 @@ async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }
         usuarioId,
       });
 
-      // "Último costo" (§16.3), expresado en unidad base — se actualiza solo al confirmar,
+      // "Último costo" (§16.3), expresado en unidad base — SIN impuesto ni descuento, mismo
+      // costo bruto que ya se usaba antes de este cambio (no se prorratea el descuento acá, para
+      // no alterar un comportamiento ya existente y verificado). Se actualiza solo al confirmar,
       // no se revierte al cancelar (documentado en el plan de esta fase).
       await tx.articulo.update({
         where: { id: linea.articuloId },
@@ -164,7 +200,9 @@ async function crear({ empresaId, usuarioId, sucursalId, proveedorId, detalles }
       entidad: 'Compra',
       entidadId: compra.id,
       folio,
-      valoresDespues: toJson({ proveedorId, total, detalles }),
+      valoresDespues: toJson({
+        proveedorId, subtotal, impuestos, total, folioProveedor, observaciones, detalles: lineas,
+      }),
     });
 
     return { ...compra, detalles: lineas };
