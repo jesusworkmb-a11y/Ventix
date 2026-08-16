@@ -8,7 +8,9 @@ import {
   reporteCaja,
   enviarReportePorCorreo,
 } from '../api/reportes.api';
-import { listarSucursales } from '../../core/api/core.api';
+import { listarSucursales, listarUsuarios } from '../../core/api/core.api';
+import { listarClientes } from '../../clientes/api/clientes.api';
+import { listarCategorias } from '../../catalogo/api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -58,17 +60,63 @@ function BotonEnviarCorreo({
 }
 
 const REPORTES = {
-  ventas: { etiqueta: 'Ventas por período', fn: reporteVentas, usaFechas: true, usaSucursal: true },
-  articulos: { etiqueta: 'Artículos más vendidos', fn: reporteArticulosMasVendidos, usaFechas: true, usaSucursal: true },
+  ventas: {
+    etiqueta: 'Ventas por período', fn: reporteVentas, usaFechas: true, usaSucursal: true, usaUsuario: true, usaCliente: true,
+  },
+  articulos: {
+    etiqueta: 'Artículos más vendidos', fn: reporteArticulosMasVendidos, usaFechas: true, usaSucursal: true, usaUsuario: true, usaCliente: true, usaCategoria: true,
+  },
   inventario: { etiqueta: 'Inventario valorizado', fn: reporteInventarioValorizado, usaFechas: false, usaSucursal: true },
   compras: { etiqueta: 'Compras por proveedor', fn: reporteCompras, usaFechas: true, usaSucursal: true },
   caja: { etiqueta: 'Cortes de caja', fn: reporteCaja, usaFechas: true, usaSucursal: false },
 };
 
+function fechaISO(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function calcularPreset(nombre) {
+  const hoy = new Date();
+  if (nombre === 'hoy') return { desde: fechaISO(hoy), hasta: fechaISO(hoy) };
+  if (nombre === 'ayer') {
+    const ayer = new Date(hoy);
+    ayer.setDate(ayer.getDate() - 1);
+    return { desde: fechaISO(ayer), hasta: fechaISO(ayer) };
+  }
+  if (nombre === 'semana') {
+    const inicio = new Date(hoy);
+    const diaSemana = inicio.getDay();
+    // getDay(): 0 = domingo. La semana arranca en lunes, así que domingo retrocede 6 días.
+    inicio.setDate(inicio.getDate() - (diaSemana === 0 ? 6 : diaSemana - 1));
+    return { desde: fechaISO(inicio), hasta: fechaISO(hoy) };
+  }
+  if (nombre === 'mes') {
+    const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    return { desde: fechaISO(inicio), hasta: fechaISO(hoy) };
+  }
+  return { desde: '', hasta: '' };
+}
+
+const PRESETS_FECHA = [
+  { clave: 'hoy', etiqueta: 'Hoy' },
+  { clave: 'ayer', etiqueta: 'Ayer' },
+  { clave: 'semana', etiqueta: 'Esta semana' },
+  { clave: 'mes', etiqueta: 'Este mes' },
+];
+
 function ReportesPage() {
   const [tipo, setTipo] = useState('ventas');
   const [sucursales, setSucursales] = useState([]);
   const [sucursalId, setSucursalId] = useState('');
+  const [usuarios, setUsuarios] = useState([]);
+  const [usuarioId, setUsuarioId] = useState('');
+  const [clientes, setClientes] = useState([]);
+  const [clienteId, setClienteId] = useState('');
+  const [categorias, setCategorias] = useState([]);
+  const [categoriaId, setCategoriaId] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [resultado, setResultado] = useState(null);
@@ -81,6 +129,9 @@ function ReportesPage() {
 
   useEffect(() => {
     listarSucursales().then(setSucursales).catch(() => {});
+    listarUsuarios().then((lista) => setUsuarios(lista.filter((u) => u.activo))).catch(() => {});
+    listarClientes().then((lista) => setClientes(lista.filter((c) => c.activo))).catch(() => {});
+    listarCategorias().then(setCategorias).catch(() => {});
   }, []);
 
   const config = REPORTES[tipo];
@@ -96,6 +147,9 @@ function ReportesPage() {
         if (hasta) params.hasta = hasta;
       }
       if (config.usaSucursal && sucursalId) params.sucursalId = sucursalId;
+      if (config.usaUsuario && usuarioId) params.usuarioId = usuarioId;
+      if (config.usaCliente && clienteId) params.clienteId = clienteId;
+      if (config.usaCategoria && categoriaId) params.categoriaId = categoriaId;
       const data = await config.fn(params);
       setResultado(data);
     } catch (err) {
@@ -167,8 +221,51 @@ function ReportesPage() {
               ))}
             </Select>
           )}
+          {config.usaUsuario && (
+            <Select id="usuarioReporte" label="Usuario / Cajero" value={usuarioId} onChange={(e) => setUsuarioId(e.target.value)} className="min-w-[180px]">
+              <option value="">Todos los usuarios</option>
+              {usuarios.map((u) => (
+                <option key={u.id} value={u.id}>{u.nombre}</option>
+              ))}
+            </Select>
+          )}
+          {config.usaCliente && (
+            <Select id="clienteReporte" label="Cliente" value={clienteId} onChange={(e) => setClienteId(e.target.value)} className="min-w-[180px]">
+              <option value="">Todos los clientes</option>
+              {clientes.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </Select>
+          )}
+          {config.usaCategoria && (
+            <Select id="categoriaReporte" label="Categoría" value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="min-w-[180px]">
+              <option value="">Todas las categorías</option>
+              {categorias.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </Select>
+          )}
           <Button type="submit">Generar</Button>
         </form>
+        {config.usaFechas && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {PRESETS_FECHA.map((p) => (
+              <Button
+                key={p.clave}
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const { desde: d, hasta: h } = calcularPreset(p.clave);
+                  setDesde(d);
+                  setHasta(h);
+                }}
+              >
+                {p.etiqueta}
+              </Button>
+            ))}
+          </div>
+        )}
       </Card>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}

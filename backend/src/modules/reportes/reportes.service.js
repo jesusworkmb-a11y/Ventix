@@ -4,9 +4,13 @@ const { registrarAuditoria } = require('../../shared/services/auditoria.service'
 const { enviarCorreoConAdjunto } = require('../../shared/services/correo.service');
 const toJson = require('../../shared/toJson');
 
-async function reporteVentas({ empresaId, sucursalId, desde, hasta }) {
+async function reporteVentas({
+  empresaId, sucursalId, desde, hasta, usuarioId, clienteId,
+}) {
   const where = { empresaId, estado: 'CONFIRMADA' };
   if (sucursalId) where.sucursalId = sucursalId;
+  if (usuarioId) where.usuarioId = usuarioId;
+  if (clienteId) where.clienteId = clienteId;
   if (desde || hasta) {
     where.creadoEn = {};
     if (desde) where.creadoEn.gte = new Date(desde);
@@ -54,9 +58,13 @@ async function reporteVentas({ empresaId, sucursalId, desde, hasta }) {
 
 // VentaDetalle no permite sumar cantidad × precio con groupBy de Prisma (solo suma columnas,
 // no productos) — se traen las filas y se reduce en JS, escala pensada para una PyME.
-async function reporteArticulosMasVendidos({ empresaId, sucursalId, desde, hasta, limite = 10 }) {
+async function reporteArticulosMasVendidos({
+  empresaId, sucursalId, desde, hasta, limite = 10, usuarioId, clienteId, categoriaId,
+}) {
   const whereVenta = { empresaId, estado: 'CONFIRMADA' };
   if (sucursalId) whereVenta.sucursalId = sucursalId;
+  if (usuarioId) whereVenta.usuarioId = usuarioId;
+  if (clienteId) whereVenta.clienteId = clienteId;
   if (desde || hasta) {
     whereVenta.creadoEn = {};
     if (desde) whereVenta.creadoEn.gte = new Date(desde);
@@ -92,12 +100,22 @@ async function reporteArticulosMasVendidos({ empresaId, sucursalId, desde, hasta
   const articuloIds = [...acumulado.keys()];
   const articulos = await prisma.articulo.findMany({
     where: { id: { in: articuloIds } },
-    select: { id: true, nombre: true, sku: true },
+    select: {
+      id: true, nombre: true, sku: true, categoriaId: true,
+    },
   });
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
 
-  return [...acumulado.entries()]
-    .map(([articuloId, datos]) => ({ articulo: articuloPorId.get(articuloId) || null, ...datos }))
+  let filas = [...acumulado.entries()]
+    .map(([articuloId, datos]) => ({ articulo: articuloPorId.get(articuloId) || null, ...datos }));
+  // Filtrado en JS igual que el resto de esta función (comentario de arriba): el volumen de
+  // artículos distintos vendidos en un rango es chico para una PyME, no justifica una segunda
+  // consulta a la DB solo para acotar por categoría.
+  if (categoriaId) {
+    filas = filas.filter((f) => f.articulo?.categoriaId === categoriaId);
+  }
+
+  return filas
     .sort((a, b) => b.cantidad - a.cantidad)
     .slice(0, limite);
 }

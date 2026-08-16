@@ -1901,6 +1901,41 @@ Factura Directa → los tres campos se prellenaron solos con el valor/texto corr
 en el modal de edición de Clientes, mismos valores cargados. Dato de prueba desactivado al
 terminar.
 
+## Filtros de Usuario/Cliente/Categoría y atajos de fecha en Reportes (2026-08-16, sesión posterior)
+
+Primera fase de un roadmap de auditoría de Reportes hecho a pedido del usuario (comparó la
+cobertura actual contra una lista de 15 reportes/filtros típicos de un POS): el hallazgo que
+más pesaba era que ningún reporte filtraba por Usuario/Cajero, Cliente ni Categoría pese a que
+los tres campos ya existían en el modelo (`Venta.usuarioId`, `Venta.clienteId`,
+`Articulo.categoriaId`) — solo faltaba exponerlos como parámetro de consulta.
+
+- **Backend**: `reporteVentas()` y `reporteArticulosMasVendidos()`
+  ([reportes.service.js](backend/src/modules/reportes/reportes.service.js)) aceptan ahora
+  `usuarioId` y `clienteId` opcionales en su `where`. `reporteArticulosMasVendidos()` además
+  acepta `categoriaId` — como esa función ya arma el resultado en JS (reduce `VentaDetalle` a un
+  Map por artículo, comentario ya existente sobre por qué no usa `groupBy` de Prisma), el filtro
+  de categoría se aplica sobre `articulo.categoriaId` después de resolver los artículos, sin una
+  segunda consulta dedicada — mismo criterio de escala ("pensado para una PyME") que ya regía el
+  resto de la función.
+- **Frontend** ([ReportesPage.jsx](frontend/src/modules/reportes/pages/ReportesPage.jsx)): tres
+  selects nuevos (Usuario/Cajero, Cliente, Categoría) que reusan `listarUsuarios`/
+  `listarClientes`/`listarCategorias`, ya existentes para otras pantallas (mismo patrón dual-mode
+  sin paginar que ya usan los selectores de Ventas/Cotizaciones) — Usuario y Cliente aparecen en
+  "Ventas por período" y "Artículos más vendidos"; Categoría solo en el segundo, el único de los
+  dos que la especificación pedía. Cuatro botones de atajo (Hoy/Ayer/Esta semana/Este mes) calculan
+  `desde`/`hasta` en el cliente sin tocar el backend.
+- Verificado en vivo contra el backend local (misma base de Supabase que producción): filtro de
+  Usuario aisló 32→28 ventas del período; filtro de Cliente ("Cliente General") devolvió el
+  subconjunto correcto; filtro de Categoría probado dos veces en Artículos más vendidos — vacío
+  correcto contra una categoría sin ventas en el rango ("Bebidas") y 3 filas correctas contra la
+  categoría real de lo vendido ("Refrescos": Coca Cola/Sprite/7Up, excluyendo un artículo con
+  categoría nula); atajo "Este mes" calculó el rango correcto. Sin errores de consola ni de
+  servidor.
+
+Quedan las Fases 2-4 del roadmap (reportes nuevos sobre datos existentes, cambios de modelo para
+Utilidad/Kardex/IVA por tasa/estados de Cotización, y exportación a PDF/Excel/Impresión) — ver el
+detalle completo, con archivo:línea, en la auditoría original.
+
 ## Qué contiene
 
 ```text
@@ -2052,8 +2087,14 @@ precio propio, sin stock propio — vender/cancelar/devolver un kit descuenta/ac
 cada componente automáticamente, ver "Artículo tipo Kit" arriba); y se cerraron los últimos
 campos fiscales de Cliente que existían en el schema sin exponer en la UI (código postal,
 régimen fiscal y uso de CFDI preferido, los tres ya alimentan el receptor del CFDI al facturar
-— ver "Código postal, régimen fiscal y uso de CFDI preferido en Clientes" arriba). **El
-pendiente estructural que queda es terminar el módulo de Facturación.** A elección:
+— ver "Código postal, régimen fiscal y uso de CFDI preferido en Clientes" arriba). Por último,
+se auditó la cobertura del módulo de Reportes contra una lista de 15 reportes/filtros típicos de
+un POS y se arrancó su roadmap de integración: la Fase 1 ya está hecha (filtros de Usuario/
+Cajero, Cliente y Categoría, más atajos de fecha Hoy/Ayer/Esta semana/Este mes — ver "Filtros de
+Usuario/Cliente/Categoría y atajos de fecha en Reportes" arriba); quedan las Fases 2-4 (reportes
+nuevos, cambios de modelo para Utilidad/Kardex/IVA por tasa/estados de Cotización, y exportación
+a PDF/Excel/Impresión). **El otro pendiente estructural que queda es terminar el módulo de
+Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.

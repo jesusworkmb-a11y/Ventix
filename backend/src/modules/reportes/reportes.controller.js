@@ -3,19 +3,28 @@ const { enviarDocumentoSchema } = require('../../shared/validators/enviarDocumen
 const service = require('./reportes.service');
 
 async function ventas(req, res) {
-  const { desde, hasta, sucursalId } = req.query;
-  const reporte = await service.reporteVentas({ empresaId: req.auth.empresaId, desde, hasta, sucursalId });
+  const {
+    desde, hasta, sucursalId, usuarioId, clienteId,
+  } = req.query;
+  const reporte = await service.reporteVentas({
+    empresaId: req.auth.empresaId, desde, hasta, sucursalId, usuarioId, clienteId,
+  });
   res.json(reporte);
 }
 
 async function articulosMasVendidos(req, res) {
-  const { desde, hasta, sucursalId, limite } = req.query;
+  const {
+    desde, hasta, sucursalId, limite, usuarioId, clienteId, categoriaId,
+  } = req.query;
   const reporte = await service.reporteArticulosMasVendidos({
     empresaId: req.auth.empresaId,
     desde,
     hasta,
     sucursalId,
     limite: limite ? Number(limite) : undefined,
+    usuarioId,
+    clienteId,
+    categoriaId,
   });
   res.json(reporte);
 }
