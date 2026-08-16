@@ -1791,6 +1791,116 @@ artículo; un Ajuste con el mismo servicio fue rechazado con el mensaje esperado
 el navegador: el artículo de prueba tipo Servicio no aparece en el selector de Ajustes pero sí
 en el buscador de Recepción de mercancía. Datos de prueba limpiados en ambos entornos.
 
+## Separar Artículos en pantalla de alta y listado (2026-08-16)
+
+Mismo patrón captura/historial ya aplicado a Ventas/Cotizaciones/Compras, a pedido del usuario.
+
+- Nueva [ArticuloNuevoPage.jsx](frontend/src/modules/catalogo/pages/ArticuloNuevoPage.jsx) en
+  `/catalogo/articulos/nuevo` — solo el formulario de alta, con banner de éxito y link directo
+  al listado tras crear.
+- [ArticulosPage.jsx](frontend/src/modules/catalogo/pages/ArticulosPage.jsx) (`/catalogo/articulos`)
+  quedó solo con búsqueda/tabla/paginación y los modales Editar/Precios/Unidades/Variantes, más
+  un botón "Nuevo artículo" en el header que enlaza a la pantalla de alta.
+- `CampoImagenArticulo` (subir/quitar imagen, usado en el alta y en la edición) se extrajo a
+  [`frontend/src/modules/catalogo/components/CampoImagenArticulo.jsx`](frontend/src/modules/catalogo/components/CampoImagenArticulo.jsx),
+  compartido entre ambas pantallas.
+- Sidebar: "Catálogo" ganó el hijo "Nuevo artículo" (antes de "Artículos"). El aviso de
+  ExistenciasPage ("da de alta artículos") y el buscador global de la barra superior siguen
+  apuntando al listado (`/catalogo/articulos`), que es donde ya vivía la búsqueda.
+
+Verificado en vivo contra el backend local (misma Supabase que producción): crear un artículo de
+prueba desde la nueva pantalla, banner de éxito, aparece en el listado, editar/desactivar desde
+ahí sigue funcionando. Dato de prueba desactivado al terminar.
+
+## Artículo tipo Kit — combos de otros artículos (2026-08-16, sesión posterior)
+
+Nuevo `Articulo.tipo = 'KIT'` (ej. "Combo desayuno" = 1 café + 1 pan, vendido como un solo
+renglón con su propio precio). Antes de tocar código se usó `AskUserQuestion` para acordar 3
+decisiones de diseño; las tres recomendadas fueron las elegidas: **sin stock propio** (un Kit
+no tiene fila en `Existencia` — vender/cancelar/devolver descuenta/acredita stock de cada
+componente en el momento, no se "arma" por adelantado), **precio propio editable** (no
+calculado como suma de componentes, mismo criterio que Variantes), y **sin disponibilidad
+calculada** ("cuántos kits puedo armar") ni en el POS ni en Existencias — se valida solo al
+vender, con el mismo error 409 de siempre si falta stock de algún componente.
+
+- **Decisión de arquitectura clave**: el fan-out de un Kit a sus componentes se implementó
+  dentro de [`aplicarMovimiento`](backend/src/shared/services/inventario.service.js) — único
+  punto de escritura de stock del proyecto. Si el artículo es tipo `KIT`, en vez de escribir
+  Existencia/Kardex, recorre `ArticuloKitDetalle` y se llama a sí mismo (recursivo) por cada
+  componente con `cantidad × componente.cantidad`. Como Ventas y Devoluciones ya recorrían sus
+  líneas llamando a `aplicarMovimiento` por `articuloId`, vender/cancelar/devolver un kit
+  funcionó **sin tocar esos services** — el fan-out es transparente para todos los callers
+  existentes, mismo criterio que el skip de `SERVICIO` que ya vivía ahí.
+- **Modelo**: `TipoArticulo` ganó `KIT`; nuevo modelo `ArticuloKitDetalle` (`kitId` +
+  `articuloComponenteId` + `cantidad`, único por par). Un componente debe ser tipo `PRODUCTO`
+  (sin kits anidados ni componentes tipo Servicio) ni el kit mismo.
+- **Kit no se compra directo**: `compras.service.js#crear` y `ordenes/ordenes.service.js#crear`
+  rechazan con 400 si algún artículo de la compra/orden es tipo KIT.
+- **Kit no lleva Ajustes/Transferencias/Conteos/Existencia inicial**, mismo criterio que
+  Servicio (los 4 services de Inventario y sus 4 pickers de frontend).
+- **Endpoint nuevo**: `PUT /catalogo/articulos/:id/kit` (mismo permiso que unidades-alternas/
+  variantes), reemplaza el set completo de componentes. Frontend: botón "Componentes" por fila
+  en ArticulosPage.jsx (solo si `tipo === 'KIT'`), modal con buscador-y-agregado-directo (mismo
+  patrón que el carrito de Ventas/Compras). El grid de VentasPage oculta el badge "Stock: X"
+  para tiles tipo KIT (mostrar "Stock: 0" siempre habría sido engañoso).
+
+Verificado en vivo: creado un Kit de prueba (Coca Cola 600ml ×1 + 7Up 600ml ×1, $30.00), vendido
+desde el POS — confirmado por API que descontó exactamente 1 unidad de cada componente y que el
+Kit no tiene fila en `Existencia`; cancelada la venta — el stock de ambos componentes volvió al
+valor original. Probadas las 3 validaciones del backend por API: comprar un kit (400), un kit
+como su propio componente (400), un Servicio como componente (400). Datos de prueba
+desactivados al terminar.
+
+## Separar Clientes y Proveedores en pantalla de alta y listado (2026-08-16, sesión posterior)
+
+Mismo pedido y mismo patrón que Artículos, aplicado a los dos directorios que quedaban con
+formulario embebido en el listado.
+
+- Nuevas [ClienteNuevoPage.jsx](frontend/src/modules/clientes/pages/ClienteNuevoPage.jsx)
+  (`/clientes/nuevo`) y
+  [ProveedorNuevoPage.jsx](frontend/src/modules/proveedores/pages/ProveedorNuevoPage.jsx)
+  (`/proveedores/nuevo`) — solo el formulario, banner de éxito con link al listado.
+  [ClientesPage.jsx](frontend/src/modules/clientes/pages/ClientesPage.jsx) y
+  [ProveedoresPage.jsx](frontend/src/modules/proveedores/pages/ProveedoresPage.jsx) quedaron
+  con búsqueda/tabla/modal de edición (Clientes conserva el cambio inline de lista de precio),
+  más un botón "Nuevo cliente"/"Nuevo proveedor" en el header.
+- Sidebar: "Clientes" y "Proveedores" pasaron de link plano a grupo con hijos ("Nuevo
+  <entidad>"/"<Entidad>"), mismo criterio que Catálogo/Ventas/Compras. El alta rápida de
+  cliente (F3) dentro de Ventas/Cotizaciones/Factura Directa (modal propio) no se tocó.
+
+Verificado en vivo igual que Artículos en ambos módulos: crear, banner, aparece en el listado,
+editar/desactivar. Datos de prueba desactivados al terminar.
+
+## Código postal, régimen fiscal y uso de CFDI preferido en Clientes (2026-08-16, sesión posterior)
+
+El usuario pidió, con una idea inicial equivocada de la causa ("cambiarle la etiqueta a
+Dirección"), agregar el código postal para Facturación al cliente. Investigando se encontró que
+`Cliente.domicilioFiscalCp`/`regimenFiscalClave`/`usoCfdiPreferido` **ya existían en el schema
+desde la Fase A/B de Facturación** y ya los leía `receptorDesdeCliente()` (para prellenar el
+receptor del CFDI en Factura Directa/Global/el modal "Facturar" de una venta), pero nunca se
+expusieron en las pantallas de Clientes ni los aceptaba `clientes.validators.js` — siempre
+viajaban vacíos. `Cliente.direccion` es un campo de contacto general sin relación con CFDI, sin
+tocar.
+
+- `clientes.validators.js`: `crearClienteSchema` ganó los tres campos, todos opcionales
+  (heredados por `actualizarClienteSchema`).
+- Frontend (ambas pantallas, alta y edición): nuevo campo "Código postal (domicilio fiscal)"
+  (input simple) y "Régimen fiscal (opcional)"/"Uso del CFDI preferido (opcional)" con
+  `SelectorCatalogoSat` — mismo combobox de catálogo SAT server-side que ya usa Configuración
+  fiscal/Artículos (`RegimenFiscal`/`UsoCfdi` sí están sembrados en `CatalogoSat` desde el
+  arranque del server, a diferencia de `ClaveProdServ`/`ClaveUnidad`).
+
+Se le explicó al usuario que un pedido similar para Proveedores no aplica igual: `Proveedor` no
+tiene estos campos en el schema y ningún flujo de Facturación lee datos fiscales de un
+proveedor (el módulo factura a clientes, no hay "CFDI de gasto/proveedor" en Ventix todavía) —
+confirmado con el usuario, no se agregó nada ahí.
+
+Verificado en vivo: cliente de prueba con RFC, CP, Régimen "601 — General de Ley Personas
+Morales" y Uso "G03 — Gastos en general" → persistido (confirmado por API) → seleccionado en
+Factura Directa → los tres campos se prellenaron solos con el valor/texto correcto → reabierto
+en el modal de edición de Clientes, mismos valores cargados. Dato de prueba desactivado al
+terminar.
+
 ## Qué contiene
 
 ```text
@@ -1934,8 +2044,16 @@ mercancía'" arriba), y se cerró un gap real: un artículo tipo Servicio ya no 
 de stock (`Existencia`/Kardex) en ningún flujo — sigue siendo comprable/vendible, solo que sin
 tocar inventario, y las operaciones exclusivamente de inventario (Ajustes/Transferencias/
 Conteos/Existencia inicial) lo rechazan explícitamente (ver "Un artículo tipo Servicio ya no
-genera movimiento de stock" arriba). **El pendiente estructural que queda es terminar el módulo
-de Facturación.** A elección:
+genera movimiento de stock" arriba). Por último, Artículos, Clientes y Proveedores se separaron
+en pantalla de alta y listado, mismo patrón que Ventas/Cotizaciones/Compras (ver "Separar
+Artículos en pantalla de alta y listado" y "Separar Clientes y Proveedores en pantalla de alta
+y listado" arriba); se agregó un nuevo tipo de artículo, **Kit** (combo de otros artículos con
+precio propio, sin stock propio — vender/cancelar/devolver un kit descuenta/acredita stock de
+cada componente automáticamente, ver "Artículo tipo Kit" arriba); y se cerraron los últimos
+campos fiscales de Cliente que existían en el schema sin exponer en la UI (código postal,
+régimen fiscal y uso de CFDI preferido, los tres ya alimentan el receptor del CFDI al facturar
+— ver "Código postal, régimen fiscal y uso de CFDI preferido en Clientes" arriba). **El
+pendiente estructural que queda es terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.
