@@ -2040,6 +2040,44 @@ marcó como "esfuerzo alto" porque el dato que pedían no existía todavía. Mig
 Con esto, las Fases 1-3 del roadmap de Reportes están completas. Queda la Fase 4 (exportación a
 PDF/Excel/Impresión, transversal a los 10 reportes).
 
+## Exportación a Excel/PDF/Impresión — Fase 4 de la auditoría, cierra el roadmap (2026-08-16, sesión posterior)
+
+Última fase del roadmap de Reportes: hasta acá el único formato de salida era CSV. Todo 100%
+client-side, mismo criterio que CSV/PDF de otros módulos — sin endpoint nuevo, los datos del
+reporte ya están en memoria.
+
+- **Excel real (.xlsx)**: nuevo
+  [`shared/xlsx.js`](frontend/src/shared/xlsx.js) con `exportarExcel()`, usando `exceljs`
+  (import dinámico, mismo criterio que jsPDF en `cotizacionPdf.js` — no va en el bundle inicial).
+  Se evaluó primero `xlsx` (SheetJS) por ser la opción más liviana, pero el paquete de npm tiene
+  dos vulnerabilidades altas sin parche disponible (`GHSA-4r6h-8v6p-xvw6`, `GHSA-5pgg-2g8v-p4x9`)
+  — se descartó por `exceljs`, sin CVE propio (solo una dependencia transitiva de `uuid` de
+  severidad moderada, sin ruta de explotación real en el uso que le da este proyecto).
+- **PDF tabular**: nuevo [`shared/reportePdf.js`](frontend/src/shared/reportePdf.js) con
+  `generarPdfReporte()`/`descargarPdfReporte()` — mismo patrón de encabezado (logo + nombre de
+  empresa) que `cotizacionPdf.js`, pero genérico: recibe columnas/filas ya resueltas en vez de
+  conocer la forma de un documento fijo, así que sirve para los 10 reportes sin duplicar código.
+- **Impresión**: nueva regla en
+  [`index.css`](frontend/src/index.css) para `#reporte-imprimible`, mismo aislamiento por
+  `visibility` que ya usaba `#ticket-imprimible` (TicketVenta.jsx) pero a ancho completo en vez
+  de 80mm — el bloque de resultado en
+  [ReportesPage.jsx](frontend/src/modules/reportes/pages/ReportesPage.jsx) vive envuelto en ese
+  id, así que "Imprimir" (`window.print()`) muestra solo la tabla del reporte, nunca el
+  formulario de filtros ni el resto de la app.
+- **Refactor**: los 10 pares `BotonExportar`+`BotonEnviarCorreo` (cada uno con las mismas
+  filas/columnas escritas dos veces) se consolidaron en un solo componente `AccionesReporte`
+  (CSV/Excel/PDF/Imprimir/Correo) y las filas/columnas de cada reporte pasaron de estar inline
+  por duplicado a un único `const` antes de cada `Card` — el archivo quedó más corto pese a
+  agregar 3 formatos nuevos.
+- Verificado en vivo contra el backend local: build de producción del frontend limpio (`exceljs`
+  y `reportePdf` quedan en chunks separados, confirmando que el `import()` dinámico funciona);
+  `exportarExcel()` y `descargarPdfReporte()` corridos directamente sin errores contra dos
+  reportes de forma distinta (resumen de 4 columnas y tabla de 11 columnas); contenedor
+  `#reporte-imprimible` confirmado en el DOM con el reporte activo adentro; modal de correo
+  sigue abriendo igual que antes del refactor. Sin errores de consola ni de servidor.
+
+Con esto, las cuatro fases del roadmap de la auditoría de Reportes están completas.
+
 ## Qué contiene
 
 ```text
@@ -2202,9 +2240,10 @@ filtros adicionales — Fase 2 de la auditoría" arriba), y también la Fase 3 (
 modelo que quedaban: costo congelado por línea de venta con columna Utilidad y su reporte
 agregado, IVA trasladado por tasa, Kardex por artículo con saldo corrido vía función de ventana
 SQL, y estados persistidos de Cotización con su endpoint de cancelar — ver "Cambios de modelo —
-Fase 3 de la auditoría" arriba). Queda la Fase 4 (exportación a PDF/Excel/Impresión, transversal
-a los 10 reportes). **El otro pendiente estructural que queda es terminar el módulo de
-Facturación.** A elección:
+Fase 3 de la auditoría" arriba), y por último también la Fase 4, que cierra el roadmap completo:
+exportación a Excel real y PDF (además del CSV que ya existía) e impresión directa, en los 10
+reportes — ver "Exportación a Excel/PDF/Impresión — Fase 4 de la auditoría" arriba. **El otro
+pendiente estructural que queda es terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.

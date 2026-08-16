@@ -29,3 +29,19 @@
     width: 80mm;
   }
 }
+
+/* Impresión de reportes (ReportesPage.jsx): mismo aislamiento que el ticket de venta arriba,
+   pero a ancho completo en vez de 80mm -- es una tabla de escritorio, no un recibo térmico. */
+@media print {
+  #reporte-imprimible,
+  #reporte-imprimible * {
+    visibility: visible;
+  }
+  #reporte-imprimible {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 10mm;
+  }
+}

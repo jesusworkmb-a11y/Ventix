@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Download, Mail } from 'lucide-react';
+import {
+  Download, FileSpreadsheet, FileText, Printer, Mail,
+} from 'lucide-react';
 import {
   reporteVentas,
   reporteArticulosMasVendidos,
@@ -16,6 +18,7 @@ import {
 import { listarSucursales, listarUsuarios } from '../../core/api/core.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
 import { listarCategorias, listarArticulos } from '../../catalogo/api/catalogo.api';
+import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -25,42 +28,55 @@ import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
 import { exportarCsv, construirCsv } from '../../../shared/csv';
 
-// Botón "Exportar CSV" reusado en cada Card de reporte (via el prop `action` de Card) — cada
-// reporte exporta exactamente las filas de la tabla que tiene abajo, no un volcado aparte ni
-// las cifras resumen que están arriba de la tabla (subtotal/impuestos/etc.), para que lo que
-// se descarga coincida 1:1 con lo que se está viendo.
-function BotonExportar({ nombreArchivo, filas, columnas }) {
-  return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="sm"
-      onClick={() => exportarCsv(nombreArchivo, filas, columnas)}
-      disabled={filas.length === 0}
-    >
-      <Download size={16} /> Exportar CSV
-    </Button>
-  );
-}
-
-// Reusa exactamente las mismas filas/columnas que BotonExportar (arriba) — el envío por correo
-// manda el mismo CSV que se descargaría, nunca un volcado aparte. El armado real del adjunto
-// (base64) vive en la página, acá solo se abre el modal con los datos de este reporte.
-function BotonEnviarCorreo({
-  nombreArchivo, filas, columnas, asunto, onAbrir,
+// Barra de acciones reusada en cada Card de reporte (via el prop `action` de Card) — cada
+// formato exporta exactamente las mismas filas/columnas que arma la Card (no un volcado aparte
+// ni las cifras resumen que a veces están arriba de la tabla), para que lo que se descarga/
+// imprime/envía coincida 1:1 entre sí. Excel (exceljs) y PDF (jsPDF, mismo patrón de encabezado
+// con logo que cotizacionPdf.js) se importan dinámicamente — pesan bastante, no van en el bundle
+// inicial de toda la app por una función que solo se usa en esta pantalla.
+function AccionesReporte({
+  nombreBase, titulo, filas, columnas, asunto, onAbrirCorreo, empresa,
 }) {
+  const sinFilas = filas.length === 0;
+
+  async function exportarExcelAccion() {
+    const { exportarExcel } = await import('../../../shared/xlsx');
+    exportarExcel(`${nombreBase}.xlsx`, filas, columnas);
+  }
+
+  async function descargarPdfAccion() {
+    const { descargarPdfReporte } = await import('../../../shared/reportePdf');
+    descargarPdfReporte({
+      titulo, columnas, filas, empresa,
+    }, `${nombreBase}.pdf`);
+  }
+
   return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="sm"
-      onClick={() => onAbrir({
-        nombreArchivo, filas, columnas, asunto,
-      })}
-      disabled={filas.length === 0}
-    >
-      <Mail size={16} /> Enviar por correo
-    </Button>
+    <div className="flex flex-wrap gap-2">
+      <Button type="button" variant="secondary" size="sm" onClick={() => exportarCsv(`${nombreBase}.csv`, filas, columnas)} disabled={sinFilas}>
+        <Download size={16} /> CSV
+      </Button>
+      <Button type="button" variant="secondary" size="sm" onClick={exportarExcelAccion} disabled={sinFilas}>
+        <FileSpreadsheet size={16} /> Excel
+      </Button>
+      <Button type="button" variant="secondary" size="sm" onClick={descargarPdfAccion} disabled={sinFilas}>
+        <FileText size={16} /> PDF
+      </Button>
+      <Button type="button" variant="secondary" size="sm" onClick={() => window.print()} disabled={sinFilas}>
+        <Printer size={16} /> Imprimir
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={() => onAbrirCorreo({
+          nombreArchivo: `${nombreBase}.csv`, filas, columnas, asunto,
+        })}
+        disabled={sinFilas}
+      >
+        <Mail size={16} /> Correo
+      </Button>
+    </div>
   );
 }
 
@@ -136,6 +152,7 @@ const PRESETS_FECHA = [
 ];
 
 function ReportesPage() {
+  const { empresa } = useAuth();
   const [tipo, setTipo] = useState('ventas');
   const [sucursales, setSucursales] = useState([]);
   const [sucursalId, setSucursalId] = useState('');
@@ -226,6 +243,156 @@ function ReportesPage() {
       setEnviandoCorreo(false);
     }
   }
+
+  const filasVentasPorMetodo = resultado && tipo === 'ventas'
+    ? resultado.porMetodoPago.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) }))
+    : [];
+  const columnasVentasPorMetodo = [{ clave: 'metodo', label: 'Método' }, { clave: 'monto', label: 'Monto' }];
+
+  const filasArticulos = resultado && tipo === 'articulos'
+    ? resultado.map((r) => ({
+      codigo: r.articulo?.sku,
+      articulo: r.articulo?.nombre,
+      cantidad: Number(r.cantidad),
+      monto: Number(r.monto),
+      utilidad: r.utilidad === null ? 'N/D' : Number(r.utilidad),
+    }))
+    : [];
+  const columnasArticulos = [
+    { clave: 'codigo', label: 'Código' },
+    { clave: 'articulo', label: 'Artículo' },
+    { clave: 'cantidad', label: 'Cantidad' },
+    { clave: 'monto', label: 'Monto' },
+    { clave: 'utilidad', label: 'Utilidad' },
+  ];
+
+  const filasUtilidad = resultado && tipo === 'utilidad'
+    ? [{
+      venta: Number(resultado.venta), costo: Number(resultado.costo), ganancia: Number(resultado.ganancia),
+    }]
+    : [];
+  const columnasUtilidad = [
+    { clave: 'venta', label: 'Venta' },
+    { clave: 'costo', label: 'Costo' },
+    { clave: 'ganancia', label: 'Ganancia' },
+  ];
+
+  const filasVentasPorCliente = resultado && tipo === 'ventasPorCliente'
+    ? resultado.map((r) => ({
+      cliente: r.cliente?.nombre,
+      compras: Number(r.numeroVentas),
+      total: Number(r.total),
+      devoluciones: Number(r.totalDevoluciones),
+      neto: Number(r.totalNeto),
+    }))
+    : [];
+  const columnasVentasPorCliente = [
+    { clave: 'cliente', label: 'Cliente' },
+    { clave: 'compras', label: 'N° de compras' },
+    { clave: 'total', label: 'Total' },
+    { clave: 'devoluciones', label: 'Devoluciones' },
+    { clave: 'neto', label: 'Neto' },
+  ];
+
+  const filasIva = resultado && tipo === 'iva'
+    ? resultado.porTasa.map((p) => ({
+      tasa: `${(p.tasa * 100).toFixed(0)}%`, baseGravable: Number(p.baseGravable), impuesto: Number(p.impuesto),
+    }))
+    : [];
+  const columnasIva = [
+    { clave: 'tasa', label: 'Tasa' },
+    { clave: 'baseGravable', label: 'Base gravable' },
+    { clave: 'impuesto', label: 'Impuesto' },
+  ];
+
+  const filasKardex = resultado && tipo === 'kardex'
+    ? resultado.movimientos.map((m) => ({
+      fecha: new Date(m.creadoEn).toLocaleString(),
+      documento: m.documento,
+      entrada: Number(m.entrada),
+      salida: Number(m.salida),
+      existencia: Number(m.existencia),
+      costo: Number(m.costo),
+    }))
+    : [];
+  const columnasKardex = [
+    { clave: 'fecha', label: 'Fecha' },
+    { clave: 'documento', label: 'Documento' },
+    { clave: 'entrada', label: 'Entrada' },
+    { clave: 'salida', label: 'Salida' },
+    { clave: 'existencia', label: 'Existencia' },
+    { clave: 'costo', label: 'Costo (actual)' },
+  ];
+
+  const filasSinMovimiento = resultado && tipo === 'sinMovimiento'
+    ? resultado.map((r) => ({
+      codigo: r.articulo.sku,
+      articulo: r.articulo.nombre,
+      ultimoMovimiento: r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca',
+    }))
+    : [];
+  const columnasSinMovimiento = [
+    { clave: 'codigo', label: 'Código' },
+    { clave: 'articulo', label: 'Artículo' },
+    { clave: 'ultimoMovimiento', label: 'Último movimiento' },
+  ];
+
+  const filasInventario = resultado && tipo === 'inventario'
+    ? resultado.porSucursal.map((s) => ({ sucursal: s.sucursal.nombre, valor: Number(s.valor) }))
+    : [];
+  const columnasInventario = [{ clave: 'sucursal', label: 'Sucursal' }, { clave: 'valor', label: 'Valor' }];
+
+  const filasStockBajo = resultado && tipo === 'inventario'
+    ? resultado.stockBajo.map((r) => ({
+      articulo: r.articulo.nombre, sucursal: r.sucursal.nombre, cantidad: Number(r.cantidad), minimo: Number(r.stockMinimo),
+    }))
+    : [];
+  const columnasStockBajo = [
+    { clave: 'articulo', label: 'Artículo' },
+    { clave: 'sucursal', label: 'Sucursal' },
+    { clave: 'cantidad', label: 'Cantidad' },
+    { clave: 'minimo', label: 'Mínimo' },
+  ];
+
+  const filasCompras = resultado && tipo === 'compras'
+    ? resultado.porProveedor.map((p) => ({
+      proveedor: p.proveedor.nombre, total: Number(p.total), compras: Number(p.numeroCompras),
+    }))
+    : [];
+  const columnasCompras = [
+    { clave: 'proveedor', label: 'Proveedor' },
+    { clave: 'total', label: 'Total' },
+    { clave: 'compras', label: 'Compras' },
+  ];
+
+  const filasCaja = resultado && tipo === 'caja'
+    ? resultado.sesiones.map((s) => ({
+      caja: s.caja?.nombre,
+      cajero: s.cajero?.nombre,
+      fondo: Number(s.fondoInicial),
+      ingresos: Number(s.movimientos.ingreso),
+      ventas: Number(s.movimientos.venta),
+      retiros: Number(s.movimientos.retiro),
+      devoluciones: Number(s.movimientos.devolucion),
+      esperado: Number(s.saldoEsperado),
+      real: Number(s.saldoReal),
+      diferencia: Number(s.diferencia),
+      cerrada: new Date(s.cerradaEn).toLocaleString(),
+    }))
+    : [];
+  const columnasCaja = [
+    { clave: 'caja', label: 'Caja' },
+    { clave: 'cajero', label: 'Cajero' },
+    { clave: 'fondo', label: 'Fondo' },
+    { clave: 'ingresos', label: 'Ingresos' },
+    { clave: 'ventas', label: 'Ventas' },
+    { clave: 'retiros', label: 'Retiros' },
+    { clave: 'devoluciones', label: 'Devoluciones' },
+    { clave: 'esperado', label: 'Esperado' },
+    { clave: 'real', label: 'Real' },
+    { clave: 'diferencia', label: 'Diferencia' },
+    { clave: 'cerrada', label: 'Cerrada' },
+  ];
 
   return (
     <div className="space-y-6">
@@ -329,643 +496,384 @@ function ReportesPage() {
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
       {exitoEnvioCorreo && <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">{exitoEnvioCorreo}</p>}
 
-      {resultado && tipo === 'ventas' && (
-        <Card
-          title="Ventas por período"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="ventas-por-metodo-pago.csv"
-                filas={resultado.porMetodoPago.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) }))}
-                columnas={[{ clave: 'metodo', label: 'Método' }, { clave: 'monto', label: 'Monto' }]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="ventas-por-metodo-pago.csv"
-                filas={resultado.porMetodoPago.map((p) => ({ metodo: p.metodo, monto: Number(p.monto) }))}
-                columnas={[{ clave: 'metodo', label: 'Método' }, { clave: 'monto', label: 'Monto' }]}
-                asunto="Reporte — Ventas por período"
-                onAbrir={abrirEnvioReporte}
-              />
-            </div>
-          )}
-        >
-          <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <div>
-              <p className="text-xs text-gray-500">Número de ventas</p>
-              <p className="text-lg font-semibold text-gray-900">{resultado.numeroVentas}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Total</p>
-              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.total)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Devoluciones</p>
-              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.totalDevoluciones)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Neto</p>
-              <p className="text-lg font-semibold text-primary-700">{formatoMoneda(resultado.totalNeto)}</p>
-            </div>
-          </div>
-          <p className="mb-4 text-sm text-gray-500">
-            Subtotal: {formatoMoneda(resultado.subtotal)} · Impuestos: {formatoMoneda(resultado.impuestos)} · Ticket promedio: {formatoMoneda(resultado.ticketPromedio)}
-          </p>
-          <Table columnas={['Método', 'Monto']}>
-            {resultado.porMetodoPago.length === 0 && <TablaVacia colSpan={2} />}
-            {resultado.porMetodoPago.map((p) => (
-              <Fila key={p.metodo}>
-                <Celda>{p.metodo}</Celda>
-                <Celda>{formatoMoneda(p.monto)}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {resultado && tipo === 'articulos' && (
-        <Card
-          title="Artículos más vendidos"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="articulos-mas-vendidos.csv"
-                filas={resultado.map((r) => ({
-                  codigo: r.articulo?.sku,
-                  articulo: r.articulo?.nombre,
-                  cantidad: Number(r.cantidad),
-                  monto: Number(r.monto),
-                  utilidad: r.utilidad === null ? 'N/D' : Number(r.utilidad),
-                }))}
-                columnas={[
-                  { clave: 'codigo', label: 'Código' },
-                  { clave: 'articulo', label: 'Artículo' },
-                  { clave: 'cantidad', label: 'Cantidad' },
-                  { clave: 'monto', label: 'Monto' },
-                  { clave: 'utilidad', label: 'Utilidad' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="articulos-mas-vendidos.csv"
-                filas={resultado.map((r) => ({
-                  codigo: r.articulo?.sku,
-                  articulo: r.articulo?.nombre,
-                  cantidad: Number(r.cantidad),
-                  monto: Number(r.monto),
-                  utilidad: r.utilidad === null ? 'N/D' : Number(r.utilidad),
-                }))}
-                columnas={[
-                  { clave: 'codigo', label: 'Código' },
-                  { clave: 'articulo', label: 'Artículo' },
-                  { clave: 'cantidad', label: 'Cantidad' },
-                  { clave: 'monto', label: 'Monto' },
-                  { clave: 'utilidad', label: 'Utilidad' },
-                ]}
-                asunto="Reporte — Artículos más vendidos"
-                onAbrir={abrirEnvioReporte}
-              />
-            </div>
-          )}
-        >
-          <p className="mb-4 text-xs text-gray-500">
-            "Utilidad" es N/D cuando el artículo tiene ventas de antes de que el sistema empezara a
-            registrar el costo por línea — no se aproxima con el costo de hoy.
-          </p>
-          <Table columnas={['Código', 'Artículo', 'Cantidad', 'Monto', 'Utilidad']}>
-            {resultado.length === 0 && <TablaVacia colSpan={5} />}
-            {resultado.map((r) => (
-              <Fila key={r.articulo?.id}>
-                <Celda className="text-gray-500">{r.articulo?.sku || '—'}</Celda>
-                <Celda className="font-medium text-gray-800">{r.articulo?.nombre}</Celda>
-                <Celda>{r.cantidad}</Celda>
-                <Celda>{formatoMoneda(r.monto)}</Celda>
-                <Celda>{r.utilidad === null ? <span className="text-gray-400">N/D</span> : formatoMoneda(r.utilidad)}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {resultado && tipo === 'utilidad' && (
-        <Card
-          title="Utilidad de ventas"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="utilidad-de-ventas.csv"
-                filas={[{
-                  venta: Number(resultado.venta),
-                  costo: Number(resultado.costo),
-                  ganancia: Number(resultado.ganancia),
-                }]}
-                columnas={[
-                  { clave: 'venta', label: 'Venta' },
-                  { clave: 'costo', label: 'Costo' },
-                  { clave: 'ganancia', label: 'Ganancia' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="utilidad-de-ventas.csv"
-                filas={[{
-                  venta: Number(resultado.venta),
-                  costo: Number(resultado.costo),
-                  ganancia: Number(resultado.ganancia),
-                }]}
-                columnas={[
-                  { clave: 'venta', label: 'Venta' },
-                  { clave: 'costo', label: 'Costo' },
-                  { clave: 'ganancia', label: 'Ganancia' },
-                ]}
-                asunto="Reporte — Utilidad de ventas"
-                onAbrir={abrirEnvioReporte}
-              />
-            </div>
-          )}
-        >
-          {resultado.lineasSinCosto > 0 && (
-            <p className="mb-4 rounded-lg bg-warning-50 px-4 py-2.5 text-sm text-warning-700">
-              {resultado.lineasSinCosto} de {resultado.lineasTotales} línea(s) vendida(s) en este rango
-              son de antes de que el sistema registrara el costo por venta — la Ganancia no las incluye
-              (el Venta total sí, para que no falte facturación en el número de arriba).
-            </p>
-          )}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div>
-              <p className="text-xs text-gray-500">Venta</p>
-              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.venta)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Costo</p>
-              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.costo)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">Ganancia</p>
-              <p className="text-lg font-semibold text-primary-700">{formatoMoneda(resultado.ganancia)}</p>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {resultado && tipo === 'iva' && (
-        <Card
-          title="IVA trasladado"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="iva-trasladado.csv"
-                filas={resultado.porTasa.map((p) => ({
-                  tasa: `${(p.tasa * 100).toFixed(0)}%`,
-                  baseGravable: Number(p.baseGravable),
-                  impuesto: Number(p.impuesto),
-                }))}
-                columnas={[
-                  { clave: 'tasa', label: 'Tasa' },
-                  { clave: 'baseGravable', label: 'Base gravable' },
-                  { clave: 'impuesto', label: 'Impuesto' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="iva-trasladado.csv"
-                filas={resultado.porTasa.map((p) => ({
-                  tasa: `${(p.tasa * 100).toFixed(0)}%`,
-                  baseGravable: Number(p.baseGravable),
-                  impuesto: Number(p.impuesto),
-                }))}
-                columnas={[
-                  { clave: 'tasa', label: 'Tasa' },
-                  { clave: 'baseGravable', label: 'Base gravable' },
-                  { clave: 'impuesto', label: 'Impuesto' },
-                ]}
-                asunto="Reporte — IVA trasladado"
-                onAbrir={abrirEnvioReporte}
-              />
-            </div>
-          )}
-        >
-          <p className="mb-4 text-sm text-gray-500">
-            Base gravable: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.baseGravable)}</span>
-            {' · '}Impuesto trasladado: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.impuesto)}</span>
-          </p>
-          <Table columnas={['Tasa', 'Base gravable', 'Impuesto']}>
-            {resultado.porTasa.length === 0 && <TablaVacia colSpan={3} />}
-            {resultado.porTasa.map((p) => (
-              <Fila key={p.tasa}>
-                <Celda className="font-medium text-gray-800">{(p.tasa * 100).toFixed(0)}%</Celda>
-                <Celda>{formatoMoneda(p.baseGravable)}</Celda>
-                <Celda>{formatoMoneda(p.impuesto)}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {resultado && tipo === 'kardex' && (
-        <Card
-          title={`Kardex — ${resultado.articulo.nombre}`}
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="kardex.csv"
-                filas={resultado.movimientos.map((m) => ({
-                  fecha: new Date(m.creadoEn).toLocaleString(),
-                  documento: m.documento,
-                  entrada: Number(m.entrada),
-                  salida: Number(m.salida),
-                  existencia: Number(m.existencia),
-                  costo: Number(m.costo),
-                }))}
-                columnas={[
-                  { clave: 'fecha', label: 'Fecha' },
-                  { clave: 'documento', label: 'Documento' },
-                  { clave: 'entrada', label: 'Entrada' },
-                  { clave: 'salida', label: 'Salida' },
-                  { clave: 'existencia', label: 'Existencia' },
-                  { clave: 'costo', label: 'Costo (actual)' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="kardex.csv"
-                filas={resultado.movimientos.map((m) => ({
-                  fecha: new Date(m.creadoEn).toLocaleString(),
-                  documento: m.documento,
-                  entrada: Number(m.entrada),
-                  salida: Number(m.salida),
-                  existencia: Number(m.existencia),
-                  costo: Number(m.costo),
-                }))}
-                columnas={[
-                  { clave: 'fecha', label: 'Fecha' },
-                  { clave: 'documento', label: 'Documento' },
-                  { clave: 'entrada', label: 'Entrada' },
-                  { clave: 'salida', label: 'Salida' },
-                  { clave: 'existencia', label: 'Existencia' },
-                  { clave: 'costo', label: 'Costo (actual)' },
-                ]}
-                asunto={`Reporte — Kardex ${resultado.articulo.nombre}`}
-                onAbrir={abrirEnvioReporte}
-              />
-            </div>
-          )}
-        >
-          <p className="mb-4 text-xs text-gray-500">
-            "Costo" es el costo actual del artículo, no uno histórico por movimiento. Máximo 200 renglones.
-          </p>
-          <Table columnas={['Fecha', 'Documento', 'Entrada', 'Salida', 'Existencia', 'Costo (actual)']}>
-            {resultado.movimientos.length === 0 && <TablaVacia colSpan={6} />}
-            {resultado.movimientos.map((m) => (
-              <Fila key={m.id}>
-                <Celda>{new Date(m.creadoEn).toLocaleString()}</Celda>
-                <Celda className="font-medium text-gray-800">{m.documento}</Celda>
-                <Celda>{m.entrada > 0 ? m.entrada : '—'}</Celda>
-                <Celda>{m.salida > 0 ? m.salida : '—'}</Celda>
-                <Celda>{m.existencia}</Celda>
-                <Celda>{formatoMoneda(m.costo)}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {resultado && tipo === 'ventasPorCliente' && (
-        <Card
-          title="Ventas por cliente"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="ventas-por-cliente.csv"
-                filas={resultado.map((r) => ({
-                  cliente: r.cliente?.nombre,
-                  compras: Number(r.numeroVentas),
-                  total: Number(r.total),
-                  devoluciones: Number(r.totalDevoluciones),
-                  neto: Number(r.totalNeto),
-                }))}
-                columnas={[
-                  { clave: 'cliente', label: 'Cliente' },
-                  { clave: 'compras', label: 'N° de compras' },
-                  { clave: 'total', label: 'Total' },
-                  { clave: 'devoluciones', label: 'Devoluciones' },
-                  { clave: 'neto', label: 'Neto' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="ventas-por-cliente.csv"
-                filas={resultado.map((r) => ({
-                  cliente: r.cliente?.nombre,
-                  compras: Number(r.numeroVentas),
-                  total: Number(r.total),
-                  devoluciones: Number(r.totalDevoluciones),
-                  neto: Number(r.totalNeto),
-                }))}
-                columnas={[
-                  { clave: 'cliente', label: 'Cliente' },
-                  { clave: 'compras', label: 'N° de compras' },
-                  { clave: 'total', label: 'Total' },
-                  { clave: 'devoluciones', label: 'Devoluciones' },
-                  { clave: 'neto', label: 'Neto' },
-                ]}
-                asunto="Reporte — Ventas por cliente"
-                onAbrir={abrirEnvioReporte}
-              />
-            </div>
-          )}
-        >
-          <Table columnas={['Cliente', 'N° de compras', 'Total', 'Devoluciones', 'Neto']}>
-            {resultado.length === 0 && <TablaVacia colSpan={5} />}
-            {resultado.map((r) => (
-              <Fila key={r.cliente?.id}>
-                <Celda className="font-medium text-gray-800">{r.cliente?.nombre || '—'}</Celda>
-                <Celda>{r.numeroVentas}</Celda>
-                <Celda>{formatoMoneda(r.total)}</Celda>
-                <Celda>{formatoMoneda(r.totalDevoluciones)}</Celda>
-                <Celda>{formatoMoneda(r.totalNeto)}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {resultado && tipo === 'sinMovimiento' && (
-        <Card
-          title="Productos sin movimiento"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="productos-sin-movimiento.csv"
-                filas={resultado.map((r) => ({
-                  codigo: r.articulo.sku,
-                  articulo: r.articulo.nombre,
-                  ultimoMovimiento: r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca',
-                }))}
-                columnas={[
-                  { clave: 'codigo', label: 'Código' },
-                  { clave: 'articulo', label: 'Artículo' },
-                  { clave: 'ultimoMovimiento', label: 'Último movimiento' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="productos-sin-movimiento.csv"
-                filas={resultado.map((r) => ({
-                  codigo: r.articulo.sku,
-                  articulo: r.articulo.nombre,
-                  ultimoMovimiento: r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca',
-                }))}
-                columnas={[
-                  { clave: 'codigo', label: 'Código' },
-                  { clave: 'articulo', label: 'Artículo' },
-                  { clave: 'ultimoMovimiento', label: 'Último movimiento' },
-                ]}
-                asunto="Reporte — Productos sin movimiento"
-                onAbrir={abrirEnvioReporte}
-              />
-            </div>
-          )}
-        >
-          <Table columnas={['Código', 'Artículo', 'Último movimiento']}>
-            {resultado.length === 0 && <TablaVacia colSpan={3} />}
-            {resultado.map((r) => (
-              <Fila key={r.articulo.id}>
-                <Celda className="text-gray-500">{r.articulo.sku || '—'}</Celda>
-                <Celda className="font-medium text-gray-800">{r.articulo.nombre}</Celda>
-                <Celda>{r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca'}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
-
-      {resultado && tipo === 'inventario' && (
-        <>
+      {/* Aislado para impresión (ver @media print en index.css): al imprimir solo se muestra
+          esto, nunca el formulario de filtros ni el resto de la app. */}
+      <div id="reporte-imprimible">
+        {resultado && tipo === 'ventas' && (
           <Card
-            title="Inventario valorizado"
+            title="Ventas por período"
             action={(
-              <div className="flex flex-wrap gap-2">
-                <BotonExportar
-                  nombreArchivo="inventario-valorizado.csv"
-                  filas={resultado.porSucursal.map((s) => ({ sucursal: s.sucursal.nombre, valor: Number(s.valor) }))}
-                  columnas={[{ clave: 'sucursal', label: 'Sucursal' }, { clave: 'valor', label: 'Valor' }]}
-                />
-                <BotonEnviarCorreo
-                  nombreArchivo="inventario-valorizado.csv"
-                  filas={resultado.porSucursal.map((s) => ({ sucursal: s.sucursal.nombre, valor: Number(s.valor) }))}
-                  columnas={[{ clave: 'sucursal', label: 'Sucursal' }, { clave: 'valor', label: 'Valor' }]}
-                  asunto="Reporte — Inventario valorizado"
-                  onAbrir={abrirEnvioReporte}
-                />
-              </div>
+              <AccionesReporte
+                nombreBase="ventas-por-metodo-pago"
+                titulo="Ventas por período"
+                filas={filasVentasPorMetodo}
+                columnas={columnasVentasPorMetodo}
+                asunto="Reporte — Ventas por período"
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
+              />
             )}
           >
+            <div className="mb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-gray-500">Número de ventas</p>
+                <p className="text-lg font-semibold text-gray-900">{resultado.numeroVentas}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Total</p>
+                <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.total)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Devoluciones</p>
+                <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.totalDevoluciones)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Neto</p>
+                <p className="text-lg font-semibold text-primary-700">{formatoMoneda(resultado.totalNeto)}</p>
+              </div>
+            </div>
             <p className="mb-4 text-sm text-gray-500">
-              Valor total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.valorTotal)}</span>
+              Subtotal: {formatoMoneda(resultado.subtotal)} · Impuestos: {formatoMoneda(resultado.impuestos)} · Ticket promedio: {formatoMoneda(resultado.ticketPromedio)}
             </p>
-            <Table columnas={['Sucursal', 'Valor']}>
-              {resultado.porSucursal.map((s) => (
-                <Fila key={s.sucursal.id}>
-                  <Celda>{s.sucursal.nombre}</Celda>
-                  <Celda>{formatoMoneda(s.valor)}</Celda>
+            <Table columnas={['Método', 'Monto']}>
+              {resultado.porMetodoPago.length === 0 && <TablaVacia colSpan={2} />}
+              {resultado.porMetodoPago.map((p) => (
+                <Fila key={p.metodo}>
+                  <Celda>{p.metodo}</Celda>
+                  <Celda>{formatoMoneda(p.monto)}</Celda>
                 </Fila>
               ))}
             </Table>
           </Card>
+        )}
+
+        {resultado && tipo === 'articulos' && (
           <Card
-            title="Stock bajo"
+            title="Artículos más vendidos"
             action={(
-              <div className="flex flex-wrap gap-2">
-                <BotonExportar
-                  nombreArchivo="stock-bajo.csv"
-                  filas={resultado.stockBajo.map((r) => ({
-                    articulo: r.articulo.nombre,
-                    sucursal: r.sucursal.nombre,
-                    cantidad: Number(r.cantidad),
-                    minimo: Number(r.stockMinimo),
-                  }))}
-                  columnas={[
-                    { clave: 'articulo', label: 'Artículo' },
-                    { clave: 'sucursal', label: 'Sucursal' },
-                    { clave: 'cantidad', label: 'Cantidad' },
-                    { clave: 'minimo', label: 'Mínimo' },
-                  ]}
-                />
-                <BotonEnviarCorreo
-                  nombreArchivo="stock-bajo.csv"
-                  filas={resultado.stockBajo.map((r) => ({
-                    articulo: r.articulo.nombre,
-                    sucursal: r.sucursal.nombre,
-                    cantidad: Number(r.cantidad),
-                    minimo: Number(r.stockMinimo),
-                  }))}
-                  columnas={[
-                    { clave: 'articulo', label: 'Artículo' },
-                    { clave: 'sucursal', label: 'Sucursal' },
-                    { clave: 'cantidad', label: 'Cantidad' },
-                    { clave: 'minimo', label: 'Mínimo' },
-                  ]}
-                  asunto="Reporte — Stock bajo"
-                  onAbrir={abrirEnvioReporte}
-                />
-              </div>
+              <AccionesReporte
+                nombreBase="articulos-mas-vendidos"
+                titulo="Artículos más vendidos"
+                filas={filasArticulos}
+                columnas={columnasArticulos}
+                asunto="Reporte — Artículos más vendidos"
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
+              />
             )}
           >
-            {resultado.stockBajo.length === 0 ? (
-              <p className="text-sm text-gray-500">Ningún artículo por debajo de su stock mínimo.</p>
-            ) : (
-              <Table columnas={['Artículo', 'Sucursal', 'Cantidad', 'Mínimo']}>
-                {resultado.stockBajo.map((r, i) => (
-                  <Fila key={i}>
-                    <Celda className="font-medium text-gray-800">{r.articulo.nombre}</Celda>
-                    <Celda>{r.sucursal.nombre}</Celda>
-                    <Celda>{r.cantidad}</Celda>
-                    <Celda>{r.stockMinimo}</Celda>
+            <p className="mb-4 text-xs text-gray-500">
+              "Utilidad" es N/D cuando el artículo tiene ventas de antes de que el sistema empezara a
+              registrar el costo por línea — no se aproxima con el costo de hoy.
+            </p>
+            <Table columnas={['Código', 'Artículo', 'Cantidad', 'Monto', 'Utilidad']}>
+              {resultado.length === 0 && <TablaVacia colSpan={5} />}
+              {resultado.map((r) => (
+                <Fila key={r.articulo?.id}>
+                  <Celda className="text-gray-500">{r.articulo?.sku || '—'}</Celda>
+                  <Celda className="font-medium text-gray-800">{r.articulo?.nombre}</Celda>
+                  <Celda>{r.cantidad}</Celda>
+                  <Celda>{formatoMoneda(r.monto)}</Celda>
+                  <Celda>{r.utilidad === null ? <span className="text-gray-400">N/D</span> : formatoMoneda(r.utilidad)}</Celda>
+                </Fila>
+              ))}
+            </Table>
+          </Card>
+        )}
+
+        {resultado && tipo === 'utilidad' && (
+          <Card
+            title="Utilidad de ventas"
+            action={(
+              <AccionesReporte
+                nombreBase="utilidad-de-ventas"
+                titulo="Utilidad de ventas"
+                filas={filasUtilidad}
+                columnas={columnasUtilidad}
+                asunto="Reporte — Utilidad de ventas"
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
+              />
+            )}
+          >
+            {resultado.lineasSinCosto > 0 && (
+              <p className="mb-4 rounded-lg bg-warning-50 px-4 py-2.5 text-sm text-warning-700">
+                {resultado.lineasSinCosto} de {resultado.lineasTotales} línea(s) vendida(s) en este rango
+                son de antes de que el sistema registrara el costo por venta — la Ganancia no las incluye
+                (el Venta total sí, para que no falte facturación en el número de arriba).
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs text-gray-500">Venta</p>
+                <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.venta)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Costo</p>
+                <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.costo)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500">Ganancia</p>
+                <p className="text-lg font-semibold text-primary-700">{formatoMoneda(resultado.ganancia)}</p>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {resultado && tipo === 'iva' && (
+          <Card
+            title="IVA trasladado"
+            action={(
+              <AccionesReporte
+                nombreBase="iva-trasladado"
+                titulo="IVA trasladado"
+                filas={filasIva}
+                columnas={columnasIva}
+                asunto="Reporte — IVA trasladado"
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
+              />
+            )}
+          >
+            <p className="mb-4 text-sm text-gray-500">
+              Base gravable: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.baseGravable)}</span>
+              {' · '}Impuesto trasladado: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.impuesto)}</span>
+            </p>
+            <Table columnas={['Tasa', 'Base gravable', 'Impuesto']}>
+              {resultado.porTasa.length === 0 && <TablaVacia colSpan={3} />}
+              {resultado.porTasa.map((p) => (
+                <Fila key={p.tasa}>
+                  <Celda className="font-medium text-gray-800">{(p.tasa * 100).toFixed(0)}%</Celda>
+                  <Celda>{formatoMoneda(p.baseGravable)}</Celda>
+                  <Celda>{formatoMoneda(p.impuesto)}</Celda>
+                </Fila>
+              ))}
+            </Table>
+          </Card>
+        )}
+
+        {resultado && tipo === 'kardex' && (
+          <Card
+            title={`Kardex — ${resultado.articulo.nombre}`}
+            action={(
+              <AccionesReporte
+                nombreBase="kardex"
+                titulo={`Kardex — ${resultado.articulo.nombre}`}
+                filas={filasKardex}
+                columnas={columnasKardex}
+                asunto={`Reporte — Kardex ${resultado.articulo.nombre}`}
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
+              />
+            )}
+          >
+            <p className="mb-4 text-xs text-gray-500">
+              "Costo" es el costo actual del artículo, no uno histórico por movimiento. Máximo 200 renglones.
+            </p>
+            <Table columnas={['Fecha', 'Documento', 'Entrada', 'Salida', 'Existencia', 'Costo (actual)']}>
+              {resultado.movimientos.length === 0 && <TablaVacia colSpan={6} />}
+              {resultado.movimientos.map((m) => (
+                <Fila key={m.id}>
+                  <Celda>{new Date(m.creadoEn).toLocaleString()}</Celda>
+                  <Celda className="font-medium text-gray-800">{m.documento}</Celda>
+                  <Celda>{m.entrada > 0 ? m.entrada : '—'}</Celda>
+                  <Celda>{m.salida > 0 ? m.salida : '—'}</Celda>
+                  <Celda>{m.existencia}</Celda>
+                  <Celda>{formatoMoneda(m.costo)}</Celda>
+                </Fila>
+              ))}
+            </Table>
+          </Card>
+        )}
+
+        {resultado && tipo === 'ventasPorCliente' && (
+          <Card
+            title="Ventas por cliente"
+            action={(
+              <AccionesReporte
+                nombreBase="ventas-por-cliente"
+                titulo="Ventas por cliente"
+                filas={filasVentasPorCliente}
+                columnas={columnasVentasPorCliente}
+                asunto="Reporte — Ventas por cliente"
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
+              />
+            )}
+          >
+            <Table columnas={['Cliente', 'N° de compras', 'Total', 'Devoluciones', 'Neto']}>
+              {resultado.length === 0 && <TablaVacia colSpan={5} />}
+              {resultado.map((r) => (
+                <Fila key={r.cliente?.id}>
+                  <Celda className="font-medium text-gray-800">{r.cliente?.nombre || '—'}</Celda>
+                  <Celda>{r.numeroVentas}</Celda>
+                  <Celda>{formatoMoneda(r.total)}</Celda>
+                  <Celda>{formatoMoneda(r.totalDevoluciones)}</Celda>
+                  <Celda>{formatoMoneda(r.totalNeto)}</Celda>
+                </Fila>
+              ))}
+            </Table>
+          </Card>
+        )}
+
+        {resultado && tipo === 'sinMovimiento' && (
+          <Card
+            title="Productos sin movimiento"
+            action={(
+              <AccionesReporte
+                nombreBase="productos-sin-movimiento"
+                titulo="Productos sin movimiento"
+                filas={filasSinMovimiento}
+                columnas={columnasSinMovimiento}
+                asunto="Reporte — Productos sin movimiento"
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
+              />
+            )}
+          >
+            <Table columnas={['Código', 'Artículo', 'Último movimiento']}>
+              {resultado.length === 0 && <TablaVacia colSpan={3} />}
+              {resultado.map((r) => (
+                <Fila key={r.articulo.id}>
+                  <Celda className="text-gray-500">{r.articulo.sku || '—'}</Celda>
+                  <Celda className="font-medium text-gray-800">{r.articulo.nombre}</Celda>
+                  <Celda>{r.ultimoMovimiento ? new Date(r.ultimoMovimiento).toLocaleDateString() : 'Nunca'}</Celda>
+                </Fila>
+              ))}
+            </Table>
+          </Card>
+        )}
+
+        {resultado && tipo === 'inventario' && (
+          <>
+            <Card
+              title="Inventario valorizado"
+              action={(
+                <AccionesReporte
+                  nombreBase="inventario-valorizado"
+                  titulo="Inventario valorizado"
+                  filas={filasInventario}
+                  columnas={columnasInventario}
+                  asunto="Reporte — Inventario valorizado"
+                  onAbrirCorreo={abrirEnvioReporte}
+                  empresa={empresa}
+                />
+              )}
+            >
+              <p className="mb-4 text-sm text-gray-500">
+                Valor total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.valorTotal)}</span>
+              </p>
+              <Table columnas={['Sucursal', 'Valor']}>
+                {resultado.porSucursal.map((s) => (
+                  <Fila key={s.sucursal.id}>
+                    <Celda>{s.sucursal.nombre}</Celda>
+                    <Celda>{formatoMoneda(s.valor)}</Celda>
                   </Fila>
                 ))}
               </Table>
-            )}
-          </Card>
-        </>
-      )}
+            </Card>
+            <Card
+              title="Stock bajo"
+              action={(
+                <AccionesReporte
+                  nombreBase="stock-bajo"
+                  titulo="Stock bajo"
+                  filas={filasStockBajo}
+                  columnas={columnasStockBajo}
+                  asunto="Reporte — Stock bajo"
+                  onAbrirCorreo={abrirEnvioReporte}
+                  empresa={empresa}
+                />
+              )}
+            >
+              {resultado.stockBajo.length === 0 ? (
+                <p className="text-sm text-gray-500">Ningún artículo por debajo de su stock mínimo.</p>
+              ) : (
+                <Table columnas={['Artículo', 'Sucursal', 'Cantidad', 'Mínimo']}>
+                  {resultado.stockBajo.map((r, i) => (
+                    <Fila key={i}>
+                      <Celda className="font-medium text-gray-800">{r.articulo.nombre}</Celda>
+                      <Celda>{r.sucursal.nombre}</Celda>
+                      <Celda>{r.cantidad}</Celda>
+                      <Celda>{r.stockMinimo}</Celda>
+                    </Fila>
+                  ))}
+                </Table>
+              )}
+            </Card>
+          </>
+        )}
 
-      {resultado && tipo === 'compras' && (
-        <Card
-          title="Compras por proveedor"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="compras-por-proveedor.csv"
-                filas={resultado.porProveedor.map((p) => ({
-                  proveedor: p.proveedor.nombre,
-                  total: Number(p.total),
-                  compras: Number(p.numeroCompras),
-                }))}
-                columnas={[
-                  { clave: 'proveedor', label: 'Proveedor' },
-                  { clave: 'total', label: 'Total' },
-                  { clave: 'compras', label: 'Compras' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="compras-por-proveedor.csv"
-                filas={resultado.porProveedor.map((p) => ({
-                  proveedor: p.proveedor.nombre,
-                  total: Number(p.total),
-                  compras: Number(p.numeroCompras),
-                }))}
-                columnas={[
-                  { clave: 'proveedor', label: 'Proveedor' },
-                  { clave: 'total', label: 'Total' },
-                  { clave: 'compras', label: 'Compras' },
-                ]}
+        {resultado && tipo === 'compras' && (
+          <Card
+            title="Compras por proveedor"
+            action={(
+              <AccionesReporte
+                nombreBase="compras-por-proveedor"
+                titulo="Compras por proveedor"
+                filas={filasCompras}
+                columnas={columnasCompras}
                 asunto="Reporte — Compras por proveedor"
-                onAbrir={abrirEnvioReporte}
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
               />
-            </div>
-          )}
-        >
-          <p className="mb-4 text-sm text-gray-500">
-            Total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.total)}</span> · Número de compras: {resultado.numeroCompras}
-          </p>
-          <Table columnas={['Proveedor', 'Total', 'Compras']}>
-            {resultado.porProveedor.length === 0 && <TablaVacia colSpan={3} />}
-            {resultado.porProveedor.map((p) => (
-              <Fila key={p.proveedor.id}>
-                <Celda className="font-medium text-gray-800">{p.proveedor.nombre}</Celda>
-                <Celda>{formatoMoneda(p.total)}</Celda>
-                <Celda>{p.numeroCompras}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
+            )}
+          >
+            <p className="mb-4 text-sm text-gray-500">
+              Total: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.total)}</span> · Número de compras: {resultado.numeroCompras}
+            </p>
+            <Table columnas={['Proveedor', 'Total', 'Compras']}>
+              {resultado.porProveedor.length === 0 && <TablaVacia colSpan={3} />}
+              {resultado.porProveedor.map((p) => (
+                <Fila key={p.proveedor.id}>
+                  <Celda className="font-medium text-gray-800">{p.proveedor.nombre}</Celda>
+                  <Celda>{formatoMoneda(p.total)}</Celda>
+                  <Celda>{p.numeroCompras}</Celda>
+                </Fila>
+              ))}
+            </Table>
+          </Card>
+        )}
 
-      {resultado && tipo === 'caja' && (
-        <Card
-          title="Cortes de caja"
-          action={(
-            <div className="flex flex-wrap gap-2">
-              <BotonExportar
-                nombreArchivo="cortes-de-caja.csv"
-                filas={resultado.sesiones.map((s) => ({
-                  caja: s.caja?.nombre,
-                  cajero: s.cajero?.nombre,
-                  fondo: Number(s.fondoInicial),
-                  ingresos: Number(s.movimientos.ingreso),
-                  ventas: Number(s.movimientos.venta),
-                  retiros: Number(s.movimientos.retiro),
-                  devoluciones: Number(s.movimientos.devolucion),
-                  esperado: Number(s.saldoEsperado),
-                  real: Number(s.saldoReal),
-                  diferencia: Number(s.diferencia),
-                  cerrada: new Date(s.cerradaEn).toLocaleString(),
-                }))}
-                columnas={[
-                  { clave: 'caja', label: 'Caja' },
-                  { clave: 'cajero', label: 'Cajero' },
-                  { clave: 'fondo', label: 'Fondo' },
-                  { clave: 'ingresos', label: 'Ingresos' },
-                  { clave: 'ventas', label: 'Ventas' },
-                  { clave: 'retiros', label: 'Retiros' },
-                  { clave: 'devoluciones', label: 'Devoluciones' },
-                  { clave: 'esperado', label: 'Esperado' },
-                  { clave: 'real', label: 'Real' },
-                  { clave: 'diferencia', label: 'Diferencia' },
-                  { clave: 'cerrada', label: 'Cerrada' },
-                ]}
-              />
-              <BotonEnviarCorreo
-                nombreArchivo="cortes-de-caja.csv"
-                filas={resultado.sesiones.map((s) => ({
-                  caja: s.caja?.nombre,
-                  cajero: s.cajero?.nombre,
-                  fondo: Number(s.fondoInicial),
-                  ingresos: Number(s.movimientos.ingreso),
-                  ventas: Number(s.movimientos.venta),
-                  retiros: Number(s.movimientos.retiro),
-                  devoluciones: Number(s.movimientos.devolucion),
-                  esperado: Number(s.saldoEsperado),
-                  real: Number(s.saldoReal),
-                  diferencia: Number(s.diferencia),
-                  cerrada: new Date(s.cerradaEn).toLocaleString(),
-                }))}
-                columnas={[
-                  { clave: 'caja', label: 'Caja' },
-                  { clave: 'cajero', label: 'Cajero' },
-                  { clave: 'fondo', label: 'Fondo' },
-                  { clave: 'ingresos', label: 'Ingresos' },
-                  { clave: 'ventas', label: 'Ventas' },
-                  { clave: 'retiros', label: 'Retiros' },
-                  { clave: 'devoluciones', label: 'Devoluciones' },
-                  { clave: 'esperado', label: 'Esperado' },
-                  { clave: 'real', label: 'Real' },
-                  { clave: 'diferencia', label: 'Diferencia' },
-                  { clave: 'cerrada', label: 'Cerrada' },
-                ]}
+        {resultado && tipo === 'caja' && (
+          <Card
+            title="Cortes de caja"
+            action={(
+              <AccionesReporte
+                nombreBase="cortes-de-caja"
+                titulo="Cortes de caja"
+                filas={filasCaja}
+                columnas={columnasCaja}
                 asunto="Reporte — Cortes de caja"
-                onAbrir={abrirEnvioReporte}
+                onAbrirCorreo={abrirEnvioReporte}
+                empresa={empresa}
               />
-            </div>
-          )}
-        >
-          <p className="mb-4 text-sm text-gray-500">
-            Diferencia acumulada: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.totalDiferencias)}</span>
-          </p>
-          <Table columnas={['Caja', 'Cajero', 'Fondo', 'Ingresos', 'Ventas', 'Retiros', 'Devoluciones', 'Esperado', 'Real', 'Diferencia', 'Cerrada']}>
-            {resultado.sesiones.length === 0 && <TablaVacia colSpan={11} />}
-            {resultado.sesiones.map((s) => (
-              <Fila key={s.id}>
-                <Celda className="font-medium text-gray-800">{s.caja?.nombre}</Celda>
-                <Celda>{s.cajero?.nombre || '—'}</Celda>
-                <Celda>{formatoMoneda(s.fondoInicial)}</Celda>
-                <Celda>{formatoMoneda(s.movimientos.ingreso)}</Celda>
-                <Celda>{formatoMoneda(s.movimientos.venta)}</Celda>
-                <Celda>{formatoMoneda(s.movimientos.retiro)}</Celda>
-                <Celda>{formatoMoneda(s.movimientos.devolucion)}</Celda>
-                <Celda>{formatoMoneda(s.saldoEsperado)}</Celda>
-                <Celda>{formatoMoneda(s.saldoReal)}</Celda>
-                <Celda>{formatoMoneda(s.diferencia)}</Celda>
-                <Celda>{new Date(s.cerradaEn).toLocaleString()}</Celda>
-              </Fila>
-            ))}
-          </Table>
-        </Card>
-      )}
+            )}
+          >
+            <p className="mb-4 text-sm text-gray-500">
+              Diferencia acumulada: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.totalDiferencias)}</span>
+            </p>
+            <Table columnas={['Caja', 'Cajero', 'Fondo', 'Ingresos', 'Ventas', 'Retiros', 'Devoluciones', 'Esperado', 'Real', 'Diferencia', 'Cerrada']}>
+              {resultado.sesiones.length === 0 && <TablaVacia colSpan={11} />}
+              {resultado.sesiones.map((s) => (
+                <Fila key={s.id}>
+                  <Celda className="font-medium text-gray-800">{s.caja?.nombre}</Celda>
+                  <Celda>{s.cajero?.nombre || '—'}</Celda>
+                  <Celda>{formatoMoneda(s.fondoInicial)}</Celda>
+                  <Celda>{formatoMoneda(s.movimientos.ingreso)}</Celda>
+                  <Celda>{formatoMoneda(s.movimientos.venta)}</Celda>
+                  <Celda>{formatoMoneda(s.movimientos.retiro)}</Celda>
+                  <Celda>{formatoMoneda(s.movimientos.devolucion)}</Celda>
+                  <Celda>{formatoMoneda(s.saldoEsperado)}</Celda>
+                  <Celda>{formatoMoneda(s.saldoReal)}</Celda>
+                  <Celda>{formatoMoneda(s.diferencia)}</Celda>
+                  <Celda>{new Date(s.cerradaEn).toLocaleString()}</Celda>
+                </Fila>
+              ))}
+            </Table>
+          </Card>
+        )}
+      </div>
 
       <EnviarCorreoModal
         abierto={envioDatos !== null}
