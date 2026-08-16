@@ -12,6 +12,9 @@ export function crearCotizacion(datos) {
 export function convertirCotizacion(id, datos) {
   return api.post(`/ventas/cotizaciones/${id}/convertir`, datos).then((res) => res.data);
 }
+export function cancelarCotizacion(id) {
+  return api.patch(`/ventas/cotizaciones/${id}/cancelar`).then((res) => res.data);
+}
 export function enviarCotizacionPorCorreo(id, datos) {
   return api.post(`/ventas/cotizaciones/${id}/enviar`, datos).then((res) => res.data);
 }

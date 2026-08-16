@@ -269,6 +269,11 @@ async function crear({
       cantidad: detalle.cantidad,
       precio,
       impuestoTasa,
+      // Congelado igual que impuestoTasa: Articulo.costo cambia con el tiempo (última compra),
+      // así que "Utilidad" necesita el costo vigente al vender, no el de hoy. Se pasa el Decimal
+      // de Prisma tal cual (sin pasar por Number()) para no arriesgar el artefacto de punto
+      // flotante ya documentado en "Bug de precisión Decimal en Caja" más abajo en este README.
+      costoUnitario: articulo.costo,
       ...descuentoInfo,
       descuentoNombre,
       promocionNombre,
@@ -332,6 +337,7 @@ async function crear({
         cantidad: l.cantidad,
         precio: l.precio,
         impuestoTasa: l.impuestoTasa,
+        costoUnitario: l.costoUnitario,
         descuentoId: l.descuentoId,
         promocionId: l.promocionId,
         descuentoMonto: l.descuentoMonto,

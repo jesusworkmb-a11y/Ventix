@@ -990,6 +990,12 @@ model VentaDetalle {
   descuentoId      String? @map("descuento_id")
   promocionId      String? @map("promocion_id")
   descuentoMonto   Decimal @default(0) @map("descuento_monto") // monto restado de esta línea
+  // Costo unitario del artículo (Articulo.costo) congelado al momento de la venta, igual que
+  // impuestoTasa — Articulo.costo cambia con el tiempo, así que "Utilidad" necesita el valor
+  // vigente en ese momento, no el actual. Null en ventas anteriores a este campo (no hay forma
+  // confiable de reconstruir el costo histórico) — los reportes que lo usan excluyen esas líneas
+  // y lo marcan explícitamente en vez de aproximar con el costo de hoy.
+  costoUnitario    Decimal? @map("costo_unitario")
 
   venta     Venta      @relation(fields: [ventaId], references: [id])
   descuento Descuento? @relation(fields: [descuentoId], references: [id])
@@ -1037,18 +1043,28 @@ model DevolucionDetalle {
   @@map("devoluciones_detalle")
 }
 
+// VIGENTE/CONVERTIDA/CANCELADA son los únicos estados persistidos. "Expirada" NO es un estado
+// propio — se deriva en tiempo de consulta de VIGENTE + vigencia < hoy (ver
+// cotizaciones.service.js#listar), igual que ya lo calculaba el frontend antes de este campo.
+enum CotizacionEstado {
+  VIGENTE
+  CONVERTIDA
+  CANCELADA
+}
+
 model Cotizacion {
-  id                  String    @id @default(uuid())
-  empresaId           String    @map("empresa_id")
-  sucursalId          String    @map("sucursal_id")
-  clienteId           String    @map("cliente_id")
-  usuarioId           String    @map("usuario_id")
+  id                  String           @id @default(uuid())
+  empresaId           String           @map("empresa_id")
+  sucursalId          String           @map("sucursal_id")
+  clienteId           String           @map("cliente_id")
+  usuarioId           String           @map("usuario_id")
   folio               String?
   total               Decimal // con impuesto incluido — igual que Venta.total (ver cotizaciones.service.js#crear)
-  convertidaEnVentaId String?   @map("convertida_en_venta_id")
+  convertidaEnVentaId String?          @map("convertida_en_venta_id")
+  estado              CotizacionEstado @default(VIGENTE)
   vigencia            DateTime? // fecha límite de validez (solo calendario, sin hora) — opcional
   observaciones       String?
-  creadoEn            DateTime  @default(now()) @map("creado_en")
+  creadoEn            DateTime         @default(now()) @map("creado_en")
 
   detalles CotizacionDetalle[]
 

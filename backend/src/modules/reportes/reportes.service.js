@@ -1,8 +1,130 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../../config/db');
 const redondear = require('../../shared/redondear');
+const AppError = require('../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
 const { enviarCorreoConAdjunto } = require('../../shared/services/correo.service');
 const toJson = require('../../shared/toJson');
+
+// Mismo mapa de signo que aplicarMovimiento (shared/services/inventario.service.js) -- el
+// Kardex necesita reproducir exactamente ese cálculo para que la "Existencia" de cada renglón
+// coincida con la que ya quedó escrita en Existencia.cantidad, no una versión aparte que podría
+// desincronizarse.
+const TIPOS_ENTRADA = [
+  'ENTRADA_COMPRA', 'ENTRADA_DEVOLUCION', 'AJUSTE_ENTRADA', 'INVENTARIO_INICIAL', 'TRANSFERENCIA_ENTRADA', 'CANCELACION_VENTA',
+];
+
+const ETIQUETA_SIN_FOLIO = {
+  InventarioInicial: 'Existencia inicial',
+  ConteoFisico: 'Conteo físico',
+};
+
+// Resuelve "Documento" (folio legible) para cada renglón del Kardex -- MovimientoInventario solo
+// guarda referenciaTipo/referenciaId crudos (ver schema.prisma), así que hay que ir a buscar el
+// folio a la tabla de origen correspondiente. Batcheado por tipo (máx. 5 consultas, nunca una
+// por renglón) porque el Kardex ya viene acotado a 200 filas.
+async function resolverDocumentosKardex(filas) {
+  const idsPorTipo = new Map();
+  for (const f of filas) {
+    if (!idsPorTipo.has(f.referenciaTipo)) idsPorTipo.set(f.referenciaTipo, new Set());
+    idsPorTipo.get(f.referenciaTipo).add(f.referenciaId);
+  }
+
+  const folioPorClave = new Map();
+  const consultas = [
+    ['Venta', prisma.venta],
+    ['Compra', prisma.compra],
+    ['Ajuste', prisma.ajuste],
+    ['Transferencia', prisma.transferencia],
+    ['Devolucion', prisma.devolucion],
+  ];
+  await Promise.all(consultas.map(async ([tipoRef, modelo]) => {
+    const ids = idsPorTipo.get(tipoRef);
+    if (!ids?.size) return;
+    const filas2 = await modelo.findMany({ where: { id: { in: [...ids] } }, select: { id: true, folio: true } });
+    filas2.forEach((r) => folioPorClave.set(`${tipoRef}:${r.id}`, r.folio));
+  }));
+
+  return filas.map((f) => ({
+    ...f,
+    documento: folioPorClave.get(`${f.referenciaTipo}:${f.referenciaId}`)
+      || ETIQUETA_SIN_FOLIO[f.referenciaTipo]
+      || f.referenciaTipo,
+  }));
+}
+
+// Requerimiento #8 (Kardex por artículo). Saldo corrido calculado con una función de ventana SQL
+// en vez de guardarlo en MovimientoInventario al escribir -- así no hace falta migrar ni
+// recalcular el histórico (la alternativa evaluada en la auditoría original). La ventana corre
+// sobre TODO el historial del artículo (sin filtro de fecha) para que "Existencia" en cada
+// renglón sea el saldo real a esa fecha; el filtro de fecha se aplica después, sobre el
+// resultado ya acumulado, para no arrancar la cuenta en cero a mitad de la historia.
+// "Costo" usa el costo ACTUAL del artículo (Articulo.costo), no uno histórico por movimiento --
+// mismo criterio ya usado en reporteInventarioValorizado, documentado en la UI.
+async function reporteKardex({
+  empresaId, articuloId, sucursalId, desde, hasta,
+}) {
+  if (!articuloId) throw new AppError(400, 'Debes indicar un artículo para ver su Kardex.');
+
+  const articulo = await prisma.articulo.findFirst({
+    where: { id: articuloId, empresaId },
+    select: {
+      id: true, nombre: true, sku: true, costo: true,
+    },
+  });
+  if (!articulo) throw new AppError(404, 'Artículo no encontrado.');
+
+  const condicionesBase = [Prisma.sql`empresa_id = ${empresaId}`, Prisma.sql`articulo_id = ${articuloId}`];
+  if (sucursalId) condicionesBase.push(Prisma.sql`sucursal_id = ${sucursalId}`);
+  const whereBase = Prisma.join(condicionesBase, ' AND ');
+
+  const condicionesFecha = [Prisma.sql`1=1`];
+  if (desde) condicionesFecha.push(Prisma.sql`"creadoEn" >= ${new Date(desde)}`);
+  if (hasta) condicionesFecha.push(Prisma.sql`"creadoEn" <= ${new Date(hasta)}`);
+  const whereFecha = Prisma.join(condicionesFecha, ' AND ');
+
+  const entradaTipos = Prisma.join(TIPOS_ENTRADA.map((t) => Prisma.sql`${t}`), ', ');
+
+  const filasRaw = await prisma.$queryRaw`
+    WITH movimientos AS (
+      SELECT
+        id,
+        creado_en AS "creadoEn",
+        tipo,
+        referencia_tipo AS "referenciaTipo",
+        referencia_id AS "referenciaId",
+        cantidad,
+        SUM(CASE WHEN tipo::text IN (${entradaTipos}) THEN cantidad ELSE -cantidad END)
+          OVER (ORDER BY creado_en, id) AS existencia
+      FROM movimientos_inventario
+      WHERE ${whereBase}
+    )
+    SELECT * FROM movimientos
+    WHERE ${whereFecha}
+    ORDER BY "creadoEn" DESC, id DESC
+    LIMIT 200
+  `;
+
+  const filas = filasRaw.map((f) => {
+    const cantidad = Number(f.cantidad);
+    const esEntrada = TIPOS_ENTRADA.includes(f.tipo);
+    return {
+      id: f.id,
+      creadoEn: f.creadoEn,
+      tipo: f.tipo,
+      referenciaTipo: f.referenciaTipo,
+      referenciaId: f.referenciaId,
+      entrada: esEntrada ? cantidad : 0,
+      salida: esEntrada ? 0 : cantidad,
+      existencia: Number(f.existencia),
+      costo: Number(articulo.costo),
+    };
+  });
+
+  const movimientos = await resolverDocumentosKardex(filas);
+
+  return { articulo, movimientos };
+}
 
 async function reporteVentas({
   empresaId, sucursalId, desde, hasta, usuarioId, clienteId,
@@ -77,7 +199,9 @@ async function reporteArticulosMasVendidos({
 
   const detalles = await prisma.ventaDetalle.findMany({
     where: { ventaId: { in: ventaIds } },
-    select: { articuloId: true, cantidad: true, precio: true, cantidadDevuelta: true, descuentoMonto: true },
+    select: {
+      articuloId: true, cantidad: true, precio: true, cantidadDevuelta: true, descuentoMonto: true, costoUnitario: true,
+    },
   });
 
   // Se descuenta lo devuelto de cada línea -- si no, un artículo devuelto por completo seguiría
@@ -91,9 +215,20 @@ async function reporteArticulosMasVendidos({
     const cantidadNeta = cantidadOriginal - Number(d.cantidadDevuelta);
     const descuentoPorUnidad = cantidadOriginal > 0 ? Number(d.descuentoMonto) / cantidadOriginal : 0;
     const precioNetoUnitario = Number(d.precio) - descuentoPorUnidad;
-    const actual = acumulado.get(d.articuloId) || { cantidad: 0, monto: 0 };
+    const actual = acumulado.get(d.articuloId) || {
+      cantidad: 0, monto: 0, costoTotal: 0, costoCompleto: true,
+    };
     actual.cantidad += cantidadNeta;
     actual.monto += cantidadNeta * precioNetoUnitario;
+    // costoUnitario es null en ventas de antes de que este campo existiera (ver comentario en
+    // schema.prisma) -- una sola línea sin costo invalida la "Utilidad" del artículo entero (no
+    // se puede promediar ni aproximar sin mentir), así que se marca costoCompleto:false en vez
+    // de tratarlo como 0.
+    if (d.costoUnitario !== null) {
+      actual.costoTotal += cantidadNeta * Number(d.costoUnitario);
+    } else {
+      actual.costoCompleto = false;
+    }
     acumulado.set(d.articuloId, actual);
   }
 
@@ -107,7 +242,12 @@ async function reporteArticulosMasVendidos({
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
 
   let filas = [...acumulado.entries()]
-    .map(([articuloId, datos]) => ({ articulo: articuloPorId.get(articuloId) || null, ...datos }));
+    .map(([articuloId, datos]) => ({
+      articulo: articuloPorId.get(articuloId) || null,
+      cantidad: datos.cantidad,
+      monto: datos.monto,
+      utilidad: datos.costoCompleto ? redondear(datos.monto - datos.costoTotal) : null,
+    }));
   // Filtrado en JS igual que el resto de esta función (comentario de arriba): el volumen de
   // artículos distintos vendidos en un rango es chico para una PyME, no justifica una segunda
   // consulta a la DB solo para acotar por categoría/tipo.
@@ -121,6 +261,66 @@ async function reporteArticulosMasVendidos({
   return filas
     .sort((a, b) => b.cantidad - a.cantidad)
     .slice(0, limite);
+}
+
+// Requerimiento #12 (Utilidad de ventas): mismo alcance que reporteVentas (Fecha, Sucursal), a
+// diferencia de reporteArticulosMasVendidos que agrupa por artículo -- acá se suma todo junto.
+// Depende de VentaDetalle.costoUnitario (ver schema.prisma): las ventas de antes de que ese
+// campo existiera no tienen costo congelado, así que "ganancia" se calcula solo sobre las
+// líneas que sí lo tienen (nunca aproximando con 0 o el costo de hoy) y se expone
+// `lineasSinCosto` para que la UI avise cuando el número es parcial.
+async function reporteUtilidad({
+  empresaId, sucursalId, desde, hasta,
+}) {
+  const whereVenta = { empresaId, estado: 'CONFIRMADA' };
+  if (sucursalId) whereVenta.sucursalId = sucursalId;
+  if (desde || hasta) {
+    whereVenta.creadoEn = {};
+    if (desde) whereVenta.creadoEn.gte = new Date(desde);
+    if (hasta) whereVenta.creadoEn.lte = new Date(hasta);
+  }
+
+  const ventas = await prisma.venta.findMany({ where: whereVenta, select: { id: true } });
+  const ventaIds = ventas.map((v) => v.id);
+  if (!ventaIds.length) {
+    return {
+      venta: 0, costo: 0, ganancia: 0, lineasTotales: 0, lineasSinCosto: 0,
+    };
+  }
+
+  const detalles = await prisma.ventaDetalle.findMany({
+    where: { ventaId: { in: ventaIds } },
+    select: {
+      cantidad: true, precio: true, cantidadDevuelta: true, descuentoMonto: true, costoUnitario: true,
+    },
+  });
+
+  let ventaTotal = 0;
+  let ventaConCosto = 0;
+  let costoTotal = 0;
+  let lineasSinCosto = 0;
+  for (const d of detalles) {
+    const cantidadOriginal = Number(d.cantidad);
+    const cantidadNeta = cantidadOriginal - Number(d.cantidadDevuelta);
+    const descuentoPorUnidad = cantidadOriginal > 0 ? Number(d.descuentoMonto) / cantidadOriginal : 0;
+    const precioNetoUnitario = Number(d.precio) - descuentoPorUnidad;
+    const montoLinea = cantidadNeta * precioNetoUnitario;
+    ventaTotal += montoLinea;
+    if (d.costoUnitario !== null) {
+      ventaConCosto += montoLinea;
+      costoTotal += cantidadNeta * Number(d.costoUnitario);
+    } else {
+      lineasSinCosto += 1;
+    }
+  }
+
+  return {
+    venta: redondear(ventaTotal),
+    costo: redondear(costoTotal),
+    ganancia: redondear(ventaConCosto - costoTotal),
+    lineasTotales: detalles.length,
+    lineasSinCosto,
+  };
 }
 
 // Filtros: Fecha, Sucursal (mismo alcance que reporteVentas). A diferencia de
@@ -178,6 +378,61 @@ async function reporteVentasPorCliente({
       totalNeto: redondear(datos.total - datos.totalDevoluciones),
     }))
     .sort((a, b) => b.totalNeto - a.totalNeto);
+}
+
+// Requerimiento #13 (IVA trasladado): Filtros Fecha, Cliente (sin Sucursal -- no lo pide la
+// especificación). Agrupa por impuestoTasa en vez de por artículo/cliente -- mismo patrón de
+// "traer detalles y reducir en JS" que reporteArticulosMasVendidos, pero la clave de
+// agrupación es la tasa congelada de cada línea (VentaDetalle.impuestoTasa), no el articuloId.
+async function reporteIvaTrasladado({
+  empresaId, desde, hasta, clienteId,
+}) {
+  const whereVenta = { empresaId, estado: 'CONFIRMADA' };
+  if (clienteId) whereVenta.clienteId = clienteId;
+  if (desde || hasta) {
+    whereVenta.creadoEn = {};
+    if (desde) whereVenta.creadoEn.gte = new Date(desde);
+    if (hasta) whereVenta.creadoEn.lte = new Date(hasta);
+  }
+
+  const ventas = await prisma.venta.findMany({ where: whereVenta, select: { id: true } });
+  const ventaIds = ventas.map((v) => v.id);
+  if (!ventaIds.length) return { porTasa: [], baseGravable: 0, impuesto: 0 };
+
+  const detalles = await prisma.ventaDetalle.findMany({
+    where: { ventaId: { in: ventaIds } },
+    select: {
+      cantidad: true, precio: true, cantidadDevuelta: true, descuentoMonto: true, impuestoTasa: true,
+    },
+  });
+
+  // Misma base gravable "neta" que el resto de los reportes de ventas: descuenta lo devuelto y
+  // prorratea el descuento por unidad, para no trasladar IVA sobre algo que ya se devolvió o
+  // que el cliente nunca pagó por el descuento.
+  const acumulado = new Map();
+  for (const d of detalles) {
+    const cantidadOriginal = Number(d.cantidad);
+    const cantidadNeta = cantidadOriginal - Number(d.cantidadDevuelta);
+    const descuentoPorUnidad = cantidadOriginal > 0 ? Number(d.descuentoMonto) / cantidadOriginal : 0;
+    const baseLinea = cantidadNeta * (Number(d.precio) - descuentoPorUnidad);
+    const tasa = Number(d.impuestoTasa);
+    const actual = acumulado.get(tasa) || { baseGravable: 0, impuesto: 0 };
+    actual.baseGravable += baseLinea;
+    actual.impuesto += baseLinea * tasa;
+    acumulado.set(tasa, actual);
+  }
+
+  const porTasa = [...acumulado.entries()]
+    .map(([tasa, datos]) => ({
+      tasa, baseGravable: redondear(datos.baseGravable), impuesto: redondear(datos.impuesto),
+    }))
+    .sort((a, b) => a.tasa - b.tasa);
+
+  return {
+    porTasa,
+    baseGravable: redondear(porTasa.reduce((acc, p) => acc + p.baseGravable, 0)),
+    impuesto: redondear(porTasa.reduce((acc, p) => acc + p.impuesto, 0)),
+  };
 }
 
 // "Nunca tuvo movimiento" cuenta igual que "hace más de `dias`" -- ambos son candidatos a
@@ -374,7 +629,10 @@ async function enviar({
 module.exports = {
   reporteVentas,
   reporteArticulosMasVendidos,
+  reporteUtilidad,
   reporteVentasPorCliente,
+  reporteIvaTrasladado,
+  reporteKardex,
   reporteProductosSinMovimiento,
   reporteInventarioValorizado,
   reporteCompras,

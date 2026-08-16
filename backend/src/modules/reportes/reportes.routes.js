@@ -13,7 +13,10 @@ router.use(requierePermiso('reportes.ver'));
 
 router.get('/ventas', asyncHandler(controller.ventas));
 router.get('/articulos-mas-vendidos', asyncHandler(controller.articulosMasVendidos));
+router.get('/utilidad', asyncHandler(controller.utilidad));
 router.get('/ventas-por-cliente', asyncHandler(controller.ventasPorCliente));
+router.get('/iva-trasladado', asyncHandler(controller.ivaTrasladado));
+router.get('/kardex', asyncHandler(controller.kardex));
 router.get('/productos-sin-movimiento', asyncHandler(controller.productosSinMovimiento));
 router.get('/inventario-valorizado', asyncHandler(controller.inventarioValorizado));
 router.get('/compras', asyncHandler(controller.compras));

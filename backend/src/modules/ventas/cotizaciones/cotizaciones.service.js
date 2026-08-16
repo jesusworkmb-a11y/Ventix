@@ -26,6 +26,20 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
     if (filtros.desde) where.creadoEn.gte = new Date(filtros.desde);
     if (filtros.hasta) where.creadoEn.lte = new Date(filtros.hasta);
   }
+  // "Expirada" no es un valor de `estado` persistido (ver schema.prisma) -- se deriva de
+  // VIGENTE + vigencia ya pasada. Filtrar por "Vigente" tiene que EXCLUIR las ya expiradas
+  // (mismo criterio que ya usaba el frontend con estaVencida() antes de este campo), si no el
+  // filtro "Vigente" incluiría cotizaciones que en la práctica ya no sirven para nada.
+  const hoy = new Date();
+  if (filtros?.estado === 'EXPIRADA') {
+    where.estado = 'VIGENTE';
+    where.vigencia = { lt: hoy };
+  } else if (filtros?.estado === 'VIGENTE') {
+    where.estado = 'VIGENTE';
+    where.OR = [{ vigencia: null }, { vigencia: { gte: hoy } }];
+  } else if (filtros?.estado) {
+    where.estado = filtros.estado;
+  }
 
   const paginado = parsePaginacion(paginacion);
   const orderBy = parseOrden(ordenamiento || {}, COLUMNAS_ORDENABLES, { creadoEn: 'desc' });
@@ -180,12 +194,16 @@ async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCaja
   });
   if (!cotizacion) throw new AppError(404, 'Cotización no encontrada.');
   if (cotizacion.convertidaEnVentaId) throw new AppError(400, 'Esta cotización ya fue convertida en venta.');
+  if (cotizacion.estado === 'CANCELADA') throw new AppError(400, 'Esta cotización está cancelada.');
 
+  // El candado real sigue siendo convertidaEnVentaId (no `estado`) -- mismo mecanismo atómico de
+  // siempre, solo que ahora también exige estado='VIGENTE' para que una cancelación concurrente
+  // no pierda la carrera contra una conversión.
   const reclamada = await prisma.cotizacion.updateMany({
-    where: { id: cotizacionId, convertidaEnVentaId: null },
+    where: { id: cotizacionId, convertidaEnVentaId: null, estado: 'VIGENTE' },
     data: { convertidaEnVentaId: RESERVADO },
   });
-  if (reclamada.count === 0) throw new AppError(400, 'Esta cotización ya fue convertida en venta.');
+  if (reclamada.count === 0) throw new AppError(400, 'Esta cotización ya fue convertida o cancelada.');
 
   let venta;
   try {
@@ -216,9 +234,46 @@ async function convertir({ empresaId, usuarioId, rolId, cotizacionId, sesionCaja
     throw error;
   }
 
-  await prisma.cotizacion.update({ where: { id: cotizacionId }, data: { convertidaEnVentaId: venta.id } });
+  await prisma.cotizacion.update({
+    where: { id: cotizacionId },
+    data: { convertidaEnVentaId: venta.id, estado: 'CONVERTIDA' },
+  });
 
   return venta;
+}
+
+// Sin movimiento de stock ni de caja (mismo motivo que crear() — es un borrador), así que
+// cancelar es solo un cambio de estado, a diferencia de Venta.cancelar que revierte stock/caja.
+// Mismo patrón de reclamo atómico que el resto del proyecto (Ventas/Compras/Inventario): un
+// UPDATE...WHERE en vez de leer-y-luego-escribir, para que dos cancelaciones (o una cancelación
+// contra una conversión) casi simultáneas no pasen ambas el check.
+async function cancelar({ empresaId, usuarioId, cotizacionId }) {
+  const cotizacion = await prisma.cotizacion.findFirst({ where: { id: cotizacionId, empresaId } });
+  if (!cotizacion) throw new AppError(404, 'Cotización no encontrada.');
+
+  const reclamada = await prisma.cotizacion.updateMany({
+    where: {
+      id: cotizacionId, empresaId, estado: 'VIGENTE', convertidaEnVentaId: null,
+    },
+    data: { estado: 'CANCELADA' },
+  });
+  if (reclamada.count === 0) {
+    throw new AppError(400, 'Solo se pueden cancelar cotizaciones vigentes (no convertidas ni ya canceladas).');
+  }
+
+  await registrarAuditoria(null, {
+    empresaId,
+    sucursalId: cotizacion.sucursalId,
+    usuarioEjecutorId: usuarioId,
+    accion: 'ACTUALIZAR',
+    entidad: 'Cotizacion',
+    entidadId: cotizacionId,
+    folio: cotizacion.folio,
+    valoresAntes: toJson({ estado: cotizacion.estado }),
+    valoresDespues: toJson({ estado: 'CANCELADA' }),
+  });
+
+  return { cancelada: true };
 }
 
 // Reusa la cotización ya persistida solo para el folio/sucursal (auditoría) y el asunto por
@@ -255,5 +310,5 @@ async function enviar({
 }
 
 module.exports = {
-  listar, obtener, crear, convertir, enviar,
+  listar, obtener, crear, convertir, cancelar, enviar,
 };

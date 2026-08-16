@@ -30,10 +30,36 @@ async function articulosMasVendidos(req, res) {
   res.json(reporte);
 }
 
+async function utilidad(req, res) {
+  const { desde, hasta, sucursalId } = req.query;
+  const reporte = await service.reporteUtilidad({
+    empresaId: req.auth.empresaId, desde, hasta, sucursalId,
+  });
+  res.json(reporte);
+}
+
 async function ventasPorCliente(req, res) {
   const { desde, hasta, sucursalId } = req.query;
   const reporte = await service.reporteVentasPorCliente({
     empresaId: req.auth.empresaId, desde, hasta, sucursalId,
+  });
+  res.json(reporte);
+}
+
+async function ivaTrasladado(req, res) {
+  const { desde, hasta, clienteId } = req.query;
+  const reporte = await service.reporteIvaTrasladado({
+    empresaId: req.auth.empresaId, desde, hasta, clienteId,
+  });
+  res.json(reporte);
+}
+
+async function kardex(req, res) {
+  const {
+    articuloId, sucursalId, desde, hasta,
+  } = req.query;
+  const reporte = await service.reporteKardex({
+    empresaId: req.auth.empresaId, articuloId, sucursalId, desde, hasta,
   });
   res.json(reporte);
 }
@@ -84,7 +110,10 @@ async function enviar(req, res) {
 module.exports = {
   ventas,
   articulosMasVendidos,
+  utilidad,
   ventasPorCliente,
+  ivaTrasladado,
+  kardex,
   productosSinMovimiento,
   inventarioValorizado,
   compras,

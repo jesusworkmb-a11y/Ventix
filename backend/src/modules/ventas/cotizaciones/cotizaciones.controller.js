@@ -5,12 +5,12 @@ const { crearCotizacionSchema, convertirCotizacionSchema } = require('./cotizaci
 
 async function listar(req, res) {
   const {
-    buscar, clienteId, desde, hasta, pagina, porPagina, ordenarPor, orden,
+    buscar, clienteId, desde, hasta, estado, pagina, porPagina, ordenarPor, orden,
   } = req.query;
   const cotizaciones = await service.listar({
     empresaId: req.auth.empresaId,
     filtros: {
-      buscar, clienteId, desde, hasta,
+      buscar, clienteId, desde, hasta, estado,
     },
     paginacion: { pagina, porPagina },
     ordenamiento: { ordenarPor, orden },
@@ -47,6 +47,15 @@ async function convertir(req, res) {
   res.status(201).json(venta);
 }
 
+async function cancelar(req, res) {
+  const resultado = await service.cancelar({
+    empresaId: req.auth.empresaId,
+    usuarioId: req.auth.usuarioId,
+    cotizacionId: req.params.id,
+  });
+  res.json(resultado);
+}
+
 async function enviar(req, res) {
   const parsed = enviarDocumentoSchema.safeParse(req.body);
   if (!parsed.success) throw new AppError(400, 'Datos de envío inválidos.');
@@ -60,5 +69,5 @@ async function enviar(req, res) {
 }
 
 module.exports = {
-  listar, obtener, crear, convertir, enviar,
+  listar, obtener, crear, convertir, cancelar, enviar,
 };

@@ -3,7 +3,10 @@ import { Download, Mail } from 'lucide-react';
 import {
   reporteVentas,
   reporteArticulosMasVendidos,
+  reporteUtilidad,
   reporteVentasPorCliente,
+  reporteIvaTrasladado,
+  reporteKardex,
   reporteProductosSinMovimiento,
   reporteInventarioValorizado,
   reporteCompras,
@@ -12,7 +15,7 @@ import {
 } from '../api/reportes.api';
 import { listarSucursales, listarUsuarios } from '../../core/api/core.api';
 import { listarClientes } from '../../clientes/api/clientes.api';
-import { listarCategorias } from '../../catalogo/api/catalogo.api';
+import { listarCategorias, listarArticulos } from '../../catalogo/api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -68,8 +71,17 @@ const REPORTES = {
   articulos: {
     etiqueta: 'Artículos más vendidos', fn: reporteArticulosMasVendidos, usaFechas: true, usaSucursal: true, usaUsuario: true, usaCliente: true, usaCategoria: true, usaTipo: true,
   },
+  utilidad: {
+    etiqueta: 'Utilidad de ventas', fn: reporteUtilidad, usaFechas: true, usaSucursal: true,
+  },
   ventasPorCliente: {
     etiqueta: 'Ventas por cliente', fn: reporteVentasPorCliente, usaFechas: true, usaSucursal: true,
+  },
+  iva: {
+    etiqueta: 'IVA trasladado', fn: reporteIvaTrasladado, usaFechas: true, usaCliente: true,
+  },
+  kardex: {
+    etiqueta: 'Kardex por artículo', fn: reporteKardex, usaFechas: true, usaSucursal: true, usaArticulo: true,
   },
   sinMovimiento: {
     etiqueta: 'Productos sin movimiento', fn: reporteProductosSinMovimiento, usaDias: true, usaCategoria: true,
@@ -134,6 +146,8 @@ function ReportesPage() {
   const [categorias, setCategorias] = useState([]);
   const [categoriaId, setCategoriaId] = useState('');
   const [tipoArticulo, setTipoArticulo] = useState('');
+  const [articulos, setArticulos] = useState([]);
+  const [articuloId, setArticuloId] = useState('');
   const [dias, setDias] = useState('30');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
@@ -150,6 +164,7 @@ function ReportesPage() {
     listarUsuarios().then((lista) => setUsuarios(lista.filter((u) => u.activo))).catch(() => {});
     listarClientes().then((lista) => setClientes(lista.filter((c) => c.activo))).catch(() => {});
     listarCategorias().then(setCategorias).catch(() => {});
+    listarArticulos().then((lista) => setArticulos(lista.filter((a) => a.activo && a.tipo === 'PRODUCTO'))).catch(() => {});
   }, []);
 
   const config = REPORTES[tipo];
@@ -158,6 +173,10 @@ function ReportesPage() {
     e.preventDefault();
     setError('');
     setResultado(null);
+    if (config.usaArticulo && !articuloId) {
+      setError('Elegí un artículo para ver su Kardex.');
+      return;
+    }
     try {
       const params = {};
       if (config.usaFechas) {
@@ -169,6 +188,7 @@ function ReportesPage() {
       if (config.usaCliente && clienteId) params.clienteId = clienteId;
       if (config.usaCategoria && categoriaId) params.categoriaId = categoriaId;
       if (config.usaTipo && tipoArticulo) params.tipo = tipoArticulo;
+      if (config.usaArticulo && articuloId) params.articuloId = articuloId;
       if (config.usaDias && dias) params.dias = dias;
       const data = await config.fn(params);
       setResultado(data);
@@ -272,6 +292,14 @@ function ReportesPage() {
               ))}
             </Select>
           )}
+          {config.usaArticulo && (
+            <Select id="articuloReporte" label="Artículo" value={articuloId} onChange={(e) => setArticuloId(e.target.value)} className="min-w-[220px]">
+              <option value="">Elegí un artículo…</option>
+              {articulos.map((a) => (
+                <option key={a.id} value={a.id}>{a.sku ? `${a.sku} — ${a.nombre}` : a.nombre}</option>
+              ))}
+            </Select>
+          )}
           {config.usaDias && (
             <Input id="diasReporte" label="Días sin movimiento" type="number" min="1" value={dias} onChange={(e) => setDias(e.target.value)} className="w-40" />
           )}
@@ -366,12 +394,14 @@ function ReportesPage() {
                   articulo: r.articulo?.nombre,
                   cantidad: Number(r.cantidad),
                   monto: Number(r.monto),
+                  utilidad: r.utilidad === null ? 'N/D' : Number(r.utilidad),
                 }))}
                 columnas={[
                   { clave: 'codigo', label: 'Código' },
                   { clave: 'articulo', label: 'Artículo' },
                   { clave: 'cantidad', label: 'Cantidad' },
                   { clave: 'monto', label: 'Monto' },
+                  { clave: 'utilidad', label: 'Utilidad' },
                 ]}
               />
               <BotonEnviarCorreo
@@ -381,12 +411,14 @@ function ReportesPage() {
                   articulo: r.articulo?.nombre,
                   cantidad: Number(r.cantidad),
                   monto: Number(r.monto),
+                  utilidad: r.utilidad === null ? 'N/D' : Number(r.utilidad),
                 }))}
                 columnas={[
                   { clave: 'codigo', label: 'Código' },
                   { clave: 'articulo', label: 'Artículo' },
                   { clave: 'cantidad', label: 'Cantidad' },
                   { clave: 'monto', label: 'Monto' },
+                  { clave: 'utilidad', label: 'Utilidad' },
                 ]}
                 asunto="Reporte — Artículos más vendidos"
                 onAbrir={abrirEnvioReporte}
@@ -394,14 +426,199 @@ function ReportesPage() {
             </div>
           )}
         >
-          <Table columnas={['Código', 'Artículo', 'Cantidad', 'Monto']}>
-            {resultado.length === 0 && <TablaVacia colSpan={4} />}
+          <p className="mb-4 text-xs text-gray-500">
+            "Utilidad" es N/D cuando el artículo tiene ventas de antes de que el sistema empezara a
+            registrar el costo por línea — no se aproxima con el costo de hoy.
+          </p>
+          <Table columnas={['Código', 'Artículo', 'Cantidad', 'Monto', 'Utilidad']}>
+            {resultado.length === 0 && <TablaVacia colSpan={5} />}
             {resultado.map((r) => (
               <Fila key={r.articulo?.id}>
                 <Celda className="text-gray-500">{r.articulo?.sku || '—'}</Celda>
                 <Celda className="font-medium text-gray-800">{r.articulo?.nombre}</Celda>
                 <Celda>{r.cantidad}</Celda>
                 <Celda>{formatoMoneda(r.monto)}</Celda>
+                <Celda>{r.utilidad === null ? <span className="text-gray-400">N/D</span> : formatoMoneda(r.utilidad)}</Celda>
+              </Fila>
+            ))}
+          </Table>
+        </Card>
+      )}
+
+      {resultado && tipo === 'utilidad' && (
+        <Card
+          title="Utilidad de ventas"
+          action={(
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="utilidad-de-ventas.csv"
+                filas={[{
+                  venta: Number(resultado.venta),
+                  costo: Number(resultado.costo),
+                  ganancia: Number(resultado.ganancia),
+                }]}
+                columnas={[
+                  { clave: 'venta', label: 'Venta' },
+                  { clave: 'costo', label: 'Costo' },
+                  { clave: 'ganancia', label: 'Ganancia' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="utilidad-de-ventas.csv"
+                filas={[{
+                  venta: Number(resultado.venta),
+                  costo: Number(resultado.costo),
+                  ganancia: Number(resultado.ganancia),
+                }]}
+                columnas={[
+                  { clave: 'venta', label: 'Venta' },
+                  { clave: 'costo', label: 'Costo' },
+                  { clave: 'ganancia', label: 'Ganancia' },
+                ]}
+                asunto="Reporte — Utilidad de ventas"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
+          )}
+        >
+          {resultado.lineasSinCosto > 0 && (
+            <p className="mb-4 rounded-lg bg-warning-50 px-4 py-2.5 text-sm text-warning-700">
+              {resultado.lineasSinCosto} de {resultado.lineasTotales} línea(s) vendida(s) en este rango
+              son de antes de que el sistema registrara el costo por venta — la Ganancia no las incluye
+              (el Venta total sí, para que no falte facturación en el número de arriba).
+            </p>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-gray-500">Venta</p>
+              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.venta)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Costo</p>
+              <p className="text-lg font-semibold text-gray-900">{formatoMoneda(resultado.costo)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Ganancia</p>
+              <p className="text-lg font-semibold text-primary-700">{formatoMoneda(resultado.ganancia)}</p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {resultado && tipo === 'iva' && (
+        <Card
+          title="IVA trasladado"
+          action={(
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="iva-trasladado.csv"
+                filas={resultado.porTasa.map((p) => ({
+                  tasa: `${(p.tasa * 100).toFixed(0)}%`,
+                  baseGravable: Number(p.baseGravable),
+                  impuesto: Number(p.impuesto),
+                }))}
+                columnas={[
+                  { clave: 'tasa', label: 'Tasa' },
+                  { clave: 'baseGravable', label: 'Base gravable' },
+                  { clave: 'impuesto', label: 'Impuesto' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="iva-trasladado.csv"
+                filas={resultado.porTasa.map((p) => ({
+                  tasa: `${(p.tasa * 100).toFixed(0)}%`,
+                  baseGravable: Number(p.baseGravable),
+                  impuesto: Number(p.impuesto),
+                }))}
+                columnas={[
+                  { clave: 'tasa', label: 'Tasa' },
+                  { clave: 'baseGravable', label: 'Base gravable' },
+                  { clave: 'impuesto', label: 'Impuesto' },
+                ]}
+                asunto="Reporte — IVA trasladado"
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
+          )}
+        >
+          <p className="mb-4 text-sm text-gray-500">
+            Base gravable: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.baseGravable)}</span>
+            {' · '}Impuesto trasladado: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.impuesto)}</span>
+          </p>
+          <Table columnas={['Tasa', 'Base gravable', 'Impuesto']}>
+            {resultado.porTasa.length === 0 && <TablaVacia colSpan={3} />}
+            {resultado.porTasa.map((p) => (
+              <Fila key={p.tasa}>
+                <Celda className="font-medium text-gray-800">{(p.tasa * 100).toFixed(0)}%</Celda>
+                <Celda>{formatoMoneda(p.baseGravable)}</Celda>
+                <Celda>{formatoMoneda(p.impuesto)}</Celda>
+              </Fila>
+            ))}
+          </Table>
+        </Card>
+      )}
+
+      {resultado && tipo === 'kardex' && (
+        <Card
+          title={`Kardex — ${resultado.articulo.nombre}`}
+          action={(
+            <div className="flex flex-wrap gap-2">
+              <BotonExportar
+                nombreArchivo="kardex.csv"
+                filas={resultado.movimientos.map((m) => ({
+                  fecha: new Date(m.creadoEn).toLocaleString(),
+                  documento: m.documento,
+                  entrada: Number(m.entrada),
+                  salida: Number(m.salida),
+                  existencia: Number(m.existencia),
+                  costo: Number(m.costo),
+                }))}
+                columnas={[
+                  { clave: 'fecha', label: 'Fecha' },
+                  { clave: 'documento', label: 'Documento' },
+                  { clave: 'entrada', label: 'Entrada' },
+                  { clave: 'salida', label: 'Salida' },
+                  { clave: 'existencia', label: 'Existencia' },
+                  { clave: 'costo', label: 'Costo (actual)' },
+                ]}
+              />
+              <BotonEnviarCorreo
+                nombreArchivo="kardex.csv"
+                filas={resultado.movimientos.map((m) => ({
+                  fecha: new Date(m.creadoEn).toLocaleString(),
+                  documento: m.documento,
+                  entrada: Number(m.entrada),
+                  salida: Number(m.salida),
+                  existencia: Number(m.existencia),
+                  costo: Number(m.costo),
+                }))}
+                columnas={[
+                  { clave: 'fecha', label: 'Fecha' },
+                  { clave: 'documento', label: 'Documento' },
+                  { clave: 'entrada', label: 'Entrada' },
+                  { clave: 'salida', label: 'Salida' },
+                  { clave: 'existencia', label: 'Existencia' },
+                  { clave: 'costo', label: 'Costo (actual)' },
+                ]}
+                asunto={`Reporte — Kardex ${resultado.articulo.nombre}`}
+                onAbrir={abrirEnvioReporte}
+              />
+            </div>
+          )}
+        >
+          <p className="mb-4 text-xs text-gray-500">
+            "Costo" es el costo actual del artículo, no uno histórico por movimiento. Máximo 200 renglones.
+          </p>
+          <Table columnas={['Fecha', 'Documento', 'Entrada', 'Salida', 'Existencia', 'Costo (actual)']}>
+            {resultado.movimientos.length === 0 && <TablaVacia colSpan={6} />}
+            {resultado.movimientos.map((m) => (
+              <Fila key={m.id}>
+                <Celda>{new Date(m.creadoEn).toLocaleString()}</Celda>
+                <Celda className="font-medium text-gray-800">{m.documento}</Celda>
+                <Celda>{m.entrada > 0 ? m.entrada : '—'}</Celda>
+                <Celda>{m.salida > 0 ? m.salida : '—'}</Celda>
+                <Celda>{m.existencia}</Celda>
+                <Celda>{formatoMoneda(m.costo)}</Celda>
               </Fila>
             ))}
           </Table>

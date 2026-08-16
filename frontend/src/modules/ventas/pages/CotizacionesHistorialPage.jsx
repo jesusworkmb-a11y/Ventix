@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { FileDown, Search, Mail } from 'lucide-react';
 import {
-  listarCotizaciones, obtenerCotizacion, convertirCotizacion, enviarCotizacionPorCorreo,
+  listarCotizaciones, obtenerCotizacion, convertirCotizacion, cancelarCotizacion, enviarCotizacionPorCorreo,
 } from '../api/cotizaciones.api';
 import { listarCajas, listarSesiones } from '../../caja/api/caja.api';
 import { listarArticulos } from '../../catalogo/api/catalogo.api';
@@ -44,6 +44,23 @@ function estaVencida(fechaIso) {
   return Date.UTC(anio, mes - 1, dia) < hoyUtc;
 }
 
+// "Expirada" no es un valor de estado propio (ver cotizaciones.service.js#listar) — se deriva acá
+// igual que en el backend: VIGENTE + vigencia ya pasada.
+function estadoVisible(cotizacion) {
+  if (cotizacion.estado === 'CONVERTIDA') return { texto: 'Convertida', tono: 'success' };
+  if (cotizacion.estado === 'CANCELADA') return { texto: 'Cancelada', tono: 'danger' };
+  if (estaVencida(cotizacion.vigencia)) return { texto: 'Expirada', tono: 'gray' };
+  return { texto: 'Pendiente', tono: 'warning' };
+}
+
+const ESTADOS_COTIZACION = [
+  { valor: '', etiqueta: 'Todos los estados' },
+  { valor: 'VIGENTE', etiqueta: 'Vigente' },
+  { valor: 'CONVERTIDA', etiqueta: 'Convertida' },
+  { valor: 'CANCELADA', etiqueta: 'Cancelada' },
+  { valor: 'EXPIRADA', etiqueta: 'Expirada' },
+];
+
 function CotizacionesHistorialPage() {
   const location = useLocation();
   const { empresa } = useAuth();
@@ -59,6 +76,8 @@ function CotizacionesHistorialPage() {
   const [clienteId, setClienteId] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [estadoFiltro, setEstadoFiltro] = useState('');
+  const [cancelandoId, setCancelandoId] = useState(null);
 
   const [cajas, setCajas] = useState([]);
   const [cajaId, setCajaId] = useState('');
@@ -101,6 +120,7 @@ function CotizacionesHistorialPage() {
       clienteId: clienteId || undefined,
       desde: desde || undefined,
       hasta: hasta || undefined,
+      estado: estadoFiltro || undefined,
       pagina,
       porPagina: 20,
       ordenarPor: orden.ordenarPor,
@@ -122,7 +142,7 @@ function CotizacionesHistorialPage() {
   useEffect(() => {
     cargarCotizaciones(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busqueda, clienteId, desde, hasta, orden]);
+  }, [busqueda, clienteId, desde, hasta, estadoFiltro, orden]);
 
   // jsPDF (+ sus dependencias, ~250kB gzip) solo se descarga cuando alguien realmente pide un
   // PDF, vía import() dinámico, para no engordar el bundle inicial de toda la app por una
@@ -221,6 +241,19 @@ function CotizacionesHistorialPage() {
     setConvirtiendoId(null);
   }
 
+  async function cancelarCotizacionAccion(cotizacionId) {
+    setError('');
+    setCancelandoId(cotizacionId);
+    try {
+      await cancelarCotizacion(cotizacionId);
+      cargarCotizaciones(paginacion.pagina);
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo cancelar la cotización.');
+    } finally {
+      setCancelandoId(null);
+    }
+  }
+
   async function confirmarConversion(e, cotizacion) {
     e.preventDefault();
     setConvError('');
@@ -301,6 +334,11 @@ function CotizacionesHistorialPage() {
           </Select>
           <Input id="desdeFiltroCot" label="Desde" type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
           <Input id="hastaFiltroCot" label="Hasta" type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
+          <Select id="estadoFiltroCot" label="Estado" value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)} className="min-w-[160px]">
+            {ESTADOS_COTIZACION.map((e) => (
+              <option key={e.valor} value={e.valor}>{e.etiqueta}</option>
+            ))}
+          </Select>
         </div>
       </Card>
 
@@ -332,9 +370,7 @@ function CotizacionesHistorialPage() {
                 ) : '—'}
               </Celda>
               <Celda>
-                <Badge tono={c.convertidaEnVentaId ? 'success' : 'warning'}>
-                  {c.convertidaEnVentaId ? 'Convertida' : 'Pendiente'}
-                </Badge>
+                <Badge tono={estadoVisible(c).tono}>{estadoVisible(c).texto}</Badge>
               </Celda>
               <Celda className="text-right">
                 <div className="flex justify-end gap-3">
@@ -354,10 +390,20 @@ function CotizacionesHistorialPage() {
                   >
                     <Mail size={14} /> Enviar
                   </button>
-                  {!c.convertidaEnVentaId && (
-                    <button type="button" onClick={() => abrirConversion(c.id)} className="text-sm text-primary-600 hover:underline">
-                      Convertir en venta
-                    </button>
+                  {c.estado === 'VIGENTE' && (
+                    <>
+                      <button type="button" onClick={() => abrirConversion(c.id)} className="text-sm text-primary-600 hover:underline">
+                        Convertir en venta
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => cancelarCotizacionAccion(c.id)}
+                        disabled={cancelandoId === c.id}
+                        className="text-sm text-danger-600 hover:underline disabled:opacity-50"
+                      >
+                        {cancelandoId === c.id ? 'Cancelando…' : 'Cancelar'}
+                      </button>
+                    </>
                   )}
                 </div>
               </Celda>

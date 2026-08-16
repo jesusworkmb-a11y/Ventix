@@ -1983,6 +1983,63 @@ Queda la Fase 3 (cambios de modelo: Utilidad de ventas, Kardex con saldo corrido
 por tasa, estados de Cotización) y la Fase 4 (exportación a PDF/Excel/Impresión, transversal a
 todos los reportes).
 
+## Cambios de modelo — Fase 3 de la auditoría (2026-08-16, sesión posterior)
+
+Última fase con cambios de esquema del roadmap: los cuatro puntos que la auditoría original
+marcó como "esfuerzo alto" porque el dato que pedían no existía todavía. Migración aditiva
+(`20260816210851_fase3_costo_kardex_estado_cotizacion`), sin romper nada existente.
+
+- **Utilidad de ventas**: `VentaDetalle` gana `costoUnitario` (nullable), congelado con
+  `Articulo.costo` al momento de vender
+  ([ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js)#crear) — igual que ya
+  se congela `impuestoTasa`, y pasado como el `Decimal` de Prisma tal cual (no `Number()`) para no
+  arriesgar el artefacto de punto flotante ya documentado en "Bug de precisión Decimal en Caja"
+  más arriba. Ventas de antes de este campo quedan con `costoUnitario: null` — a propósito, no se
+  aproxima con el costo de hoy. Con eso: `reporteArticulosMasVendidos()` gana columna "Utilidad"
+  (null si el artículo mezcla líneas con y sin costo — una sola línea sin costo invalida el número
+  completo, no se promedia) y nueva `reporteUtilidad()` con el agregado Venta/Costo/Ganancia
+  (Filtros Fecha/Sucursal) que expone `lineasSinCosto` para que la UI avise cuando el número es
+  parcial.
+- **IVA trasladado**: nueva `reporteIvaTrasladado()` (Filtros Fecha/Cliente, sin Sucursal — no la
+  pide la especificación), agrupa `VentaDetalle` por `impuestoTasa` con la misma base "neta" que
+  el resto de los reportes de ventas (descuenta devoluciones, prorratea descuento manual).
+- **Kardex por artículo**: nueva `reporteKardex()` con saldo corrido calculado con una función de
+  ventana SQL (`$queryRaw`, `SUM(...) OVER (ORDER BY creado_en, id)`) en vez de guardarlo en
+  `MovimientoInventario` al escribir — se descartó migrar (la alternativa que la auditoría dejó
+  documentada) porque hubiera dejado sin saldo al histórico. La ventana corre sobre todo el
+  historial del artículo (sin filtro de fecha) para que "Existencia" sea el saldo real en cada
+  renglón; el filtro de fecha se aplica después, sobre el resultado ya acumulado, para no arrancar
+  la cuenta en cero a mitad de la historia. "Documento" resuelve el folio real yendo a la tabla de
+  origen según `referenciaTipo` (Venta/Compra/Ajuste/Transferencia/Devolución — batcheado, no una
+  consulta por renglón); "Costo" usa el costo *actual* del artículo, no uno histórico por
+  movimiento, mismo criterio ya usado en `reporteInventarioValorizado`, rotulado como tal en la UI.
+  Verificado que el saldo corrido coincide exacto con `Existencia.cantidad` ya persistida (con y
+  sin filtro de sucursal) antes de darlo por bueno.
+- **Estados de Cotización**: nuevo enum `CotizacionEstado` (`VIGENTE`/`CONVERTIDA`/`CANCELADA`) en
+  `Cotizacion.estado`, con backfill en la propia migración (`convertidaEnVentaId` no nulo →
+  `CONVERTIDA`, cuidando no contar el sentinel `RESERVADO` de un lock trabado). "Expirada" sigue
+  sin ser un estado persistido — se deriva en `listar()` de `VIGENTE` + `vigencia` ya pasada, igual
+  que ya lo calculaba el frontend antes de este campo (y "Vigente" ahora excluye las ya
+  expiradas). Nuevo `cancelar()` en
+  [cotizaciones.service.js](backend/src/modules/ventas/cotizaciones/cotizaciones.service.js), sin
+  reversión de stock/caja (una cotización es un borrador) — mismo patrón de reclamo atómico
+  (`UPDATE...WHERE`) que el resto del proyecto, coexistiendo con el candado de
+  `convertidaEnVentaId` que ya usaba `convertir()`. Frontend
+  ([CotizacionesHistorialPage.jsx](frontend/src/modules/ventas/pages/CotizacionesHistorialPage.jsx)):
+  filtro "Estado" (los 4 valores) y botón "Cancelar" por fila, visibles solo si `estado === 'VIGENTE'`
+  (antes "Convertir en venta" se mostraba también en cotizaciones canceladas).
+- Verificado en vivo contra el backend local (misma base de Supabase que producción): se registró
+  una venta real de prueba para generar el primer `costoUnitario` — `reporteUtilidad` dio
+  Ganancia $12.50 exacto ($20 − $7.50); `reporteIvaTrasladado` dio $102.72 exacto sobre $642 de
+  base al 16%; el Kardex de ese mismo artículo mostró la venta al tope con la Existencia
+  decrementada en tiempo real (124→123), coincidiendo con `Existencia.cantidad`; se canceló una
+  cotización de prueba (badge cambió a "Cancelada", desaparecieron sus acciones, el filtro por
+  Estado="Cancelada" la aisló sola) y se revirtió al terminar, igual que la venta de prueba
+  (cancelada, no borrada). Sin errores de consola ni de servidor.
+
+Con esto, las Fases 1-3 del roadmap de Reportes están completas. Queda la Fase 4 (exportación a
+PDF/Excel/Impresión, transversal a los 10 reportes).
+
 ## Qué contiene
 
 ```text
@@ -2138,12 +2195,16 @@ régimen fiscal y uso de CFDI preferido, los tres ya alimentan el receptor del C
 se auditó la cobertura del módulo de Reportes contra una lista de 15 reportes/filtros típicos de
 un POS y se arrancó su roadmap de integración: la Fase 1 ya está hecha (filtros de Usuario/
 Cajero, Cliente y Categoría, más atajos de fecha Hoy/Ayer/Esta semana/Este mes — ver "Filtros de
-Usuario/Cliente/Categoría y atajos de fecha en Reportes" arriba) y también la Fase 2 (Ventas por
+Usuario/Cliente/Categoría y atajos de fecha en Reportes" arriba), también la Fase 2 (Ventas por
 artículo/servicio con columna Código, Ventas por cliente, Productos sin movimiento, y Cortes de
 caja con filtro de Cajero y desglose de Ingreso/Venta/Retiro/Devolución — ver "Reportes nuevos y
-filtros adicionales — Fase 2 de la auditoría" arriba); quedan las Fases 3-4 (cambios de modelo
-para Utilidad/Kardex/IVA por tasa/estados de Cotización, y exportación a PDF/Excel/Impresión).
-**El otro pendiente estructural que queda es terminar el módulo de Facturación.** A elección:
+filtros adicionales — Fase 2 de la auditoría" arriba), y también la Fase 3 (los cuatro cambios de
+modelo que quedaban: costo congelado por línea de venta con columna Utilidad y su reporte
+agregado, IVA trasladado por tasa, Kardex por artículo con saldo corrido vía función de ventana
+SQL, y estados persistidos de Cotización con su endpoint de cancelar — ver "Cambios de modelo —
+Fase 3 de la auditoría" arriba). Queda la Fase 4 (exportación a PDF/Excel/Impresión, transversal
+a los 10 reportes). **El otro pendiente estructural que queda es terminar el módulo de
+Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
   (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.
