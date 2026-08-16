@@ -1581,6 +1581,32 @@ edición.
   (`ventix-frontend.onrender.com/catalogo/articulos`) tras el deploy. Datos de prueba
   limpiados/revertidos a su estado original en ambos casos.
 
+## Separar Compras en captura e historial (2026-08-15)
+
+A pedido del usuario, mismo patrón ya usado para Ventas y Cotizaciones (ver "Pulido
+post-rediseño" y "Ajustes de navegación en Ventas/Cotizaciones" arriba): la pantalla única de
+Compras (formulario + tabla) se dividió en dos.
+
+- [ComprasPage.jsx](frontend/src/modules/compras/pages/ComprasPage.jsx) (`/compras`) quedó solo
+  con el formulario "Nueva compra" (proveedor, sucursal, artículo/unidad/cantidad/costo) y un
+  banner de éxito al confirmar con link directo a la compra recién creada en el historial.
+- Nuevo [ComprasHistorialPage.jsx](frontend/src/modules/compras/pages/ComprasHistorialPage.jsx)
+  en `/compras/recientes` con todo lo demás: búsqueda/paginación server-side, descargar PDF,
+  enviar por correo y cancelar — todo lo que antes vivía junto en la misma pantalla que la
+  captura.
+- Sidebar ([navigation.js](frontend/src/shared/layout/navigation.js)): "Compras" pasó de link
+  plano a grupo con hijos "Compras"/"Compras recientes", mismo criterio que el grupo "Ventas".
+  Rutas nuevas en [App.jsx](frontend/src/App.jsx).
+- Sin cambios de lógica de negocio — mismas funciones, mismos endpoints, solo reorganizadas
+  entre las dos pantallas (a diferencia de Cotizaciones, acá no hizo falta mover ningún campo
+  entre tarjetas porque Compras no tiene un paso de "conversión" separado).
+
+Verificado en vivo contra el backend local (misma base de Supabase que producción): login,
+navegación entre ambas pantallas, registro de una compra de prueba (COM-MAT-000011, $5.00) con
+el banner de éxito enlazando al historial, la compra apareciendo ahí de inmediato, y cancelación
+para limpiar el dato de prueba. Sin errores de consola. Pusheado a `main` (`8b0f4a0`) con permiso
+explícito del usuario.
+
 ## Qué contiene
 
 ```text
@@ -1710,7 +1736,9 @@ tuvieron varios ajustes de UX (separación de Cotizaciones en captura/historial,
 cotización con Vigencia/Observaciones, buscador con agregado automático, el total de la cotización
 ahora incluye el impuesto — ver las secciones de esa fecha arriba), y ya se puede cargar la imagen
 de un artículo desde su alta o edición, la misma que se mostraba vacía en la tarjeta de producto
-del POS (ver "Carga de imagen en Artículos" arriba). **El pendiente estructural que queda es
+del POS (ver "Carga de imagen en Artículos" arriba). Por último, Compras también se separó en
+captura e historial, mismo patrón que Ventas/Cotizaciones (ver "Separar Compras en captura e
+historial" arriba). **El pendiente estructural que queda es
 terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
