@@ -72,7 +72,15 @@ export const NAVEGACION = [
       { label: 'Clientes', to: '/clientes' },
     ],
   },
-  { label: 'Proveedores', to: '/proveedores', icon: Truck },
+  {
+    label: 'Proveedores',
+    to: '/proveedores',
+    icon: Truck,
+    hijos: [
+      { label: 'Nuevo proveedor', to: '/proveedores/nuevo' },
+      { label: 'Proveedores', to: '/proveedores' },
+    ],
+  },
   { label: 'Reportes', to: '/reportes', icon: BarChart3 },
   {
     label: 'Facturación',

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import { listarProveedores, crearProveedor, actualizarProveedor } from '../api/proveedores.api';
+import { listarProveedores, actualizarProveedor } from '../api/proveedores.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -39,8 +39,6 @@ function ProveedoresPage() {
   const [buscar, setBuscar] = useState(() => location.state?.buscar || '');
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [orden, setOrden] = useState({ ordenarPor: 'nombre', orden: 'asc' });
-  const [form, setForm] = useState(FORM_VACIO);
-  const [error, setError] = useState('');
 
   const [editandoId, setEditandoId] = useState(null);
   const [editForm, setEditForm] = useState(FORM_VACIO);
@@ -71,28 +69,6 @@ function ProveedoresPage() {
     cargar(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orden]);
-
-  function actualizarCampo(campo, valor) {
-    setForm((f) => ({ ...f, [campo]: valor }));
-  }
-
-  async function agregar(e) {
-    e.preventDefault();
-    setError('');
-    try {
-      await crearProveedor({
-        nombre: form.nombre,
-        telefono: form.telefono || undefined,
-        correo: form.correo || undefined,
-        rfc: form.rfc || undefined,
-        direccion: form.direccion || undefined,
-      });
-      setForm(FORM_VACIO);
-      cargar(1);
-    } catch (err) {
-      setError(err.response?.data?.error || 'No se pudo crear el proveedor.');
-    }
-  }
 
   function iniciarEdicion(proveedor) {
     setErrorEdit('');
@@ -131,12 +107,18 @@ function ProveedoresPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Proveedores</h1>
-        <p className="text-sm text-gray-500">Directorio de proveedores para tus compras.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Proveedores</h1>
+          <p className="text-sm text-gray-500">Directorio de proveedores para tus compras.</p>
+        </div>
+        <Link
+          to="/proveedores/nuevo"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+        >
+          Nuevo proveedor
+        </Link>
       </div>
-
-      {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
 
       <Card>
         <form onSubmit={buscarSubmit} className="flex items-end gap-3">
@@ -185,19 +167,6 @@ function ProveedoresPage() {
             </Fila>
           ))}
         </Table>
-      </Card>
-
-      <Card title="Nuevo proveedor">
-        <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input id="nombreProveedor" label="Nombre" value={form.nombre} onChange={(e) => actualizarCampo('nombre', e.target.value)} required />
-          <Input id="telefonoProveedor" label="Teléfono" value={form.telefono} onChange={(e) => actualizarCampo('telefono', e.target.value)} />
-          <Input id="correoProveedor" label="Correo" type="email" value={form.correo} onChange={(e) => actualizarCampo('correo', e.target.value)} />
-          <Input id="rfcProveedor" label="RFC" value={form.rfc} onChange={(e) => actualizarCampo('rfc', e.target.value)} />
-          <Input id="direccionProveedor" label="Dirección" value={form.direccion} onChange={(e) => actualizarCampo('direccion', e.target.value)} />
-          <div className="sm:col-span-2">
-            <Button type="submit">Crear proveedor</Button>
-          </div>
-        </form>
       </Card>
 
       <Modal abierto={editandoId !== null} onCerrar={cancelarEdicion} titulo="Editar proveedor">
