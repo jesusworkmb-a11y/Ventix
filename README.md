@@ -1607,6 +1607,67 @@ el banner de éxito enlazando al historial, la compra apareciendo ahí de inmedi
 para limpiar el dato de prueba. Sin errores de consola. Pusheado a `main` (`8b0f4a0`) con permiso
 explícito del usuario.
 
+## Rediseño de Nueva compra: captura multi-línea con IVA/descuento (2026-08-15, sesión posterior)
+
+A pedido del usuario, con una imagen de referencia de otro sistema (mismo criterio que el
+rediseño de Nueva cotización). Antes de tocar código se usó `AskUserQuestion` para acotar el
+alcance, porque la imagen traía varios campos sin equivalente en el modelo — mismo criterio que
+la sesión de Cotizaciones:
+
+- **Confirmado por el usuario**: agregar IVA y descuento por línea (como Ventas/Cotizaciones), y
+  dos campos nuevos de bajo riesgo (Folio del proveedor, Observaciones).
+- **Descartado, con acuerdo explícito**: fecha de compra capturable/editable (se mantiene
+  automática — `creadoEn`), y todo lo que hubiera abierto un módulo aparte sin equivalente hoy:
+  "Guardar borrador" (no existe estado borrador, las compras se confirman al crearse), Moneda
+  (todo el sistema es MXN), Condiciones de pago (no hay cuentas por pagar), Tipo de compra, Fecha
+  de entrega estimada (no hay flujo de recepción pendiente, ya documentado así en el Dashboard).
+
+El cambio real más grande no estaba en la imagen: `ComprasPage.jsx` solo permitía **una línea por
+compra** ("Para varias líneas, usa la API" — literal en el código viejo) pese a que el backend ya
+soportaba un array `detalles` desde siempre. Quedó resuelto junto con el resto.
+
+- **Modelo de datos**, migración aditiva: `Compra` gana `subtotal`/`impuestos` (con backfill
+  `subtotal = total` para las compras previas a este campo, confirmado con una consulta antes de
+  aplicar) más `folioProveedor`/`observaciones`; `CompraDetalle` gana `descuentoMonto`/
+  `impuestoTasa`, mismo patrón que `CotizacionDetalle` — **sin** catálogo de Descuentos/
+  Promociones (Compras no lo tiene, a diferencia de Ventas): la tasa de impuesto se resuelve del
+  `Articulo.impuesto` y se congela en la línea, igual que en Ventas/Cotizaciones.
+  `descuentoManualSchema` se **duplicó** en `compras.validators.js` en vez de importarse de
+  Ventas — son módulos distintos y §3.1 prohíbe que se importen entre sí.
+- **Backend**: [`compras.service.js#crear`](backend/src/modules/compras/compras.service.js) ahora
+  calcula `descuentoMonto` por línea (mismo cálculo que `cotizaciones.service.js`) y
+  `subtotal`/`impuestos`/`total` con el mismo criterio que Ventas. Simplificación consciente
+  documentada in-line: el "último costo" del artículo (§16.3) se sigue actualizando con el costo
+  bruto de la línea, sin restar el descuento — mismo comportamiento que ya existía, para no
+  alterar algo ya verificado sin que el usuario lo pidiera.
+- **Frontend**: [`ComprasPage.jsx`](frontend/src/modules/compras/pages/ComprasPage.jsx)
+  reconstruida sobre el mismo esqueleto que `CotizacionesPage.jsx` — tarjeta "Datos de la compra"
+  (Proveedor, Sucursal, Folio del proveedor), buscador con escaneo/autocompletado de artículos,
+  tabla de "Productos" con Cantidad/Unidad/Costo editables por línea (a diferencia de Ventas/
+  Cotizaciones, acá el costo SIEMPRE se captura a mano — no hay lista de precios de compra) y
+  selector de unidad base/alterna por línea (con el factor en la etiqueta, ej. "Caja (=24
+  Pieza)"), ícono de descuento manual por línea (mismo mini-formulario %/$ que Ventas/
+  Cotizaciones), tarjeta de Observaciones con contador, y panel lateral de
+  Subtotal/Descuento/Impuestos/Total. El costo de una línea nueva se prellena con el "último
+  costo" del artículo (`Articulo.costo`) como punto de partida editable, no obligatorio.
+- **PDF** ([`compraPdf.js`](frontend/src/modules/compras/pdf/compraPdf.js)): a diferencia de
+  Cotización (que no tiene columnas propias de subtotal/impuestos y recalcula desde las líneas),
+  Compra ya las persiste directo — el PDF las usa tal cual en vez de recalcular, agrega columna
+  "Descuento" a la tabla de conceptos y bloques de Folio del proveedor / Observaciones cuando
+  existen.
+- Verificado en vivo contra el backend local (misma base de Supabase que producción): compra de
+  prueba con Coca Cola 600ml ×3 a $8.00 (prellenado desde el último costo), 10% de descuento
+  manual, folio de proveedor y observaciones — Subtotal $21.60, Impuestos $3.46 (IVA 16%), Total
+  $25.06 mostrado en pantalla y confirmado por red en la respuesta del `POST` (`201`); selector de
+  unidad alterna ("Caja (=24 Pieza)") presente y funcional; PDF descargado e inspeccionado por
+  bytes (mismo truco de interceptar `URL.createObjectURL` de siempre) con folio, folio de
+  proveedor, subtotal, impuestos, total, descuento y observaciones, todos exactos. Verificado
+  también que el valor con más riesgo de arrastrar el artefacto de punto flotante de Prisma
+  (`descuentoMonto = 2.4000000000000004` en JS) quedó guardado limpio (`2.4`) en la base — mismo
+  patrón de riesgo aceptado ya documentado en "Bug de precisión Decimal en Caja" más arriba, sin
+  síntoma en este valor. Compra de prueba cancelada al terminar (revierte stock automáticamente,
+  lógica sin cambios).
+
 ## Qué contiene
 
 ```text
@@ -1738,7 +1799,10 @@ ahora incluye el impuesto — ver las secciones de esa fecha arriba), y ya se pu
 de un artículo desde su alta o edición, la misma que se mostraba vacía en la tarjeta de producto
 del POS (ver "Carga de imagen en Artículos" arriba). Por último, Compras también se separó en
 captura e historial, mismo patrón que Ventas/Cotizaciones (ver "Separar Compras en captura e
-historial" arriba). **El pendiente estructural que queda es
+historial" arriba), y su pantalla de captura se rediseñó para permitir varias líneas por compra
+con IVA y descuento por línea, folio del proveedor y observaciones — antes solo se podía cargar
+una línea a la vez pese a que el backend ya soportaba varias (ver "Rediseño de Nueva compra"
+arriba). **El pendiente estructural que queda es
 terminar el módulo de Facturación.** A elección:
 - **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
   de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
