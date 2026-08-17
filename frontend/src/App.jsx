@@ -35,6 +35,7 @@ import HerramientasPage from './modules/herramientas/pages/HerramientasPage';
 import FacturasPage from './modules/facturacion/pages/FacturasPage';
 import FacturaDirectaPage from './modules/facturacion/pages/FacturaDirectaPage';
 import FacturaGlobalPage from './modules/facturacion/pages/FacturaGlobalPage';
+import PortalAutofacturacionPage from './modules/facturacionPublica/pages/PortalAutofacturacionPage';
 
 // A partir de Fase 1 el enrutamiento real reemplaza el check de conectividad de Fase 0.
 function App() {
@@ -43,6 +44,7 @@ function App() {
       <Routes>
         <Route path="/registro" element={<RegistroPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/facturar/:slug" element={<PortalAutofacturacionPage />} />
         <Route
           path="/dashboard"
           element={(

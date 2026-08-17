@@ -101,6 +101,7 @@ const sugerenciaSchema = z.object({
 });
 
 module.exports = {
+  receptorSchema,
   crearDirectaSchema,
   crearDesdeVentaSchema,
   crearAgrupadaSchema,

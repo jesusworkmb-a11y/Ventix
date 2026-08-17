@@ -14,8 +14,11 @@ function etiqueta(item) {
 // `value` es la clave elegida (string) o null. El texto mostrado siempre se resuelve por
 // separado (nunca se guarda la etiqueta como si fuera el valor) para no perder la clave real si
 // el usuario edita el texto sin llegar a elegir un ítem de la lista.
+// `buscarFn` es opcional -- por defecto pega al endpoint autenticado (buscarCatalogoSat). El
+// portal público de autofacturación (sin login) pasa una variante propia que pega a
+// /facturacion/portal-publico/catalogos-sat en su lugar, mismo shape (tipo, q, limite) => array.
 function SelectorCatalogoSat({
-  tipo, value, onChange, label, placeholder = 'Buscar…', error, required, id,
+  tipo, value, onChange, label, placeholder = 'Buscar…', error, required, id, buscarFn = buscarCatalogoSat,
 }) {
   const [texto, setTexto] = useState('');
   const [resultados, setResultados] = useState([]);
@@ -34,7 +37,7 @@ function SelectorCatalogoSat({
       return undefined;
     }
     let cancelado = false;
-    buscarCatalogoSat(tipo, value, 1)
+    buscarFn(tipo, value, 1)
       .then((r) => {
         if (cancelado) return;
         const item = r.find((x) => x.clave === value);
@@ -48,7 +51,7 @@ function SelectorCatalogoSat({
     if (!abierto) return undefined;
     setCargando(true);
     const timeoutId = setTimeout(() => {
-      buscarCatalogoSat(tipo, texto.trim(), 20)
+      buscarFn(tipo, texto.trim(), 20)
         .then((r) => setResultados(r))
         .catch(() => setResultados([]))
         .finally(() => setCargando(false));
