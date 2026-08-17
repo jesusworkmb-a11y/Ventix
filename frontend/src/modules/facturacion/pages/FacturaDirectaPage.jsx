@@ -374,8 +374,6 @@ function FacturaDirectaPage() {
   }, { subtotal: 0, impuestos: 0 });
   const total = totales.subtotal + totales.impuestos;
 
-  const clienteSeleccionado = clientes.find((c) => c.id === clienteId);
-
   const pendientes = [];
   if (!sucursalId) pendientes.push('sucursal de expedición');
   if (conceptos.length === 0) pendientes.push('al menos un concepto');
@@ -619,303 +617,288 @@ function FacturaDirectaPage() {
           )}
 
           <ReceptorFiscalCampos value={receptor} onChange={actualizarReceptor} idPrefix="directa" />
+
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Forma y método de pago</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <SelectorCatalogoSat
+                id="formaPagoDirecta"
+                tipo="FormaPago"
+                label="Forma de pago"
+                value={formaPago}
+                onChange={setFormaPago}
+                required
+              />
+              <Select
+                id="metodoPagoDirecta"
+                label="Método de pago"
+                value={metodoPago}
+                onChange={(e) => setMetodoPago(e.target.value)}
+              >
+                <option value="PUE">PUE — Pago en una sola exhibición</option>
+                <option value="PPD">PPD — Pago en parcialidades o diferido</option>
+              </Select>
+            </div>
+          </div>
         </div>
       </Card>
 
       <Card title="Conceptos">
-        <div className="mb-5">
-          <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              ref={busquedaRef}
-              type="text"
-              placeholder="Escanear código o buscar producto del catálogo... (F2)"
-              value={busquedaProducto}
-              onChange={(e) => setBusquedaProducto(e.target.value)}
-              onKeyDown={handleBusquedaProductoKeyDown}
-              className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
-          </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+          <div className="space-y-5 lg:col-span-3">
+            <div>
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  ref={busquedaRef}
+                  type="text"
+                  placeholder="Escanear código o buscar producto del catálogo... (F2)"
+                  value={busquedaProducto}
+                  onChange={(e) => setBusquedaProducto(e.target.value)}
+                  onKeyDown={handleBusquedaProductoKeyDown}
+                  className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+              </div>
 
-          {categorias.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setCategoriaFiltro('')}
-                className={`rounded-full px-3 py-1.5 text-sm font-medium ${categoriaFiltro === '' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-              >
-                Todos
-              </button>
-              {categorias.map((c) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  onClick={() => setCategoriaFiltro(c.id)}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${categoriaFiltro === c.id ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                >
-                  {c.nombre}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {articulosFiltrados.map((a) => {
-              const facturable = Boolean(a.claveProdServSat && a.unidadBase?.claveUnidadSat);
-              return (
-                <button
-                  type="button"
-                  key={a.id}
-                  disabled={!facturable}
-                  onClick={() => agregarConceptoDesdeArticulo(a)}
-                  className={`flex flex-col items-start rounded-xl border p-3 text-left transition-colors ${
-                    facturable
-                      ? 'border-gray-200 bg-white hover:border-primary-400 hover:bg-primary-50'
-                      : 'cursor-not-allowed border-gray-100 bg-gray-50 opacity-60'
-                  }`}
-                >
-                  <div className="mb-2 flex h-12 w-full items-center justify-center rounded-lg bg-gray-100">
-                    {a.imagenUrl ? (
-                      <img src={a.imagenUrl} alt="" className="h-full w-full rounded-lg object-cover" />
-                    ) : (
-                      <Package size={18} className="text-gray-400" />
-                    )}
-                  </div>
-                  <span className="line-clamp-2 text-sm font-medium text-gray-800">{a.nombre}</span>
-                  {facturable ? (
-                    <span className="mt-1 text-sm font-semibold text-primary-700">{formatoMoneda(a.precio)}</span>
-                  ) : (
-                    <span className="mt-1 text-xs font-medium text-warning-700">Sin clave SAT</span>
-                  )}
-                </button>
-              );
-            })}
-            {articulosFiltrados.length === 0 && (
-              <p className="col-span-full py-6 text-center text-sm text-gray-400">No se encontraron productos.</p>
-            )}
-          </div>
-        </div>
-
-        <details className="rounded-lg border border-gray-200">
-          <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900">
-            Cargar un concepto manual (sin ligar a un artículo del catálogo)
-          </summary>
-          <form onSubmit={agregarConcepto} className="grid grid-cols-1 gap-4 border-t border-gray-100 p-4 sm:grid-cols-3">
-            <SelectorCatalogoSat
-              id="conceptoClaveProdServ"
-              tipo="ClaveProdServ"
-              label="Clave prod/serv SAT"
-              value={conceptoForm.claveProdServSat}
-              onChange={(v) => setConceptoForm((f) => ({ ...f, claveProdServSat: v }))}
-            />
-            <SelectorCatalogoSat
-              id="conceptoClaveUnidad"
-              tipo="ClaveUnidad"
-              label="Clave unidad SAT"
-              value={conceptoForm.claveUnidadSat}
-              onChange={(v) => setConceptoForm((f) => ({ ...f, claveUnidadSat: v }))}
-            />
-            <Input
-              id="conceptoDescripcion"
-              label="Descripción"
-              value={conceptoForm.descripcion}
-              onChange={(e) => setConceptoForm((f) => ({ ...f, descripcion: e.target.value }))}
-            />
-            <Input
-              id="conceptoCantidad"
-              label="Cantidad"
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={conceptoForm.cantidad}
-              onChange={(e) => setConceptoForm((f) => ({ ...f, cantidad: e.target.value }))}
-            />
-            <Input
-              id="conceptoValorUnitario"
-              label="Valor unitario"
-              type="number"
-              step="0.01"
-              min="0"
-              value={conceptoForm.valorUnitario}
-              onChange={(e) => setConceptoForm((f) => ({ ...f, valorUnitario: e.target.value }))}
-            />
-            <Input
-              id="conceptoDescuento"
-              label="Descuento (opcional)"
-              type="number"
-              step="0.01"
-              min="0"
-              value={conceptoForm.descuento}
-              onChange={(e) => setConceptoForm((f) => ({ ...f, descuento: e.target.value }))}
-            />
-            <Select
-              id="conceptoObjetoImpuesto"
-              label="Objeto de impuesto"
-              value={conceptoForm.objetoImpuesto}
-              onChange={(e) => setConceptoForm((f) => ({ ...f, objetoImpuesto: e.target.value }))}
-            >
-              {OBJETO_IMPUESTO_OPCIONES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </Select>
-            {conceptoForm.objetoImpuesto === '02' && (
-              <>
-                <Select
-                  id="conceptoImpuestoClave"
-                  label="Impuesto"
-                  value={conceptoForm.impuestoClaveSat}
-                  onChange={(e) => setConceptoForm((f) => ({ ...f, impuestoClaveSat: e.target.value }))}
-                >
-                  <option value="002">IVA (002)</option>
-                  <option value="003">IEPS (003)</option>
-                  <option value="001">ISR (001)</option>
-                </Select>
-                <Select
-                  id="conceptoTipoFactor"
-                  label="Tipo de factor"
-                  value={conceptoForm.tipoFactorSat}
-                  onChange={(e) => setConceptoForm((f) => ({ ...f, tipoFactorSat: e.target.value }))}
-                >
-                  <option value="Tasa">Tasa</option>
-                  <option value="Cuota">Cuota</option>
-                  <option value="Exento">Exento</option>
-                </Select>
-                {conceptoForm.tipoFactorSat !== 'Exento' && (
-                  <Input
-                    id="conceptoTasaOCuota"
-                    label="Tasa (ej. 0.16) / cuota"
-                    type="number"
-                    step="0.0001"
-                    min="0"
-                    value={conceptoForm.tasaOCuota}
-                    onChange={(e) => setConceptoForm((f) => ({ ...f, tasaOCuota: e.target.value }))}
-                  />
-                )}
-              </>
-            )}
-            <div className="sm:col-span-3">
-              <Button type="submit" variant="secondary">Agregar concepto</Button>
-            </div>
-          </form>
-        </details>
-
-        <div className="mt-5">
-          <Table columnas={['#', 'Código', 'Descripción', 'Cant.', 'Unidad', 'V. unitario', 'Descuento', 'Importe', '']}>
-            {conceptos.length === 0 && <TablaVacia colSpan={9} />}
-            {conceptos.map((c, i) => {
-              const { importe } = importeConcepto(c);
-              return (
-                <Fila key={i}>
-                  <Celda className="text-gray-400">{i + 1}</Celda>
-                  <Celda className="text-gray-500">{c.codigo || '—'}</Celda>
-                  <Celda>
-                    {c.descripcion}
-                    {c.advertencia && <span className="mt-0.5 block text-xs text-warning-700">{c.advertencia}</span>}
-                  </Celda>
-                  <Celda>
-                    <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => cambiarCantidadConcepto(i, -1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
-                        <Minus size={14} />
-                      </button>
-                      <span className="w-8 text-center font-medium text-gray-800">{c.cantidad}</span>
-                      <button type="button" onClick={() => cambiarCantidadConcepto(i, 1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
-                        <Plus size={14} />
-                      </button>
-                    </div>
-                  </Celda>
-                  <Celda className="text-gray-500">{c.claveUnidadSat || '—'}</Celda>
-                  <Celda>{formatoMoneda(c.valorUnitario)}</Celda>
-                  <Celda>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={c.descuento}
-                      onChange={(e) => actualizarConceptoCampo(i, 'descuento', e.target.value)}
-                      onBlur={(e) => { if (e.target.value.trim() === '') actualizarConceptoCampo(i, 'descuento', '0'); }}
-                      className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
-                  </Celda>
-                  <Celda className="font-medium text-gray-900">{formatoMoneda(importe)}</Celda>
-                  <Celda className="text-right">
-                    <button type="button" onClick={() => quitarConcepto(i)} className="text-gray-400 hover:text-danger-600">
-                      <Trash2 size={16} />
+              {categorias.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCategoriaFiltro('')}
+                    className={`rounded-full px-3 py-1.5 text-sm font-medium ${categoriaFiltro === '' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                  >
+                    Todos
+                  </button>
+                  {categorias.map((c) => (
+                    <button
+                      type="button"
+                      key={c.id}
+                      onClick={() => setCategoriaFiltro(c.id)}
+                      className={`rounded-full px-3 py-1.5 text-sm font-medium ${categoriaFiltro === c.id ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                    >
+                      {c.nombre}
                     </button>
-                  </Celda>
-                </Fila>
-              );
-            })}
-          </Table>
-        </div>
-      </Card>
+                  ))}
+                </div>
+              )}
 
-      <Card title="Pago y confirmación">
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Información adicional</p>
-            <SelectorCatalogoSat
-              id="formaPagoDirecta"
-              tipo="FormaPago"
-              label="Forma de pago"
-              value={formaPago}
-              onChange={setFormaPago}
-              required
-            />
-            <Select
-              id="metodoPagoDirecta"
-              label="Método de pago"
-              value={metodoPago}
-              onChange={(e) => setMetodoPago(e.target.value)}
-            >
-              <option value="PUE">PUE — Pago en una sola exhibición</option>
-              <option value="PPD">PPD — Pago en parcialidades o diferido</option>
-            </Select>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Datos del cliente</p>
-            {clienteSeleccionado ? (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
-                <p className="font-medium text-gray-800">{clienteSeleccionado.nombre}</p>
-                {clienteSeleccionado.direccion && <p className="mt-1 text-gray-500">{clienteSeleccionado.direccion}</p>}
-                {clienteSeleccionado.correo && <p className="mt-1 text-gray-500">{clienteSeleccionado.correo}</p>}
-                {clienteSeleccionado.telefono && <p className="text-gray-500">{clienteSeleccionado.telefono}</p>}
-                {!clienteSeleccionado.direccion && !clienteSeleccionado.correo && !clienteSeleccionado.telefono && (
-                  <p className="text-gray-400">Sin dirección ni contacto registrados.</p>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {articulosFiltrados.map((a) => {
+                  const facturable = Boolean(a.claveProdServSat && a.unidadBase?.claveUnidadSat);
+                  return (
+                    <button
+                      type="button"
+                      key={a.id}
+                      disabled={!facturable}
+                      onClick={() => agregarConceptoDesdeArticulo(a)}
+                      className={`flex flex-col items-start rounded-xl border p-3 text-left transition-colors ${
+                        facturable
+                          ? 'border-gray-200 bg-white hover:border-primary-400 hover:bg-primary-50'
+                          : 'cursor-not-allowed border-gray-100 bg-gray-50 opacity-60'
+                      }`}
+                    >
+                      <div className="mb-2 flex h-12 w-full items-center justify-center rounded-lg bg-gray-100">
+                        {a.imagenUrl ? (
+                          <img src={a.imagenUrl} alt="" className="h-full w-full rounded-lg object-cover" />
+                        ) : (
+                          <Package size={18} className="text-gray-400" />
+                        )}
+                      </div>
+                      <span className="line-clamp-2 text-sm font-medium text-gray-800">{a.nombre}</span>
+                      {facturable ? (
+                        <span className="mt-1 text-sm font-semibold text-primary-700">{formatoMoneda(a.precio)}</span>
+                      ) : (
+                        <span className="mt-1 text-xs font-medium text-warning-700">Sin clave SAT</span>
+                      )}
+                    </button>
+                  );
+                })}
+                {articulosFiltrados.length === 0 && (
+                  <p className="col-span-full py-6 text-center text-sm text-gray-400">No se encontraron productos.</p>
                 )}
               </div>
-            ) : (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-400">
-                Público en general — sin datos de cliente.
-              </div>
-            )}
+            </div>
+
+            <details className="rounded-lg border border-gray-200">
+              <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-gray-900">
+                Cargar un concepto manual (sin ligar a un artículo del catálogo)
+              </summary>
+              <form onSubmit={agregarConcepto} className="grid grid-cols-1 gap-4 border-t border-gray-100 p-4 sm:grid-cols-3">
+                <SelectorCatalogoSat
+                  id="conceptoClaveProdServ"
+                  tipo="ClaveProdServ"
+                  label="Clave prod/serv SAT"
+                  value={conceptoForm.claveProdServSat}
+                  onChange={(v) => setConceptoForm((f) => ({ ...f, claveProdServSat: v }))}
+                />
+                <SelectorCatalogoSat
+                  id="conceptoClaveUnidad"
+                  tipo="ClaveUnidad"
+                  label="Clave unidad SAT"
+                  value={conceptoForm.claveUnidadSat}
+                  onChange={(v) => setConceptoForm((f) => ({ ...f, claveUnidadSat: v }))}
+                />
+                <Input
+                  id="conceptoDescripcion"
+                  label="Descripción"
+                  value={conceptoForm.descripcion}
+                  onChange={(e) => setConceptoForm((f) => ({ ...f, descripcion: e.target.value }))}
+                />
+                <Input
+                  id="conceptoCantidad"
+                  label="Cantidad"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={conceptoForm.cantidad}
+                  onChange={(e) => setConceptoForm((f) => ({ ...f, cantidad: e.target.value }))}
+                />
+                <Input
+                  id="conceptoValorUnitario"
+                  label="Valor unitario"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={conceptoForm.valorUnitario}
+                  onChange={(e) => setConceptoForm((f) => ({ ...f, valorUnitario: e.target.value }))}
+                />
+                <Input
+                  id="conceptoDescuento"
+                  label="Descuento (opcional)"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={conceptoForm.descuento}
+                  onChange={(e) => setConceptoForm((f) => ({ ...f, descuento: e.target.value }))}
+                />
+                <Select
+                  id="conceptoObjetoImpuesto"
+                  label="Objeto de impuesto"
+                  value={conceptoForm.objetoImpuesto}
+                  onChange={(e) => setConceptoForm((f) => ({ ...f, objetoImpuesto: e.target.value }))}
+                >
+                  {OBJETO_IMPUESTO_OPCIONES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+                {conceptoForm.objetoImpuesto === '02' && (
+                  <>
+                    <Select
+                      id="conceptoImpuestoClave"
+                      label="Impuesto"
+                      value={conceptoForm.impuestoClaveSat}
+                      onChange={(e) => setConceptoForm((f) => ({ ...f, impuestoClaveSat: e.target.value }))}
+                    >
+                      <option value="002">IVA (002)</option>
+                      <option value="003">IEPS (003)</option>
+                      <option value="001">ISR (001)</option>
+                    </Select>
+                    <Select
+                      id="conceptoTipoFactor"
+                      label="Tipo de factor"
+                      value={conceptoForm.tipoFactorSat}
+                      onChange={(e) => setConceptoForm((f) => ({ ...f, tipoFactorSat: e.target.value }))}
+                    >
+                      <option value="Tasa">Tasa</option>
+                      <option value="Cuota">Cuota</option>
+                      <option value="Exento">Exento</option>
+                    </Select>
+                    {conceptoForm.tipoFactorSat !== 'Exento' && (
+                      <Input
+                        id="conceptoTasaOCuota"
+                        label="Tasa (ej. 0.16) / cuota"
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        value={conceptoForm.tasaOCuota}
+                        onChange={(e) => setConceptoForm((f) => ({ ...f, tasaOCuota: e.target.value }))}
+                      />
+                    )}
+                  </>
+                )}
+                <div className="sm:col-span-3">
+                  <Button type="submit" variant="secondary">Agregar concepto</Button>
+                </div>
+              </form>
+            </details>
+
+            <Table columnas={['#', 'Código', 'Descripción', 'Cant.', 'Unidad', 'V. unitario', 'Descuento', 'Importe', '']}>
+              {conceptos.length === 0 && <TablaVacia colSpan={9} />}
+              {conceptos.map((c, i) => {
+                const { importe } = importeConcepto(c);
+                return (
+                  <Fila key={i}>
+                    <Celda className="text-gray-400">{i + 1}</Celda>
+                    <Celda className="text-gray-500">{c.codigo || '—'}</Celda>
+                    <Celda>
+                      {c.descripcion}
+                      {c.advertencia && <span className="mt-0.5 block text-xs text-warning-700">{c.advertencia}</span>}
+                    </Celda>
+                    <Celda>
+                      <div className="flex items-center gap-1">
+                        <button type="button" onClick={() => cambiarCantidadConcepto(i, -1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                          <Minus size={14} />
+                        </button>
+                        <span className="w-8 text-center font-medium text-gray-800">{c.cantidad}</span>
+                        <button type="button" onClick={() => cambiarCantidadConcepto(i, 1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                    </Celda>
+                    <Celda className="text-gray-500">{c.claveUnidadSat || '—'}</Celda>
+                    <Celda>{formatoMoneda(c.valorUnitario)}</Celda>
+                    <Celda>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={c.descuento}
+                        onChange={(e) => actualizarConceptoCampo(i, 'descuento', e.target.value)}
+                        onBlur={(e) => { if (e.target.value.trim() === '') actualizarConceptoCampo(i, 'descuento', '0'); }}
+                        className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                      />
+                    </Celda>
+                    <Celda className="font-medium text-gray-900">{formatoMoneda(importe)}</Celda>
+                    <Celda className="text-right">
+                      <button type="button" onClick={() => quitarConcepto(i)} className="text-gray-400 hover:text-danger-600">
+                        <Trash2 size={16} />
+                      </button>
+                    </Celda>
+                  </Fila>
+                );
+              })}
+            </Table>
           </div>
 
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Totales</p>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-              <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{formatoMoneda(totales.subtotal)}</span></div>
-                <div className="flex justify-between text-gray-500"><span>Impuestos</span><span>{formatoMoneda(totales.impuestos)}</span></div>
-                <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-semibold text-gray-900">
-                  <span>Total</span><span>{formatoMoneda(total)}</span>
+          <div className="lg:col-span-1">
+            <div className="space-y-4 lg:sticky lg:top-6">
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Totales</p>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>{formatoMoneda(totales.subtotal)}</span></div>
+                    <div className="flex justify-between text-gray-500"><span>Impuestos</span><span>{formatoMoneda(totales.impuestos)}</span></div>
+                    <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-semibold text-gray-900">
+                      <span>Total</span><span>{formatoMoneda(total)}</span>
+                    </div>
+                  </div>
                 </div>
+                {pendientes.length === 0 ? (
+                  <p className="mt-3 text-sm font-medium text-success-700">✓ Todo listo para crear la factura.</p>
+                ) : (
+                  <p className="mt-3 text-sm text-gray-400">Falta: {pendientes.join(', ')}.</p>
+                )}
               </div>
             </div>
-            {pendientes.length === 0 ? (
-              <p className="mt-3 text-sm font-medium text-success-700">✓ Todo listo para crear la factura.</p>
-            ) : (
-              <p className="mt-3 text-sm text-gray-400">Falta: {pendientes.join(', ')}.</p>
-            )}
           </div>
         </div>
-
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-4 text-xs text-gray-400">
-          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F1</kbd> Crear factura</span>
-          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F2</kbd> Buscar producto</span>
-          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F3</kbd> Nuevo cliente</span>
-          {haySugerenciaVisible && <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F4</kbd> Aplicar sugerencia</span>}
-          <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">Esc</kbd> Limpiar</span>
-        </div>
       </Card>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-gray-100 bg-white px-4 py-3 text-xs text-gray-400">
+        <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F1</kbd> Crear factura</span>
+        <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F2</kbd> Buscar producto</span>
+        <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F3</kbd> Nuevo cliente</span>
+        {haySugerenciaVisible && <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">F4</kbd> Aplicar sugerencia</span>}
+        <span><kbd className="rounded border border-gray-200 px-1.5 py-0.5 font-sans">Esc</kbd> Limpiar</span>
+      </div>
 
       <Modal abierto={nuevoClienteAbierto} onCerrar={() => setNuevoClienteAbierto(false)} titulo="Nuevo cliente">
         <form onSubmit={confirmarNuevoCliente} className="space-y-4">
