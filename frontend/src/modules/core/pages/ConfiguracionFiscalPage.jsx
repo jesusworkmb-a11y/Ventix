@@ -7,6 +7,7 @@ import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
+import Select from '../../../shared/ui/Select';
 import SelectorCatalogoSat from '../../../shared/ui/SelectorCatalogoSat';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoFecha } from '../../../shared/format';
@@ -73,8 +74,8 @@ function ConfiguracionFiscalPage() {
   async function guardarCsd(e) {
     e.preventDefault();
     setErrorCsd('');
-    if (!rfcCsd.trim() || !archivoCer || !archivoKey || !contrasenaCsd) {
-      setErrorCsd('Completá el RFC, ambos archivos (.cer y .key) y la contraseña.');
+    if (!rfcCsd || !archivoCer || !archivoKey || !contrasenaCsd) {
+      setErrorCsd('Elegí el emisor, cargá ambos archivos (.cer y .key) y la contraseña.');
       return;
     }
     setGuardandoCsd(true);
@@ -155,6 +156,21 @@ function ConfiguracionFiscalPage() {
   const urlPortal = slugPublico.trim()
     ? `${window.location.origin}/facturar/${slugPublico.trim()}`
     : null;
+
+  // Un CSD se registra por RFC, y tanto la Empresa como cualquier Sucursal con override propio
+  // pueden tener un RFC distinto (ver resolverEmisor() en el backend: sucursal.rfc ?? empresa.rfc)
+  // -- este selector junta ambas fuentes para que no haya que tipear el RFC de memoria.
+  const opcionesEmisor = [
+    ...(empresa?.rfc ? [{ rfc: empresa.rfc, label: `Empresa — ${empresa.rfc}` }] : []),
+    ...sucursales.filter((s) => s.rfc).map((s) => ({ rfc: s.rfc, label: `${s.nombre} — ${s.rfc}` })),
+  ];
+
+  function nombreParaRfc(rfcBuscado) {
+    const nombres = [];
+    if (empresa?.rfc === rfcBuscado) nombres.push('Empresa');
+    sucursales.forEach((s) => { if (s.rfc === rfcBuscado) nombres.push(s.nombre); });
+    return nombres.length ? nombres.join(' / ') : null;
+  }
 
   return (
     <div className="space-y-6">
@@ -303,10 +319,11 @@ function ConfiguracionFiscalPage() {
           su vigencia.
         </p>
 
-        <Table columnas={['RFC', 'Vigente hasta']}>
-          {csds.length === 0 && <TablaVacia colSpan={2} />}
+        <Table columnas={['Emisor', 'RFC', 'Vigente hasta']}>
+          {csds.length === 0 && <TablaVacia colSpan={3} />}
           {csds.map((c) => (
             <Fila key={c.id}>
+              <Celda>{nombreParaRfc(c.rfc) || <span className="text-gray-400">Sin empresa/sucursal con este RFC</span>}</Celda>
               <Celda className="font-medium text-gray-800">{c.rfc}</Celda>
               <Celda>{formatoFecha(c.vigenciaHasta)}</Celda>
             </Fila>
@@ -316,14 +333,22 @@ function ConfiguracionFiscalPage() {
         {errorCsd && (
           <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorCsd}</p>
         )}
+        {opcionesEmisor.length === 0 ? (
+          <p className="mt-4 text-sm text-gray-500">
+            Todavía no hay ningún RFC cargado. Completá el RFC de la empresa (arriba) o de alguna
+            sucursal antes de poder registrar un CSD.
+          </p>
+        ) : (
         <form onSubmit={guardarCsd} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input
+          <Select
             id="rfcCsd"
-            label="RFC del certificado"
+            label="Emisor"
             value={rfcCsd}
-            onChange={(e) => setRfcCsd(e.target.value.toUpperCase())}
-            placeholder="RFC de la empresa o de la sucursal"
-          />
+            onChange={(e) => setRfcCsd(e.target.value)}
+          >
+            <option value="">Selecciona...</option>
+            {opcionesEmisor.map((o) => <option key={o.rfc} value={o.rfc}>{o.label}</option>)}
+          </Select>
           <Input
             id="contrasenaCsd"
             label="Contraseña de la llave privada"
@@ -355,6 +380,7 @@ function ConfiguracionFiscalPage() {
             <Button type="submit" disabled={guardandoCsd}>{guardandoCsd ? 'Registrando…' : 'Registrar CSD'}</Button>
           </div>
         </form>
+        )}
       </Card>
     </div>
   );
