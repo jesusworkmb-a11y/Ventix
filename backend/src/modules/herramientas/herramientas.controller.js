@@ -1,6 +1,10 @@
 const AppError = require('../../shared/errors/AppError');
 const service = require('./herramientas.service');
-const { importarArticulosSchema } = require('./herramientas.validators');
+const {
+  importarArticulosSchema,
+  importarClientesSchema,
+  importarProveedoresSchema,
+} = require('./herramientas.validators');
 
 function enviarCsv(res, nombreArchivo, contenido) {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -34,4 +38,33 @@ async function importarArticulos(req, res) {
   res.json(resultado);
 }
 
-module.exports = { exportarArticulos, exportarClientes, exportarProveedores, importarArticulos };
+async function importarClientes(req, res) {
+  const parsed = importarClientesSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Falta el contenido CSV a importar.');
+  const resultado = await service.importarClientes({
+    empresaId: req.auth.empresaId,
+    usuarioId: req.auth.usuarioId,
+    csv: parsed.data.csv,
+  });
+  res.json(resultado);
+}
+
+async function importarProveedores(req, res) {
+  const parsed = importarProveedoresSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Falta el contenido CSV a importar.');
+  const resultado = await service.importarProveedores({
+    empresaId: req.auth.empresaId,
+    usuarioId: req.auth.usuarioId,
+    csv: parsed.data.csv,
+  });
+  res.json(resultado);
+}
+
+module.exports = {
+  exportarArticulos,
+  exportarClientes,
+  exportarProveedores,
+  importarArticulos,
+  importarClientes,
+  importarProveedores,
+};

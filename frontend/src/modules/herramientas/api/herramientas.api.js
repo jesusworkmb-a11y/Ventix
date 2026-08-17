@@ -25,3 +25,9 @@ export function exportarProveedores() {
 export function importarArticulos(csv) {
   return api.post('/herramientas/articulos/importar', { csv }).then((res) => res.data);
 }
+export function importarClientes(csv) {
+  return api.post('/herramientas/clientes/importar', { csv }).then((res) => res.data);
+}
+export function importarProveedores(csv) {
+  return api.post('/herramientas/proveedores/importar', { csv }).then((res) => res.data);
+}

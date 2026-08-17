@@ -1,7 +1,13 @@
 const { z } = require('zod');
 
-const importarArticulosSchema = z.object({
+const csvSchema = z.object({
   csv: z.string().min(1),
 });
 
-module.exports = { importarArticulosSchema };
+// Mismo shape para los tres importadores -- cada uno con su propio nombre por claridad en el
+// controller, no porque el contenido difiera.
+module.exports = {
+  importarArticulosSchema: csvSchema,
+  importarClientesSchema: csvSchema,
+  importarProveedoresSchema: csvSchema,
+};

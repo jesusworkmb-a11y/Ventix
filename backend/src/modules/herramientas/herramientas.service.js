@@ -39,6 +39,7 @@ const COLUMNAS_ARTICULOS = [
   'marca',
   'unidadBase',
   'impuesto',
+  'claveProdServSat',
   'costo',
   'precio',
   'stockMinimo',
@@ -64,6 +65,7 @@ async function exportarArticulos({ empresaId }) {
     marca: a.marca?.nombre || '',
     unidadBase: a.unidadBase.nombre,
     impuesto: a.impuesto?.nombre || '',
+    claveProdServSat: a.claveProdServSat || '',
     costo: a.costo,
     precio: a.precio,
     stockMinimo: a.stockMinimo ?? '',
@@ -74,16 +76,37 @@ async function exportarArticulos({ empresaId }) {
   return aCsv(filas, COLUMNAS_ARTICULOS);
 }
 
-const COLUMNAS_CLIENTES = ['nombre', 'telefono', 'correo', 'rfc', 'direccion', 'activo'];
+// listaPrecio/domicilioFiscalCp/regimenFiscalClave/usoCfdiPreferido agregados 2026-08-16/17 al
+// schema de Cliente (ver receptorDesdeCliente en Facturación) pero nunca se sumaron acá.
+const COLUMNAS_CLIENTES = [
+  'nombre',
+  'telefono',
+  'correo',
+  'rfc',
+  'direccion',
+  'listaPrecio',
+  'domicilioFiscalCp',
+  'regimenFiscalClave',
+  'usoCfdiPreferido',
+  'activo',
+];
 
 async function exportarClientes({ empresaId }) {
-  const clientes = await prisma.cliente.findMany({ where: { empresaId }, orderBy: { nombre: 'asc' } });
+  const clientes = await prisma.cliente.findMany({
+    where: { empresaId },
+    include: { listaPrecio: true },
+    orderBy: { nombre: 'asc' },
+  });
   const filas = clientes.map((c) => ({
     nombre: c.nombre,
     telefono: c.telefono || '',
     correo: c.correo || '',
     rfc: c.rfc || '',
     direccion: c.direccion || '',
+    listaPrecio: c.listaPrecio?.nombre || '',
+    domicilioFiscalCp: c.domicilioFiscalCp || '',
+    regimenFiscalClave: c.regimenFiscalClave || '',
+    usoCfdiPreferido: c.usoCfdiPreferido || '',
     activo: c.activo,
   }));
   return aCsv(filas, COLUMNAS_CLIENTES);
@@ -137,6 +160,15 @@ async function importarArticulos({ empresaId, usuarioId, csv }) {
     try {
       if (!fila.nombre) throw new AppError(400, 'Falta el nombre.');
       if (!fila.unidadBase) throw new AppError(400, 'Falta la unidad base.');
+      // Un Kit no lleva su lista de componentes en una fila de CSV -- crearlo así dejaría un
+      // artículo tipo KIT sin ArticuloKitDetalle, que vendería sin descontar stock de nada.
+      // Se rechaza con un mensaje claro en vez de crearlo silenciosamente como PRODUCTO.
+      if (fila.tipo === 'KIT') {
+        throw new AppError(
+          400,
+          'No se pueden importar artículos tipo Kit por CSV (necesitan definir sus componentes). Créalo en Artículos y agrega sus componentes ahí.',
+        );
+      }
 
       const unidad = unidadPorNombre.get(fila.unidadBase.toLowerCase());
       if (!unidad) {
@@ -184,6 +216,7 @@ async function importarArticulos({ empresaId, usuarioId, csv }) {
         marcaId,
         impuestoId,
         unidadBaseId: unidad.id,
+        claveProdServSat: fila.claveProdServSat || undefined,
         costo: numeroDeColumna(fila.costo, 'costo', 0),
         precio: numeroDeColumna(fila.precio, 'precio', 0),
         stockMinimo: numeroDeColumna(fila.stockMinimo, 'stockMinimo', undefined),
@@ -238,4 +271,131 @@ async function importarArticulos({ empresaId, usuarioId, csv }) {
   return { creados, errores, advertencias };
 }
 
-module.exports = { exportarArticulos, exportarClientes, exportarProveedores, importarArticulos };
+const REGEX_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Create-only, fila por fila, mismo criterio que importarArticulos. listaPrecio se resuelve por
+// nombre (igual que categoria/marca/impuesto en Artículos) contra ListaPrecio -- sin importar
+// clientes.service.js (§3.1).
+async function importarClientes({ empresaId, usuarioId, csv }) {
+  const filas = parsearCsv(csv);
+  const listas = await prisma.listaPrecio.findMany({ where: { empresaId } });
+  const listaPorNombre = new Map(listas.map((l) => [l.nombre.toLowerCase(), l]));
+
+  const errores = [];
+  const advertencias = [];
+  let creados = 0;
+
+  for (let i = 0; i < filas.length; i += 1) {
+    const numeroFila = i + 2;
+    const fila = filas[i];
+
+    try {
+      if (!fila.nombre) throw new AppError(400, 'Falta el nombre.');
+      if (fila.correo && !REGEX_CORREO.test(fila.correo)) {
+        throw new AppError(400, `El correo "${fila.correo}" no es válido.`);
+      }
+
+      const advertenciasFila = [];
+      let listaPrecioId;
+      if (fila.listaPrecio) {
+        const lista = listaPorNombre.get(fila.listaPrecio.toLowerCase());
+        if (lista) listaPrecioId = lista.id;
+        else advertenciasFila.push(`La lista de precio "${fila.listaPrecio}" no existe; se dejó sin lista.`);
+      }
+
+      const datos = {
+        nombre: fila.nombre,
+        telefono: fila.telefono || undefined,
+        correo: fila.correo || undefined,
+        rfc: fila.rfc || undefined,
+        direccion: fila.direccion || undefined,
+        listaPrecioId,
+        domicilioFiscalCp: fila.domicilioFiscalCp || undefined,
+        regimenFiscalClave: fila.regimenFiscalClave || undefined,
+        usoCfdiPreferido: fila.usoCfdiPreferido || undefined,
+        activo: activoDeColumna(fila.activo),
+      };
+
+      await prisma.$transaction(async (tx) => {
+        const cliente = await tx.cliente.create({ data: { empresaId, ...datos } });
+        await registrarAuditoria(tx, {
+          empresaId,
+          usuarioEjecutorId: usuarioId,
+          accion: 'CREAR',
+          entidad: 'Cliente',
+          entidadId: cliente.id,
+          motivo: 'Importación CSV',
+          valoresDespues: toJson(cliente),
+        });
+      });
+
+      creados += 1;
+      for (const advertencia of advertenciasFila) {
+        advertencias.push({ fila: numeroFila, mensaje: advertencia });
+      }
+    } catch (err) {
+      errores.push({ fila: numeroFila, mensaje: err.publicMessage || err.message || 'Error desconocido.' });
+    }
+  }
+
+  return { creados, errores, advertencias };
+}
+
+// Create-only, fila por fila, mismo criterio que importarArticulos/importarClientes. Proveedor
+// no tiene resoluciones por nombre (sin lista de precio ni catálogos relacionados).
+async function importarProveedores({ empresaId, usuarioId, csv }) {
+  const filas = parsearCsv(csv);
+
+  const errores = [];
+  const advertencias = [];
+  let creados = 0;
+
+  for (let i = 0; i < filas.length; i += 1) {
+    const numeroFila = i + 2;
+    const fila = filas[i];
+
+    try {
+      if (!fila.nombre) throw new AppError(400, 'Falta el nombre.');
+      if (fila.correo && !REGEX_CORREO.test(fila.correo)) {
+        throw new AppError(400, `El correo "${fila.correo}" no es válido.`);
+      }
+
+      const datos = {
+        nombre: fila.nombre,
+        telefono: fila.telefono || undefined,
+        correo: fila.correo || undefined,
+        rfc: fila.rfc || undefined,
+        direccion: fila.direccion || undefined,
+        activo: activoDeColumna(fila.activo),
+      };
+
+      await prisma.$transaction(async (tx) => {
+        const proveedor = await tx.proveedor.create({ data: { empresaId, ...datos } });
+        await registrarAuditoria(tx, {
+          empresaId,
+          usuarioEjecutorId: usuarioId,
+          accion: 'CREAR',
+          entidad: 'Proveedor',
+          entidadId: proveedor.id,
+          motivo: 'Importación CSV',
+          valoresDespues: toJson(proveedor),
+        });
+      });
+
+      creados += 1;
+    } catch (err) {
+      errores.push({ fila: numeroFila, mensaje: err.publicMessage || err.message || 'Error desconocido.' });
+    }
+  }
+
+  return { creados, errores, advertencias };
+}
+
+module.exports = {
+  exportarArticulos,
+  exportarClientes,
+  exportarProveedores,
+  importarArticulos,
+  importarClientes,
+  importarProveedores,
+};

@@ -5,12 +5,41 @@ import {
   exportarClientes,
   exportarProveedores,
   importarArticulos,
+  importarClientes,
+  importarProveedores,
 } from '../api/herramientas.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
+import Select from '../../../shared/ui/Select';
 import Table, { Fila, Celda } from '../../../shared/ui/Table';
 
+const TIPOS_IMPORTAR = {
+  articulos: {
+    etiqueta: 'Artículos',
+    fn: importarArticulos,
+    columnas:
+      'tipo, sku, codigoBarras, clave, nombre, descripcion, categoria, marca, unidadBase, ' +
+      'impuesto, claveProdServSat, costo, precio, stockMinimo, stockMaximo, activo. La unidad ' +
+      'debe existir ya en Configuración de catálogo. Los artículos tipo Kit no se pueden ' +
+      'importar por CSV (necesitan definir sus componentes) — créalos en Artículos.',
+  },
+  clientes: {
+    etiqueta: 'Clientes',
+    fn: importarClientes,
+    columnas:
+      'nombre, telefono, correo, rfc, direccion, listaPrecio, domicilioFiscalCp, ' +
+      'regimenFiscalClave, usoCfdiPreferido, activo. La lista de precio debe existir ya en ' +
+      'Configuración de catálogo.',
+  },
+  proveedores: {
+    etiqueta: 'Proveedores',
+    fn: importarProveedores,
+    columnas: 'nombre, telefono, correo, rfc, direccion, activo.',
+  },
+};
+
 function HerramientasPage() {
+  const [tipoImportar, setTipoImportar] = useState('articulos');
   const [archivo, setArchivo] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
@@ -36,7 +65,7 @@ function HerramientasPage() {
     setCargando(true);
     try {
       const texto = await archivo.text();
-      const data = await importarArticulos(texto);
+      const data = await TIPOS_IMPORTAR[tipoImportar].fn(texto);
       setResultado(data);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo importar el archivo.');
@@ -49,7 +78,7 @@ function HerramientasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Herramientas</h1>
-        <p className="text-sm text-gray-500">Exportá tus datos o importá artículos en lote desde CSV.</p>
+        <p className="text-sm text-gray-500">Exportá tus datos o importá en lote desde CSV.</p>
       </div>
 
       <Card title="Exportar">
@@ -66,11 +95,26 @@ function HerramientasPage() {
         </div>
       </Card>
 
-      <Card title="Importar artículos">
+      <Card title="Importar">
+        <div className="mb-4 max-w-xs">
+          <Select
+            label="Qué importar"
+            value={tipoImportar}
+            onChange={(e) => {
+              setTipoImportar(e.target.value);
+              setResultado(null);
+              setError('');
+            }}
+          >
+            {Object.entries(TIPOS_IMPORTAR).map(([clave, { etiqueta }]) => (
+              <option key={clave} value={clave}>
+                {etiqueta}
+              </option>
+            ))}
+          </Select>
+        </div>
         <p className="mb-4 text-sm text-gray-500">
-          CSV con columnas: tipo, sku, codigoBarras, clave, nombre, descripcion, categoria, marca,
-          unidadBase, impuesto, costo, precio, stockMinimo, stockMaximo. La unidad debe existir ya
-          en Configuración de catálogo.
+          CSV con columnas: {TIPOS_IMPORTAR[tipoImportar].columnas}
         </p>
         <form onSubmit={manejarImportar} className="flex flex-wrap items-center gap-3">
           <input
