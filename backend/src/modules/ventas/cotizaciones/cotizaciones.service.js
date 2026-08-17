@@ -68,7 +68,7 @@ async function obtener({ empresaId, cotizacionId }) {
     prisma.sucursal.findUnique({ where: { id: cotizacion.sucursalId } }),
     prisma.articulo.findMany({
       where: { id: { in: articuloIds } },
-      select: { id: true, nombre: true, sku: true },
+      select: { id: true, nombre: true, sku: true, imagenUrl: true },
     }),
   ]);
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));

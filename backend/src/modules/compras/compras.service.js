@@ -60,7 +60,7 @@ async function obtener({ empresaId, compraId }) {
   const articuloIds = [...new Set(compra.detalles.map((d) => d.articuloId))];
   const unidadIds = [...new Set(compra.detalles.map((d) => d.unidadId))];
   const [articulos, unidades] = await Promise.all([
-    prisma.articulo.findMany({ where: { id: { in: articuloIds } }, select: { id: true, nombre: true, sku: true } }),
+    prisma.articulo.findMany({ where: { id: { in: articuloIds } }, select: { id: true, nombre: true, sku: true, imagenUrl: true } }),
     prisma.unidad.findMany({
       where: { id: { in: unidadIds } },
       select: { id: true, nombre: true, abreviatura: true },

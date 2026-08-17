@@ -1,10 +1,4 @@
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { formatoMoneda, formatoFecha } from '../../../shared/format';
-
-const MARGEN_X = 15;
-const ANCHO_PAGINA = 210;
-const DERECHA = ANCHO_PAGINA - MARGEN_X;
+import { guardarDocumento, base64Documento } from '../../../shared/pdf/motor';
 
 // `vigencia` es una fecha de calendario pura (sin hora, ver Cotizacion.vigencia en el schema) —
 // se formatea por substring en vez de con formatoFecha (que usa Intl con hora y zona horaria del
@@ -15,14 +9,17 @@ function formatoFechaCorta(fechaIso) {
   return `${dia}/${mes}/${anio}`;
 }
 
+const TONO_ESTADO = { VIGENTE: 'exito', CONVERTIDA: 'neutro', CANCELADA: 'peligro' };
+const TEXTO_ESTADO = { VIGENTE: 'Vigente', CONVERTIDA: 'Convertida', CANCELADA: 'Cancelada' };
+
 // `impuestoTasa` viaja congelada por línea desde que se crea la cotización (ver
 // cotizaciones.service.js#crear) — así el PDF siempre coincide exactamente con lo que se cotizó
 // (Cotizacion.total, ya con impuesto incluido), sin importar si el catálogo cambia después.
-function calcularTotales(cotizacion) {
+function construirDatos(cotizacion, empresa) {
   let subtotal = 0;
   let impuestos = 0;
   let descuentoTotal = 0;
-  const lineas = cotizacion.detalles.map((d) => {
+  const conceptos = cotizacion.detalles.map((d) => {
     const cantidad = Number(d.cantidad);
     const precio = Number(d.precio);
     const descuentoMonto = Number(d.descuentoMonto || 0);
@@ -31,157 +28,61 @@ function calcularTotales(cotizacion) {
     subtotal += importe;
     impuestos += importe * tasa;
     descuentoTotal += descuentoMonto;
-    return { nombre: d.articulo?.nombre || d.articuloId, cantidad, precio, importe };
+    return {
+      codigo: d.articulo?.sku || '—',
+      descripcion: d.articulo?.nombre || d.articuloId,
+      cantidad,
+      unidad: null,
+      precioUnitario: precio,
+      descuento: descuentoMonto,
+      impuestoTexto: tasa > 0 ? `${Math.round(tasa * 100)}%` : '—',
+      importe,
+      imagenUrl: d.articulo?.imagenUrl || null,
+    };
   });
   subtotal = Math.round(subtotal * 100) / 100;
   impuestos = Math.round(impuestos * 100) / 100;
   descuentoTotal = Math.round(descuentoTotal * 100) / 100;
   const total = Math.round((subtotal + impuestos) * 100) / 100;
-  return { lineas, subtotal, impuestos, descuentoTotal, total };
-}
 
-const ALTO_LOGO = 16; // mm — ancho se deriva de la proporción real de la imagen
-
-// Construye el jsPDF sin ningún efecto lateral (no descarga) — reusado tanto por
-// generarPdfCotizacion (descarga directa) como por generarBase64Cotizacion (envío por correo).
-function construirDocCotizacion(cotizacion, empresa) {
-  const { lineas, subtotal, impuestos, descuentoTotal, total } = calcularTotales(cotizacion);
-  const doc = new jsPDF({ unit: 'mm', format: 'letter' });
-  let y = 20;
-  let xTexto = MARGEN_X;
-
-  // El logo (data URI PNG generado en EmpresaPage) empuja el nombre/datos de la empresa a la
-  // derecha en vez de superponerse — si no hay logo, xTexto queda igual a MARGEN_X. Un logo
-  // corrupto o con un formato que jsPDF no pueda leer no debe tumbar la generación del PDF.
-  if (empresa?.logoUrl) {
-    try {
-      const propiedades = doc.getImageProperties(empresa.logoUrl);
-      const anchoLogo = (propiedades.width / propiedades.height) * ALTO_LOGO;
-      doc.addImage(empresa.logoUrl, 'PNG', MARGEN_X, 10, anchoLogo, ALTO_LOGO);
-      xTexto = MARGEN_X + anchoLogo + 4;
-    } catch (err) {
-      xTexto = MARGEN_X;
-    }
-  }
-
-  doc.setFontSize(16);
-  doc.setFont(undefined, 'bold');
-  doc.text(empresa?.nombreComercial || '', xTexto, y);
-
-  doc.setFontSize(14);
-  doc.text('COTIZACIÓN', DERECHA, y, { align: 'right' });
-
-  doc.setFont(undefined, 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(100);
-  y += 6;
-  const datosEmpresa = [empresa?.rfc && `RFC: ${empresa.rfc}`, empresa?.telefono, empresa?.correo]
-    .filter(Boolean).join(' · ');
-  if (datosEmpresa) { doc.text(datosEmpresa, xTexto, y); }
-  doc.text(`Folio: ${cotizacion.folio || '-'}`, DERECHA, y, { align: 'right' });
-  y += 5;
-  if (cotizacion.sucursal?.nombre) {
-    const sucursalTexto = cotizacion.sucursal.direccion
-      ? `${cotizacion.sucursal.nombre} — ${cotizacion.sucursal.direccion}`
-      : cotizacion.sucursal.nombre;
-    doc.text(sucursalTexto, xTexto, y);
-  }
-  doc.text(`Fecha: ${formatoFecha(cotizacion.creadoEn)}`, DERECHA, y, { align: 'right' });
-  if (cotizacion.vigencia) {
-    y += 5;
-    doc.text(`Vigencia: ${formatoFechaCorta(cotizacion.vigencia)}`, DERECHA, y, { align: 'right' });
-  }
-
-  y += 10;
-  doc.setDrawColor(210);
-  doc.line(MARGEN_X, y, DERECHA, y);
-  y += 8;
-
-  doc.setTextColor(30);
-  doc.setFont(undefined, 'bold');
-  doc.setFontSize(10);
-  doc.text('Cliente', MARGEN_X, y);
-  y += 5;
-  doc.setFont(undefined, 'normal');
-  doc.text(cotizacion.cliente?.nombre || '', MARGEN_X, y);
-  y += 5;
-  const contacto = [cotizacion.cliente?.telefono, cotizacion.cliente?.correo].filter(Boolean).join(' · ');
-  if (contacto) { doc.text(contacto, MARGEN_X, y); y += 5; }
-  if (cotizacion.cliente?.direccion) { doc.text(cotizacion.cliente.direccion, MARGEN_X, y); y += 5; }
-
-  y += 4;
-
-  autoTable(doc, {
-    startY: y,
-    head: [['Artículo', 'Cantidad', 'Precio unit.', 'Importe']],
-    body: lineas.map((l) => [l.nombre, String(l.cantidad), formatoMoneda(l.precio), formatoMoneda(l.importe)]),
-    columnStyles: {
-      1: { halign: 'right' },
-      2: { halign: 'right' },
-      3: { halign: 'right' },
+  return {
+    tipoDocumento: 'COTIZACION',
+    tituloDocumento: 'COTIZACIÓN',
+    folio: cotizacion.folio,
+    fecha: cotizacion.creadoEn,
+    estatus: cotizacion.estado
+      ? { texto: TEXTO_ESTADO[cotizacion.estado] || cotizacion.estado, tono: TONO_ESTADO[cotizacion.estado] || 'neutro' }
+      : null,
+    // Empresa no tiene un campo de dirección propio (solo Sucursal) — se usa la de la sucursal
+    // que emitió el documento, que es la dirección relevante para quien lo recibe.
+    empresa: { ...empresa, direccion: cotizacion.sucursal?.direccion || null },
+    contraparte: {
+      etiqueta: 'Cliente',
+      nombre: cotizacion.cliente?.nombre,
+      rfc: cotizacion.cliente?.rfc,
+      telefono: cotizacion.cliente?.telefono,
+      correo: cotizacion.cliente?.correo,
+      direccion: cotizacion.cliente?.direccion,
     },
-    styles: { fontSize: 10, cellPadding: 3 },
-    headStyles: { fillColor: [15, 23, 42] },
-    margin: { left: MARGEN_X, right: MARGEN_X },
-  });
-
-  let finalY = doc.lastAutoTable.finalY + 8;
-  doc.setFontSize(10);
-  if (descuentoTotal > 0) {
-    doc.text('Descuento', 150, finalY);
-    doc.text(`-${formatoMoneda(descuentoTotal)}`, DERECHA, finalY, { align: 'right' });
-    finalY += 6;
-  }
-  doc.text('Subtotal', 150, finalY);
-  doc.text(formatoMoneda(subtotal), DERECHA, finalY, { align: 'right' });
-  finalY += 6;
-  doc.text('Impuestos', 150, finalY);
-  doc.text(formatoMoneda(impuestos), DERECHA, finalY, { align: 'right' });
-  finalY += 7;
-  doc.setFont(undefined, 'bold');
-  doc.setFontSize(12);
-  doc.text('Total', 150, finalY);
-  doc.text(formatoMoneda(total), DERECHA, finalY, { align: 'right' });
-
-  let yFinal = finalY + 14;
-  if (cotizacion.observaciones) {
-    doc.setFont(undefined, 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(30);
-    doc.text('Observaciones', MARGEN_X, yFinal);
-    yFinal += 5;
-    doc.setFont(undefined, 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(80);
-    const lineasObs = doc.splitTextToSize(cotizacion.observaciones, DERECHA - MARGEN_X);
-    doc.text(lineasObs, MARGEN_X, yFinal);
-    yFinal += lineasObs.length * 4 + 6;
-  }
-
-  doc.setFont(undefined, 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(140);
-  doc.text(
-    'Cotización sujeta a disponibilidad de stock y a la vigencia de los precios al momento de la compra.',
-    MARGEN_X,
-    yFinal,
-  );
-
-  return doc;
+    conceptos,
+    resumen: { subtotal, descuentoTotal, impuestos, total },
+    piePagina: { observaciones: cotizacion.observaciones },
+    extra: {
+      vigencia: cotizacion.vigencia ? formatoFechaCorta(cotizacion.vigencia) : null,
+      sucursal: cotizacion.sucursal?.nombre,
+    },
+  };
 }
 
 export function generarPdfCotizacion(cotizacion, empresa) {
-  const doc = construirDocCotizacion(cotizacion, empresa);
-  doc.save(`${cotizacion.folio || 'cotizacion'}.pdf`);
+  const datos = construirDatos(cotizacion, empresa);
+  guardarDocumento(datos, `${cotizacion.folio || 'cotizacion'}.pdf`);
 }
 
 // Para el envío por correo: el backend no genera PDFs (ver correo.service.js), así que el
 // frontend arma el mismo documento y lo manda en base64 crudo (sin el prefijo `data:...;base64,`
 // del data URI que devuelve jsPDF).
 export function generarBase64Cotizacion(cotizacion, empresa) {
-  const doc = construirDocCotizacion(cotizacion, empresa);
-  const dataUri = doc.output('datauristring');
-  const base64 = dataUri.split(',')[1];
-  const nombreArchivo = `${cotizacion.folio || 'cotizacion'}.pdf`;
-  return { base64, nombreArchivo };
+  const datos = construirDatos(cotizacion, empresa);
+  return base64Documento(datos, `${cotizacion.folio || 'cotizacion'}.pdf`);
 }

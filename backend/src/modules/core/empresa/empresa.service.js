@@ -15,8 +15,26 @@ async function actualizar({ empresaId, usuarioEjecutorId, datos }) {
       accion: 'ACTUALIZAR',
       entidad: 'Empresa',
       entidadId: empresaId,
-      valoresAntes: toJson({ nombreComercial: empresa.nombreComercial, logoUrl: empresa.logoUrl }),
-      valoresDespues: toJson({ nombreComercial: actualizada.nombreComercial, logoUrl: actualizada.logoUrl }),
+      valoresAntes: toJson({
+        nombreComercial: empresa.nombreComercial,
+        logoUrl: empresa.logoUrl,
+        colorPrimario: empresa.colorPrimario,
+        colorSecundario: empresa.colorSecundario,
+        colorAcento: empresa.colorAcento,
+        plantillaPdf: empresa.plantillaPdf,
+        datosBancarios: empresa.datosBancarios,
+        terminosCondicionesPdf: empresa.terminosCondicionesPdf,
+      }),
+      valoresDespues: toJson({
+        nombreComercial: actualizada.nombreComercial,
+        logoUrl: actualizada.logoUrl,
+        colorPrimario: actualizada.colorPrimario,
+        colorSecundario: actualizada.colorSecundario,
+        colorAcento: actualizada.colorAcento,
+        plantillaPdf: actualizada.plantillaPdf,
+        datosBancarios: actualizada.datosBancarios,
+        terminosCondicionesPdf: actualizada.terminosCondicionesPdf,
+      }),
     });
     return actualizada;
   });

@@ -33,27 +33,50 @@ enum EstadoUsuario {
   BLOQUEADO
 }
 
+// Plantillas de PDF (§Plantillas de documentos, ver frontend/src/shared/pdf/plantillas):
+// una por empresa, aplica a Cotización/Compra/Orden de compra/Factura CFDI.
+enum PlantillaPdf {
+  CLASICA
+  MODERNA
+  EJECUTIVA
+  COMERCIAL
+  CATALOGO
+  PREMIUM
+}
+
 model Empresa {
-  id                 String        @id @default(uuid())
-  nombreComercial    String        @map("nombre_comercial")
-  razonSocial        String?       @map("razon_social")
-  rfc                String?
-  pais               String
-  moneda             String
-  zonaHoraria        String        @map("zona_horaria")
-  correo             String?
-  telefono           String?
-  sitioWeb           String?       @map("sitio_web")
-  logoUrl            String?       @map("logo_url")
+  id                     String        @id @default(uuid())
+  nombreComercial        String        @map("nombre_comercial")
+  razonSocial            String?       @map("razon_social")
+  rfc                    String?
+  pais                   String
+  moneda                 String
+  zonaHoraria            String        @map("zona_horaria")
+  correo                 String?
+  telefono               String?
+  sitioWeb               String?       @map("sitio_web")
+  logoUrl                String?       @map("logo_url")
   // Facturación CFDI (§Facturación): régimen fiscal del emisor (c_RegimenFiscal SAT).
   // Sucursal puede sobreescribirlo (null = hereda el de acá) para el caso de sucursales
   // que facturan bajo un RFC/razón social propios.
-  regimenFiscalClave String?       @map("regimen_fiscal_clave")
+  regimenFiscalClave     String?       @map("regimen_fiscal_clave")
   // Slug de la URL pública del portal de autofacturación (/facturar/:slug). null = portal apagado.
-  slugPublico        String?       @unique @map("slug_publico")
-  estado             EstadoGeneral @default(ACTIVA)
-  creadoEn           DateTime      @default(now()) @map("creado_en")
-  actualizadoEn      DateTime      @updatedAt @map("actualizado_en")
+  slugPublico            String?       @unique @map("slug_publico")
+  estado                 EstadoGeneral @default(ACTIVA)
+  // Branding de documentos PDF (§Plantillas de documentos): colores libres en hex, sin
+  // validar contra una paleta fija — cada plantilla ya trae sus propios defaults si la
+  // empresa no personalizó nada (ver frontend/src/shared/pdf/plantillas).
+  colorPrimario          String?       @map("color_primario")
+  colorSecundario        String?       @map("color_secundario")
+  colorAcento            String?       @map("color_acento")
+  plantillaPdf           PlantillaPdf  @default(CLASICA) @map("plantilla_pdf")
+  // Texto libre reusado en el pie de página de Cotización/Compra/Orden de compra (no de
+  // Factura CFDI, que solo lleva los elementos que exige el SAT). Distinto de
+  // Cotizacion.observaciones/Compra.observaciones, que son por documento.
+  datosBancarios         String?       @map("datos_bancarios")
+  terminosCondicionesPdf String?       @map("terminos_condiciones_pdf")
+  creadoEn               DateTime      @default(now()) @map("creado_en")
+  actualizadoEn          DateTime      @updatedAt @map("actualizado_en")
 
   sucursales         Sucursal[]
   usuariosEmpresa    UsuarioEmpresa[]
@@ -981,16 +1004,16 @@ model Venta {
 }
 
 model VentaDetalle {
-  id               String  @id @default(uuid())
-  ventaId          String  @map("venta_id")
-  articuloId       String  @map("articulo_id")
+  id               String   @id @default(uuid())
+  ventaId          String   @map("venta_id")
+  articuloId       String   @map("articulo_id")
   cantidad         Decimal
   precio           Decimal // precio congelado (§20.9, §3.14)
-  impuestoTasa     Decimal @map("impuesto_tasa") // tasa congelada al momento de la venta
-  cantidadDevuelta Decimal @default(0) @map("cantidad_devuelta")
-  descuentoId      String? @map("descuento_id")
-  promocionId      String? @map("promocion_id")
-  descuentoMonto   Decimal @default(0) @map("descuento_monto") // monto restado de esta línea
+  impuestoTasa     Decimal  @map("impuesto_tasa") // tasa congelada al momento de la venta
+  cantidadDevuelta Decimal  @default(0) @map("cantidad_devuelta")
+  descuentoId      String?  @map("descuento_id")
+  promocionId      String?  @map("promocion_id")
+  descuentoMonto   Decimal  @default(0) @map("descuento_monto") // monto restado de esta línea
   // Costo unitario del artículo (Articulo.costo) congelado al momento de la venta, igual que
   // impuestoTasa — Articulo.costo cambia con el tiempo, así que "Utilidad" necesita el valor
   // vigente en ese momento, no el actual. Null en ventas anteriores a este campo (no hay forma

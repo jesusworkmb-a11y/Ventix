@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import {
   listarFacturas, obtenerFactura, cancelarFactura, timbrarFactura,
 } from '../api/facturas.api';
+import { generarPdfFactura } from '../pdf/facturaPdf';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Select from '../../../shared/ui/Select';
@@ -43,7 +44,7 @@ const MOTIVOS_CANCELACION = [
 ];
 
 function FacturasPage() {
-  const { permisos } = useAuth();
+  const { permisos, empresa } = useAuth();
   const [facturas, setFacturas] = useState([]);
   const [paginacion, setPaginacion] = useState({ pagina: 1, totalPaginas: 1, total: 0 });
   const [busqueda, setBusqueda] = useState('');
@@ -60,6 +61,7 @@ function FacturasPage() {
   const [facturaSustitutaId, setFacturaSustitutaId] = useState('');
   const [errorCancelar, setErrorCancelar] = useState('');
   const [timbrandoId, setTimbrandoId] = useState(null);
+  const [generandoPdfId, setGenerandoPdfId] = useState(null);
 
   const puedeCrear = permisos?.includes('facturacion.crear');
   const puedeGlobal = permisos?.includes('facturacion.global.generar');
@@ -155,6 +157,21 @@ function FacturasPage() {
     link.download = `${f.folio}.xml`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Representación impresa del CFDI (plantilla elegida en Configuración de Empresa) — a
+  // diferencia del XML, que ya viaja completo en la Factura, el PDF se arma en el momento
+  // porque incluye el QR de verificación del SAT (generarPdfFactura es async por eso).
+  async function descargarPdf(f) {
+    setError('');
+    setGenerandoPdfId(f.id);
+    try {
+      await generarPdfFactura(f, empresa);
+    } catch (err) {
+      setError('No se pudo generar el PDF de la factura.');
+    } finally {
+      setGenerandoPdfId(null);
+    }
   }
 
   return (
@@ -303,7 +320,18 @@ function FacturasPage() {
 
             <div className="flex items-center justify-between gap-6 border-t border-gray-100 pt-3 text-sm">
               {detalle.estado === 'TIMBRADA' ? (
-                <Button type="button" variant="secondary" size="sm" onClick={() => descargarXml(detalle)}>Descargar XML</Button>
+                <div className="flex gap-2">
+                  <Button type="button" variant="secondary" size="sm" onClick={() => descargarXml(detalle)}>Descargar XML</Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={generandoPdfId === detalle.id}
+                    onClick={() => descargarPdf(detalle)}
+                  >
+                    {generandoPdfId === detalle.id ? 'Generando…' : 'Descargar PDF'}
+                  </Button>
+                </div>
               ) : <span />}
               <div className="flex gap-6">
                 <span>Subtotal: <strong>{formatoMoneda(detalle.subtotal)}</strong></span>
