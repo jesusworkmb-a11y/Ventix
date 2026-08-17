@@ -73,14 +73,16 @@ Notas del despliegue:
    de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: los 10 módulos originales no tienen pendientes abiertos. Además ya se
-   construyó el módulo de **Facturación Electrónica CFDI** (fuera del plan original) — Fases A-D
-   completas y en producción (schema/catálogos SAT, configuración fiscal, motor de facturas con
-   los 4 flujos de negocio, y su UI), y sobre eso ya se agregó captura rápida (sugerir repetir la
-   última factura o una plantilla nombrada, agregar conceptos clicando el catálogo en vez de
-   tipear claves SAT a mano) más un rediseño visual de Factura Directa. Quedan pendientes la Fase
-   E (portal público de autofacturación) y la Fase F (timbrado real contra un PAC — necesita que
-   el usuario elija proveedor antes de arrancar). Ver el detalle en "Facturación Electrónica
-   (CFDI)" y las opciones en "Qué sigue" al final de este README.
+   construyó el módulo de **Facturación Electrónica CFDI** (fuera del plan original) y su roadmap
+   completo (Fases A-F) ya está cerrado: schema/catálogos SAT (incluidos los dos catálogos
+   grandes, ClaveProdServ/ClaveUnidad, ya sembrados), configuración fiscal, motor de facturas con
+   los 4 flujos de negocio y su UI, captura rápida (sugerir repetir la última factura o una
+   plantilla nombrada, agregar conceptos clicando el catálogo), portal público de autofacturación
+   (Fase E, `/facturar/:slug`) y timbrado real ante el SAT vía un PAC (Fase F, Facturama) — este
+   último corre contra una cuenta **sandbox** (facturas apócrifas, sin valor fiscal); pasar a
+   producción real necesita una cuenta de Facturama de producción y el CSD real de la empresa, ver
+   el detalle en "Facturación Electrónica — Fase F" más abajo. Ver el resto del detalle en
+   "Facturación Electrónica (CFDI)" y las secciones que le siguen.
 
 ## QA de MOD-001 Core (2026-08-02)
 
@@ -1241,9 +1243,11 @@ Proveedor de email: [Resend](https://resend.com).
 Fuera del plan original de 10 fases — el usuario pidió construir el módulo de Facturación
 Electrónica (CFDI México), con la integración real del PAC (timbrado) dejada para el final a
 propósito, para poder construir primero toda la lógica de negocio/modelo de datos/UI en local.
-Roadmap acordado de 6 fases (A-F); **A-D ya están completas y verificadas en vivo contra
-producción**, con datos de prueba limpiados después de cada verificación (mismo criterio que el
-resto del proyecto). E y F quedan pendientes, ver "Qué sigue".
+Roadmap acordado de 6 fases (A-F); **A-D quedaron completas y verificadas en vivo contra
+producción** en esta sesión, con datos de prueba limpiados después de cada verificación (mismo
+criterio que el resto del proyecto). Las Fases E y F se completaron después, ver "Facturación
+Electrónica — Fase E: portal público de autofacturación" y "Facturación Electrónica — Fase F:
+timbrado real con un PAC" más abajo — con eso el roadmap completo (A-F) queda cerrado.
 
 ### Fase A — Esquema de datos y catálogos SAT
 
@@ -1323,8 +1327,9 @@ un mensaje claro (400):
 3. Recién ahí: vender algo en el POS → Ventas recientes → botón "Facturar", o probar
    `/facturacion/directa` / `/facturacion/global` directamente.
 
-Las facturas quedan en estado **Pendiente** — el timbrado real ante el SAT es la Fase F,
-todavía no implementada.
+En esta sesión (Fases A-D) las facturas quedaban en estado **Pendiente** — el timbrado real ante
+el SAT (Fase F) se agregó después, ver esa sección más abajo: hoy el timbrado corre automático
+al crear la factura, y el estado pasa a **Timbrada** o **Error** según la respuesta del PAC.
 
 ## Captura rápida de Factura Directa (2026-08-13, sesión posterior)
 
@@ -2152,6 +2157,111 @@ Con una base de datos nueva y vacía, el primer paso real es registrar una empre
 `/registro` (crea la empresa, la sucursal Matriz, el usuario administrador y siembra roles,
 permisos y secuencias) — no hay datos de arranque más allá de eso.
 
+## Optimización de captura de Factura Directa: filtro por categoría y steppers (2026-08-17)
+
+El usuario pidió optimizar la pantalla de captura de
+[Factura Directa](frontend/src/modules/facturacion/pages/FacturaDirectaPage.jsx). Se portaron dos
+piezas que ya existían en el carrito de Ventas (el POS) pero le faltaban acá: **chips de filtro
+por categoría** sobre el grid de productos, y **steppers +/-** para la cantidad de cada concepto
+en la tabla (antes un `<input type="number">` suelto) — llegar a 0 quita la línea, mismo criterio
+que el carrito de Ventas. El campo Descuento se dejó como input de texto (no tiene equivalente de
+stepper en Ventas, ahí es un monto vía modal de descuento manual, no incremental) — se le agregó
+un `onBlur` que normaliza vacío a `'0'`. De paso,
+[`SelectorCatalogoSat.jsx`](frontend/src/shared/ui/SelectorCatalogoSat.jsx) (el componente
+compartido) ganó un prop opcional `buscarFn` para poder apuntar a una variante distinta del
+buscador sin duplicar el componente — reusado después por el portal público (Fase E, más abajo).
+Verificado en vivo contra producción: clic en un producto agrega la línea, el stepper sube/baja
+la cantidad recalculando importe/subtotal/total, y el chip de categoría filtra el grid.
+
+## Catálogos SAT grandes sembrados: ClaveProdServ y ClaveUnidad (2026-08-17)
+
+Desde la Fase A, `ClaveProdServ` (~52k claves) y `ClaveUnidad` (~2.5k) habían quedado sin
+sembrar por ser demasiado grandes para hardcodear en
+[`catalogosSat.data.js`](backend/src/shared/catalogosSat.data.js). Se cerró ese pendiente: nuevo
+script [`backend/scripts/importarCatalogosSatGrandes.js`](backend/scripts/importarCatalogosSatGrandes.js)
+(`npm run importar:catalogos-sat`, no corre en el bootstrap del server) descarga ambos catálogos
+desde un espejo comunitario del SAT en GitHub y los inserta en lotes con
+`createMany({skipDuplicates:true})`, mismo patrón idempotente que el resto del proyecto — seguro
+de re-correr cuando el SAT actualice el catálogo. Las claves que el SAT ya dio de baja se
+insertan con `activo:false` en vez de omitirse, para no perder el historial. Corrido contra
+producción: **52,514 claves de ClaveProdServ + 2,418 de ClaveUnidad**. Con esto, el combobox de
+clave de producto/servicio y de unidad en Artículos/Unidades/Factura Directa/portal público ya
+encuentra resultados reales del catálogo oficial del SAT.
+
+## Facturación Electrónica — Fase E: portal público de autofacturación (2026-08-17)
+
+Cierra el primer de los dos pendientes estructurales de Facturación. Nuevo submódulo backend
+[`facturacion/portalPublico/`](backend/src/modules/facturacion/portalPublico), montado en
+`/api/facturacion/portal-publico` **sin** el middleware `auth` (sin login, el cliente factura su
+propio ticket). Reusa `facturas.service.js#crearDesdeVenta` tal cual — esa función ya tenía un
+comentario in-line desde la Fase C anticipando este uso — así que el candado anti-duplicado
+atómico y la validación de datos fiscales/claves SAT no se duplicaron. Verificación por **folio +
+monto** del ticket (el monto actúa de segundo factor liviano, ya que los folios son secuenciales
+y fáciles de adivinar); mismo mensaje genérico tanto si el folio no existe como si el monto no
+coincide, para no dar un oráculo que permita ir adivinando folios ajenos. Primer **rate-limiter**
+de todo el proyecto (`express-rate-limit`, 30 intentos/10min sobre el mount completo) — es el
+único endpoint de escritura sin autenticar de todo el backend.
+[`catalogosSat.publicRoutes.js`](backend/src/modules/facturacion/catalogosSat/catalogosSat.publicRoutes.js)
+expone el mismo buscador de catálogos SAT sin auth (son datos públicos, no filtran por empresa),
+para que el formulario de receptor pueda buscar Régimen Fiscal/Uso CFDI sin sesión.
+
+Frontend: página nueva [`/facturar/:slug`](frontend/src/modules/facturacionPublica/pages/PortalAutofacturacionPage.jsx),
+fuera de `ProtectedRoute` (mismo nivel que `/login`/`/registro`), tres pasos en una sola pantalla
+(buscar ticket → completar `ReceptorFiscalCampos` reusado tal cual → confirmación). El slug lo
+activa el dueño de la empresa desde `/administracion/fiscal` (`Empresa.slugPublico`, ya estaba en
+el schema desde la Fase A). Verificado en vivo de punta a punta contra producción: búsqueda de
+empresa por slug, ticket con monto correcto/incorrecto, ambos buscadores SAT públicos, creación
+de la factura, candado anti-duplicado (409 en reintento), y el rate-limit real (429 en el intento
+31 de una prueba de 32 seguidas).
+
+## Facturación Electrónica — Fase F: timbrado real con un PAC (2026-08-17)
+
+Cierra el roadmap completo de Facturación (A-F). El usuario eligió **Facturama** como PAC y
+armó una cuenta de pruebas (**sandbox** — las facturas timbradas ahí son apócrifas, sin valor
+fiscal ante el SAT; para timbrar de verdad en producción hace falta una cuenta de Facturama
+**de producción** y el CSD real de la empresa). Antes de escribir código se probó cada endpoint a
+mano contra el sandbox real (la documentación pública de Facturama no trae ejemplos completos):
+registrar un CSD (modo **Multiemisor**, necesario porque Ventix es multi-tenant y cada empresa
+puede tener su propio RFC/CSD), timbrar, descargar el XML y cancelar.
+
+Nuevo servicio compartido
+[`facturama.service.js`](backend/src/shared/services/facturama.service.js) concentra toda la
+comunicación con el PAC (mismo criterio que `correo.service.js` para Resend);
+[`facturas.pac.js`](backend/src/modules/facturacion/facturas/facturas.pac.js) mapea el modelo
+interno de `Factura` al JSON que espera Facturama. **El timbrado corre automáticamente** justo
+después de crear cualquier factura (Directa/Venta POS/Global/Consolidada/Autofacturación),
+**fuera** de la transacción de Prisma que la persiste (es una llamada de red al PAC, no debe
+mantener conexiones de la base de datos abiertas). Si el PAC falla, la factura local **no se
+pierde** (la venta ya está reclamada, el folio ya se consumió): queda en estado `ERROR` con el
+mensaje real devuelto por el PAC, y se puede reintentar con el botón "Reintentar timbrado" en
+Facturación (`POST /facturas/:id/timbrar`). `cancelar()` ahora avisa al PAC cuando la factura sí
+llegó a timbrarse, antes de tocar el estado local.
+
+Nuevo modelo `FacturaCsd` trackea qué RFC de la empresa ya tiene un certificado registrado en el
+PAC — **a propósito nunca guarda el certificado ni la llave privada**, esos viajan directo del
+navegador a la API del PAC (`FileReader.readAsDataURL`, ni siquiera pasan por el body en texto
+plano más de lo necesario); solo se persiste el RFC y la fecha de vencimiento, calculada
+parseando el `.cer` con `crypto.X509Certificate` de Node (lee DER binario directo, sin
+dependencias externas). Nueva sección "Certificado de Sello Digital (CSD)" en
+[`ConfiguracionFiscalPage.jsx`](frontend/src/modules/core/pages/ConfiguracionFiscalPage.jsx) para
+cargarlo. En Facturación, las facturas timbradas muestran el UUID del SAT y un botón "Descargar
+XML" (el XML completo ya viaja en el registro de la Factura, sin endpoint aparte); las que
+quedaron en `ERROR` muestran el motivo y un botón "Reintentar timbrado".
+
+De paso se encontró y corrigió un bug propio: 4 pantallas (Factura Directa, Factura Global,
+"Facturar venta" en Ventas recientes, y el portal público de la Fase E) todavía mostraban el
+mensaje de éxito estático de la Fase C ("queda en estado Pendiente hasta que se integre el
+timbrado ante el SAT") — ahora que el timbrado está integrado, ese mensaje era directamente
+falso. Las cuatro ahora leen el `estado` real de la factura devuelta y muestran
+timbrada+UUID / error+reintentar / pendiente, según corresponda.
+
+Verificado en vivo de punta a punta contra el sandbox de Facturama, con clics reales en la UI:
+registrar un CSD de prueba, crear una Factura Directa que se timbra sola con UUID real del SAT,
+descargar un XML válido (interceptando el Blob para confirmarlo), cancelar avisando al PAC, y
+forzar un error (RFC sin CSD registrado) para confirmar que la factura queda en `ERROR` con el
+mensaje real y que el botón de reintentar la vuelve a intentar correctamente. Datos de prueba
+(facturas, CSD, RFC/CP/claves SAT temporales) revertidos después de cada ronda.
+
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, los 10 ya tuvieron su
@@ -2242,14 +2352,21 @@ agregado, IVA trasladado por tasa, Kardex por artículo con saldo corrido vía f
 SQL, y estados persistidos de Cotización con su endpoint de cancelar — ver "Cambios de modelo —
 Fase 3 de la auditoría" arriba), y por último también la Fase 4, que cierra el roadmap completo:
 exportación a Excel real y PDF (además del CSV que ya existía) e impresión directa, en los 10
-reportes — ver "Exportación a Excel/PDF/Impresión — Fase 4 de la auditoría" arriba. **El otro
-pendiente estructural que queda es terminar el módulo de Facturación.** A elección:
-- **Fase E de Facturación**: portal público de autofacturación (el cliente ingresa folio+monto
-  de su ticket y factura su propia compra, sin login) — necesita un slug público por empresa
-  (`Empresa.slugPublico`, ya en el schema) y rate-limiting porque es un endpoint sin autenticar.
-- **Fase F de Facturación**: integración real con un PAC para timbrar ante el SAT — necesita que
-  el usuario elija proveedor de PAC antes de poder arrancar, y manejo seguro del CSD (certificado
-  + llave privada) de la empresa.
+reportes — ver "Exportación a Excel/PDF/Impresión — Fase 4 de la auditoría" arriba. **Por último,
+el módulo de Facturación Electrónica CFDI quedó completo, roadmap A-F cerrado**: además de las
+Fases A-D (schema/catálogos SAT, configuración fiscal, motor de facturas, UI) y la captura rápida
+ya documentadas arriba, se sembraron los dos catálogos SAT grandes que faltaban
+(ClaveProdServ/ClaveUnidad, ver "Catálogos SAT grandes sembrados"), se optimizó la captura de
+Factura Directa (filtro por categoría y steppers, ver esa sección), se construyó la Fase E
+(portal público de autofacturación en `/facturar/:slug`, sin login) y la Fase F (timbrado real
+ante el SAT vía un PAC — Facturama, ver esa sección). La Fase F corre hoy contra una cuenta
+**sandbox** (facturas apócrifas, sin valor fiscal) — pasar a timbrar de verdad en producción
+necesita que el usuario contrate una cuenta de Facturama de producción y cargue el CSD real de la
+empresa (la UI para cargarlo ya está lista en `/administracion/fiscal`). Ideas para retomar
+después:
+- **Pasar Facturación a producción real**: contratar una cuenta de Facturama de producción,
+  tramitar/cargar el CSD real de la empresa (necesita e.firma vigente del SAT) y cargarlo desde
+  `/administracion/fiscal` — con eso el timbrado deja de ser sandbox.
 - Una tercera ronda de QA, o profundizar en algún módulo específico.
 - Otros campos de empresa editables (correo, teléfono, sitio web ya existen en el modelo
   `Empresa` pero no en la UI).
