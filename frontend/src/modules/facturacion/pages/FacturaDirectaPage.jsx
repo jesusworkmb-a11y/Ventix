@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Search, Package, UserPlus, BookmarkPlus, Star, Settings2 } from 'lucide-react';
+import { Trash2, Search, Package, UserPlus, BookmarkPlus, Star, Settings2, Plus, Minus } from 'lucide-react';
 import { crearFacturaDirecta, obtenerSugerenciaFactura } from '../api/facturas.api';
 import {
   listarPlantillas, crearPlantilla, actualizarPlantilla, eliminarPlantilla, registrarUsoPlantilla,
@@ -112,6 +112,7 @@ function FacturaDirectaPage() {
   const [clienteId, setClienteId] = useState('');
   const [articulos, setArticulos] = useState([]);
   const [busquedaProducto, setBusquedaProducto] = useState('');
+  const [categoriaFiltro, setCategoriaFiltro] = useState('');
   const busquedaRef = useRef(null);
 
   const [sugerencia, setSugerencia] = useState(null);
@@ -188,9 +189,14 @@ function FacturaDirectaPage() {
     });
   }
 
+  const categorias = [...new Map(
+    articulos.filter((a) => a.categoria).map((a) => [a.categoria.id, a.categoria]),
+  ).values()];
+
   const articulosFiltrados = articulos.filter((a) => {
     if (a.articuloPadreId || (a._count?.variantes || 0) > 0) return false; // variantes: fuera de alcance de esta fase
     if (!a.activo) return false;
+    if (categoriaFiltro && a.categoriaId !== categoriaFiltro) return false;
     if (!busquedaProducto.trim()) return true;
     const texto = busquedaProducto.trim().toLowerCase();
     return (
@@ -338,6 +344,18 @@ function FacturaDirectaPage() {
 
   function quitarConcepto(index) {
     setConceptos((c) => c.filter((_, i) => i !== index));
+  }
+
+  // Mismo criterio que el carrito de Ventas: +/- de a 1, y llegar a 0 quita la línea.
+  function cambiarCantidadConcepto(index, delta) {
+    setConceptos((c) => {
+      const linea = c[index];
+      const nueva = Number(linea.cantidad || 0) + delta;
+      if (nueva <= 0) return c.filter((_, i) => i !== index);
+      const copia = [...c];
+      copia[index] = { ...linea, cantidad: String(nueva) };
+      return copia;
+    });
   }
 
   // Cantidad y descuento se editan directo en la tabla (sin modo edición aparte) -- el resto de
@@ -607,6 +625,28 @@ function FacturaDirectaPage() {
             />
           </div>
 
+          {categorias.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setCategoriaFiltro('')}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium ${categoriaFiltro === '' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+              >
+                Todos
+              </button>
+              {categorias.map((c) => (
+                <button
+                  type="button"
+                  key={c.id}
+                  onClick={() => setCategoriaFiltro(c.id)}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium ${categoriaFiltro === c.id ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                >
+                  {c.nombre}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {articulosFiltrados.map((a) => {
               const facturable = Boolean(a.claveProdServSat && a.unidadBase?.claveUnidadSat);
@@ -759,14 +799,15 @@ function FacturaDirectaPage() {
                     {c.advertencia && <span className="mt-0.5 block text-xs text-warning-700">{c.advertencia}</span>}
                   </Celda>
                   <Celda>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={c.cantidad}
-                      onChange={(e) => actualizarConceptoCampo(i, 'cantidad', e.target.value)}
-                      className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                    />
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => cambiarCantidadConcepto(i, -1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                        <Minus size={14} />
+                      </button>
+                      <span className="w-8 text-center font-medium text-gray-800">{c.cantidad}</span>
+                      <button type="button" onClick={() => cambiarCantidadConcepto(i, 1)} className="rounded-md border border-gray-200 p-1 text-gray-500 hover:bg-gray-100">
+                        <Plus size={14} />
+                      </button>
+                    </div>
                   </Celda>
                   <Celda className="text-gray-500">{c.claveUnidadSat || '—'}</Celda>
                   <Celda>{formatoMoneda(c.valorUnitario)}</Celda>
@@ -777,6 +818,7 @@ function FacturaDirectaPage() {
                       min="0"
                       value={c.descuento}
                       onChange={(e) => actualizarConceptoCampo(i, 'descuento', e.target.value)}
+                      onBlur={(e) => { if (e.target.value.trim() === '') actualizarConceptoCampo(i, 'descuento', '0'); }}
                       className="w-20 rounded-md border border-gray-200 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                     />
                   </Celda>
