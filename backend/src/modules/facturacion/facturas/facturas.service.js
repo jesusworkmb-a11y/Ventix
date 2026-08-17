@@ -7,6 +7,8 @@ const { registrarAuditoria } = require('../../../shared/services/auditoria.servi
 const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.service');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 const plantillasService = require('../plantillas/plantillas.service');
+const facturama = require('../../../shared/services/facturama.service');
+const { cfdiDesdeFactura } = require('./facturas.pac');
 
 const COLUMNAS_ORDENABLES = { folio: 'folio', total: 'total', creadoEn: 'creadoEn', estado: 'estado' };
 
@@ -305,6 +307,52 @@ async function persistirFactura(tx, {
   });
 }
 
+// Fase F: timbra ante el PAC una factura ya persistida localmente (estado PENDIENTE o ERROR de
+// un intento previo). Corre FUERA de cualquier transacción de Prisma a propósito -- es una
+// llamada de red al PAC, no debe mantener conexiones/locks de la DB abiertos mientras espera.
+// Si el PAC falla, la Factura local queda en estado ERROR (no se revierte su creación: la venta
+// ya está reclamada y el documento existe, solo falta timbrarlo) y se devuelve igual el registro
+// con un campo `errorTimbrado` transitorio (no persistido) para que el caller lo muestre.
+async function intentarTimbrar(factura) {
+  try {
+    const timbre = await facturama.timbrar(cfdiDesdeFactura(factura));
+    const xmlTimbrado = await facturama.obtenerXmlBase64(timbre.pacId);
+    return prisma.factura.update({
+      where: { id: factura.id },
+      data: {
+        estado: 'TIMBRADA',
+        pacId: timbre.pacId,
+        uuid: timbre.uuid,
+        fechaTimbrado: new Date(timbre.fechaTimbrado),
+        selloSAT: timbre.selloSAT,
+        noCertificadoSAT: timbre.noCertificadoSAT,
+        cadenaOriginal: timbre.cadenaOriginal,
+        xmlTimbrado,
+      },
+      include: { detalles: { include: { impuestos: true } } },
+    });
+  } catch (err) {
+    const actualizada = await prisma.factura.update({
+      where: { id: factura.id },
+      data: { estado: 'ERROR' },
+      include: { detalles: { include: { impuestos: true } } },
+    });
+    return { ...actualizada, errorTimbrado: err.publicMessage || 'No se pudo timbrar la factura.' };
+  }
+}
+
+// Reintento manual (factura quedó en ERROR, o PENDIENTE si el timbrado automático nunca corrió).
+async function timbrar({ empresaId, facturaId }) {
+  const factura = await prisma.factura.findFirst({
+    where: { id: facturaId, empresaId },
+    include: { detalles: { include: { impuestos: true } } },
+  });
+  if (!factura) throw new AppError(404, 'Factura no encontrada.');
+  if (factura.estado === 'TIMBRADA') throw new AppError(400, 'Esta factura ya está timbrada.');
+  if (factura.estado === 'CANCELADA') throw new AppError(400, 'Esta factura está cancelada.');
+  return intentarTimbrar(factura);
+}
+
 // Flujo 1: Factura Directa, sin venta previa del POS.
 async function crearDirecta({ empresaId, sucursalId, usuarioId, receptor, conceptos: conceptosCrudos, formaPago, metodoPago, moneda, tipoCambio }) {
   const emisor = await resolverEmisor({ empresaId, sucursalId });
@@ -322,10 +370,11 @@ async function crearDirecta({ empresaId, sucursalId, usuarioId, receptor, concep
   const totales = { subtotal, totalDescuento, totalImpuestosTrasladados, totalImpuestosRetenidos: 0, total };
 
   const id = crypto.randomUUID();
-  return prisma.$transaction((tx) => persistirFactura(tx, {
+  const factura = await prisma.$transaction((tx) => persistirFactura(tx, {
     id, empresaId, sucursalId, clienteId: receptor.clienteId, tipo: 'DIRECTA', usuarioId,
     receptor, emisor, formaPago, metodoPago, moneda, tipoCambio, conceptos, totales,
   }));
+  return intentarTimbrar(factura);
 }
 
 // Flujos 2 y 3: Facturar una venta del POS (VENTA_POS, autenticado) o Auto-facturación
@@ -349,7 +398,7 @@ async function crearDesdeVenta({ empresaId, usuarioId, tipo, ventaId, receptor }
   const formaPago = resolverFormaPago(venta.pagos);
   const id = crypto.randomUUID();
 
-  return prisma.$transaction(async (tx) => {
+  const factura = await prisma.$transaction(async (tx) => {
     const reclamada = await tx.venta.updateMany({ where: { id: ventaId, facturaId: null }, data: { facturaId: id } });
     if (reclamada.count === 0) throw new AppError(409, 'Esta venta ya fue facturada.');
 
@@ -359,6 +408,7 @@ async function crearDesdeVenta({ empresaId, usuarioId, tipo, ventaId, receptor }
       conceptos, totales, ventaIds: [ventaId],
     });
   });
+  return intentarTimbrar(factura);
 }
 
 // Flujo 4: Factura Global (público en general, RFC genérico) o Consolidada (N ventas de UN
@@ -383,7 +433,7 @@ async function crearAgrupada({ empresaId, sucursalId, usuarioId, tipo, ventaIds,
   if (conceptos.length === 0) throw new AppError(400, 'Las ventas seleccionadas no tienen líneas facturables.');
   const id = crypto.randomUUID();
 
-  return prisma.$transaction(async (tx) => {
+  const factura = await prisma.$transaction(async (tx) => {
     const reclamadas = await tx.venta.updateMany({
       where: { id: { in: ventaIds }, facturaId: null },
       data: { facturaId: id },
@@ -398,6 +448,7 @@ async function crearAgrupada({ empresaId, sucursalId, usuarioId, tipo, ventaIds,
       conceptos, totales, ventaIds, informacionGlobal: tipo === 'GLOBAL' ? informacionGlobal : null,
     });
   });
+  return intentarTimbrar(factura);
 }
 
 // Candidatas para agrupar (Global: soloPublicoGeneral; Consolidada: clienteId puntual) -- el
@@ -421,6 +472,18 @@ async function cancelar({ empresaId, usuarioId, facturaId, claveMotivoCancelacio
   const factura = await prisma.factura.findFirst({ where: { id: facturaId, empresaId } });
   if (!factura) throw new AppError(404, 'Factura no encontrada.');
   if (factura.estado === 'CANCELADA') throw new AppError(400, 'Esta factura ya está cancelada.');
+
+  // Solo avisa al PAC si esta factura llegó a timbrarse de verdad (tiene pacId/uuid) -- una
+  // factura en PENDIENTE/ERROR nunca se mandó al SAT, no hay nada que cancelar allá. Se hace
+  // ANTES de tocar el estado local: si el PAC rechaza la cancelación, no se marca CANCELADA acá.
+  if (factura.pacId) {
+    let uuidSustituto;
+    if (facturaSustitutaId) {
+      const sustituta = await prisma.factura.findFirst({ where: { id: facturaSustitutaId, empresaId } });
+      uuidSustituto = sustituta?.uuid;
+    }
+    await facturama.cancelar({ pacId: factura.pacId, motivo: claveMotivoCancelacion, uuidSustituto });
+  }
 
   return prisma.$transaction(async (tx) => {
     const reclamada = await tx.factura.updateMany({
@@ -512,6 +575,7 @@ module.exports = {
   listarVentasFacturables,
   obtenerSugerencia,
   cancelar,
+  timbrar,
   listar,
   obtener,
 };

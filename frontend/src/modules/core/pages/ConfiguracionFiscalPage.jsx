@@ -2,14 +2,28 @@ import { useEffect, useState } from 'react';
 import {
   listarSucursales, actualizarEmpresaFiscal, actualizarSucursalFiscal,
 } from '../api/core.api';
+import { listarCsd, registrarCsd } from '../../facturacion/api/csd.api';
 import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import SelectorCatalogoSat from '../../../shared/ui/SelectorCatalogoSat';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import { formatoFecha } from '../../../shared/format';
 
 const EDIT_SUCURSAL_VACIO = { rfc: '', razonSocial: '', regimenFiscalClave: null, codigoPostal: '' };
+
+// Data URI ("data:application/octet-stream;base64,AAAA...") -- se recorta el prefijo antes de
+// mandarlo. FileReader.readAsDataURL codifica los bytes crudos del archivo tal cual (no asume
+// texto), así que sirve igual para el .cer/.key binarios que para una imagen.
+function archivoABase64(file) {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(lector.result.split(',')[1]);
+    lector.onerror = reject;
+    lector.readAsDataURL(file);
+  });
+}
 
 // null = hereda de Empresa (comportamiento "matriz"). Enviar null explícito limpia un override
 // ya asignado -- mismo criterio que el resto de los campos "desasignables" del proyecto
@@ -35,13 +49,55 @@ function ConfiguracionFiscalPage() {
   const [editForm, setEditForm] = useState(EDIT_SUCURSAL_VACIO);
   const [errorSucursal, setErrorSucursal] = useState('');
 
+  const [csds, setCsds] = useState([]);
+  const [rfcCsd, setRfcCsd] = useState('');
+  const [archivoCer, setArchivoCer] = useState(null);
+  const [archivoKey, setArchivoKey] = useState(null);
+  const [contrasenaCsd, setContrasenaCsd] = useState('');
+  const [errorCsd, setErrorCsd] = useState('');
+  const [guardandoCsd, setGuardandoCsd] = useState(false);
+
   function cargarSucursales() {
     listarSucursales().then(setSucursales).catch(() => {});
   }
 
+  function cargarCsds() {
+    listarCsd().then(setCsds).catch(() => {});
+  }
+
   useEffect(() => {
     cargarSucursales();
+    cargarCsds();
   }, []);
+
+  async function guardarCsd(e) {
+    e.preventDefault();
+    setErrorCsd('');
+    if (!rfcCsd.trim() || !archivoCer || !archivoKey || !contrasenaCsd) {
+      setErrorCsd('Completá el RFC, ambos archivos (.cer y .key) y la contraseña.');
+      return;
+    }
+    setGuardandoCsd(true);
+    try {
+      const [certificadoBase64, llaveBase64] = await Promise.all([
+        archivoABase64(archivoCer), archivoABase64(archivoKey),
+      ]);
+      await registrarCsd({
+        rfc: rfcCsd.trim(), certificadoBase64, llaveBase64, contrasena: contrasenaCsd,
+      });
+      setRfcCsd('');
+      setArchivoCer(null);
+      setArchivoKey(null);
+      setContrasenaCsd('');
+      document.getElementById('csdCer').value = '';
+      document.getElementById('csdKey').value = '';
+      cargarCsds();
+    } catch (err) {
+      setErrorCsd(err.response?.data?.error || 'No se pudo registrar el CSD.');
+    } finally {
+      setGuardandoCsd(false);
+    }
+  }
 
   async function guardarEmpresa(e) {
     e.preventDefault();
@@ -238,6 +294,67 @@ function ConfiguracionFiscalPage() {
             </Fila>
           ))}
         </Table>
+      </Card>
+
+      <Card title="Certificado de Sello Digital (CSD)">
+        <p className="mb-3 text-sm text-gray-500">
+          Necesario para timbrar CFDI ante el SAT. El certificado y la llave privada viajan
+          directo al proveedor de timbrado (PAC) — Ventix no los guarda, solo registra el RFC y
+          su vigencia.
+        </p>
+
+        <Table columnas={['RFC', 'Vigente hasta']}>
+          {csds.length === 0 && <TablaVacia colSpan={2} />}
+          {csds.map((c) => (
+            <Fila key={c.id}>
+              <Celda className="font-medium text-gray-800">{c.rfc}</Celda>
+              <Celda>{formatoFecha(c.vigenciaHasta)}</Celda>
+            </Fila>
+          ))}
+        </Table>
+
+        {errorCsd && (
+          <p className="mt-3 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorCsd}</p>
+        )}
+        <form onSubmit={guardarCsd} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input
+            id="rfcCsd"
+            label="RFC del certificado"
+            value={rfcCsd}
+            onChange={(e) => setRfcCsd(e.target.value.toUpperCase())}
+            placeholder="RFC de la empresa o de la sucursal"
+          />
+          <Input
+            id="contrasenaCsd"
+            label="Contraseña de la llave privada"
+            type="password"
+            value={contrasenaCsd}
+            onChange={(e) => setContrasenaCsd(e.target.value)}
+          />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="csdCer" className="text-sm font-medium text-gray-700">Certificado (.cer)</label>
+            <input
+              id="csdCer"
+              type="file"
+              accept=".cer"
+              onChange={(e) => setArchivoCer(e.target.files[0] || null)}
+              className="text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="csdKey" className="text-sm font-medium text-gray-700">Llave privada (.key)</label>
+            <input
+              id="csdKey"
+              type="file"
+              accept=".key"
+              onChange={(e) => setArchivoKey(e.target.files[0] || null)}
+              className="text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+            />
+          </div>
+          <div className="sm:col-span-2 flex justify-end">
+            <Button type="submit" disabled={guardandoCsd}>{guardandoCsd ? 'Registrando…' : 'Registrar CSD'}</Button>
+          </div>
+        </form>
       </Card>
     </div>
   );

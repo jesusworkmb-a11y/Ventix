@@ -85,6 +85,11 @@ async function cancelar(req, res) {
   res.json(factura);
 }
 
+async function timbrar(req, res) {
+  const factura = await service.timbrar({ empresaId: req.auth.empresaId, facturaId: req.params.id });
+  res.json(factura);
+}
+
 module.exports = {
-  listar, obtener, ventasFacturables, sugerencia, crearDirecta, crearDesdeVenta, crearAgrupada, cancelar,
+  listar, obtener, ventasFacturables, sugerencia, crearDirecta, crearDesdeVenta, crearAgrupada, cancelar, timbrar,
 };

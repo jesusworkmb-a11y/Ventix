@@ -24,3 +24,6 @@ export function crearFacturaAgrupada(datos) {
 export function cancelarFactura(id, datos) {
   return api.patch(`/facturacion/facturas/${id}/cancelar`, datos).then((res) => res.data);
 }
+export function timbrarFactura(id) {
+  return api.post(`/facturacion/facturas/${id}/timbrar`).then((res) => res.data);
+}

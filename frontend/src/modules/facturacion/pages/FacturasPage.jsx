@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import {
-  listarFacturas, obtenerFactura, cancelarFactura,
+  listarFacturas, obtenerFactura, cancelarFactura, timbrarFactura,
 } from '../api/facturas.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
@@ -59,6 +59,7 @@ function FacturasPage() {
   const [motivoCancelacion, setMotivoCancelacion] = useState('03');
   const [facturaSustitutaId, setFacturaSustitutaId] = useState('');
   const [errorCancelar, setErrorCancelar] = useState('');
+  const [timbrandoId, setTimbrandoId] = useState(null);
 
   const puedeCrear = permisos?.includes('facturacion.crear');
   const puedeGlobal = permisos?.includes('facturacion.global.generar');
@@ -127,12 +128,41 @@ function FacturasPage() {
     }
   }
 
+  async function reintentarTimbrado(id) {
+    setError('');
+    setTimbrandoId(id);
+    try {
+      const factura = await timbrarFactura(id);
+      if (factura.errorTimbrado) setError(factura.errorTimbrado);
+      cargar(paginacion.pagina);
+      if (detalleId === id) setDetalle(factura);
+    } catch (err) {
+      setError(err.response?.data?.error || 'No se pudo timbrar la factura.');
+    } finally {
+      setTimbrandoId(null);
+    }
+  }
+
+  // El XML timbrado ya viaja completo (base64) dentro de la Factura -- no hace falta un
+  // endpoint aparte, se arma el archivo y se dispara la descarga directo en el navegador.
+  function descargarXml(f) {
+    const binario = atob(f.xmlTimbrado);
+    const bytes = Uint8Array.from(binario, (c) => c.charCodeAt(0));
+    const blob = new Blob([bytes], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${f.folio}.xml`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Facturación</h1>
-          <p className="text-sm text-gray-500">Facturas emitidas (CFDI). El timbrado ante el SAT se integra más adelante.</p>
+          <p className="text-sm text-gray-500">Facturas emitidas (CFDI), timbradas ante el SAT.</p>
         </div>
         <div className="flex gap-2">
           {puedeCrear && (
@@ -204,6 +234,16 @@ function FacturasPage() {
                   <button type="button" onClick={() => abrirDetalle(f.id)} className="text-sm text-primary-600 hover:underline">
                     Ver
                   </button>
+                  {puedeCrear && f.estado === 'ERROR' && (
+                    <button
+                      type="button"
+                      onClick={() => reintentarTimbrado(f.id)}
+                      disabled={timbrandoId === f.id}
+                      className="text-sm text-primary-600 hover:underline disabled:opacity-50"
+                    >
+                      {timbrandoId === f.id ? 'Timbrando…' : 'Reintentar timbrado'}
+                    </button>
+                  )}
                   {puedeCancelar && f.estado !== 'CANCELADA' && (
                     <button type="button" onClick={() => abrirCancelar(f.id)} className="text-sm text-danger-600 hover:underline">
                       Cancelar
@@ -229,7 +269,19 @@ function FacturasPage() {
               <div><span className="text-gray-500">Emisor</span><p className="font-medium">{detalle.razonSocialEmisor} — {detalle.rfcEmisor}</p></div>
               <div><span className="text-gray-500">Forma / método de pago</span><p className="font-medium">{detalle.formaPago} / {detalle.metodoPago}</p></div>
               <div><span className="text-gray-500">Lugar de expedición</span><p className="font-medium">{detalle.lugarExpedicion}</p></div>
+              {detalle.uuid && (
+                <div className="col-span-2"><span className="text-gray-500">Folio fiscal (UUID)</span><p className="font-medium">{detalle.uuid}</p></div>
+              )}
             </div>
+
+            {detalle.estado === 'ERROR' && (
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">
+                <span>No se pudo timbrar esta factura ante el SAT.</span>
+                <Button type="button" size="sm" disabled={timbrandoId === detalle.id} onClick={() => reintentarTimbrado(detalle.id)}>
+                  {timbrandoId === detalle.id ? 'Timbrando…' : 'Reintentar timbrado'}
+                </Button>
+              </div>
+            )}
 
             <Table columnas={['Descripción', 'Cant.', 'V. unitario', 'Importe', 'Impuesto']}>
               {detalle.detalles.map((d) => (
@@ -249,10 +301,15 @@ function FacturasPage() {
               ))}
             </Table>
 
-            <div className="flex justify-end gap-6 border-t border-gray-100 pt-3 text-sm">
-              <span>Subtotal: <strong>{formatoMoneda(detalle.subtotal)}</strong></span>
-              <span>Impuestos: <strong>{formatoMoneda(detalle.totalImpuestosTrasladados)}</strong></span>
-              <span>Total: <strong>{formatoMoneda(detalle.total)}</strong></span>
+            <div className="flex items-center justify-between gap-6 border-t border-gray-100 pt-3 text-sm">
+              {detalle.estado === 'TIMBRADA' ? (
+                <Button type="button" variant="secondary" size="sm" onClick={() => descargarXml(detalle)}>Descargar XML</Button>
+              ) : <span />}
+              <div className="flex gap-6">
+                <span>Subtotal: <strong>{formatoMoneda(detalle.subtotal)}</strong></span>
+                <span>Impuestos: <strong>{formatoMoneda(detalle.totalImpuestosTrasladados)}</strong></span>
+                <span>Total: <strong>{formatoMoneda(detalle.total)}</strong></span>
+              </div>
             </div>
           </div>
         )}

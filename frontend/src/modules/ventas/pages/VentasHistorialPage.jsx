@@ -192,7 +192,7 @@ function VentasHistorialPage() {
     setCreandoFactura(true);
     try {
       const factura = await crearFacturaDesdeVenta({ ventaId: facturandoId, receptor: receptorFactura });
-      setFolioFacturaCreada(factura.folio);
+      setFolioFacturaCreada(factura);
       cargarVentas(paginacion.pagina);
     } catch (err) {
       setErrorFacturar(err.response?.data?.error || 'No se pudo generar la factura.');
@@ -495,10 +495,25 @@ function VentasHistorialPage() {
       <Modal abierto={facturandoId !== null} onCerrar={cerrarFacturar} titulo="Facturar venta" ancho="max-w-2xl">
         {folioFacturaCreada ? (
           <div className="space-y-3 text-center">
-            <p className="text-sm text-gray-700">
-              Factura <strong>{folioFacturaCreada}</strong> creada — queda en estado Pendiente hasta que se
-              integre el timbrado ante el SAT.
-            </p>
+            {folioFacturaCreada.estado === 'TIMBRADA' && (
+              <>
+                <p className="text-sm text-gray-700">
+                  Factura <strong>{folioFacturaCreada.folio}</strong> timbrada ante el SAT.
+                </p>
+                <p className="font-mono text-xs text-gray-400">UUID {folioFacturaCreada.uuid}</p>
+              </>
+            )}
+            {folioFacturaCreada.estado === 'ERROR' && (
+              <p className="text-sm text-danger-700">
+                Factura <strong>{folioFacturaCreada.folio}</strong> creada, pero no se pudo timbrar:{' '}
+                {folioFacturaCreada.errorTimbrado || 'error desconocido'}. Podés reintentarlo desde Facturación.
+              </p>
+            )}
+            {folioFacturaCreada.estado !== 'TIMBRADA' && folioFacturaCreada.estado !== 'ERROR' && (
+              <p className="text-sm text-gray-700">
+                Factura <strong>{folioFacturaCreada.folio}</strong> creada — queda en estado Pendiente hasta que se timbre ante el SAT.
+              </p>
+            )}
             <Button onClick={cerrarFacturar}>Cerrar</Button>
           </div>
         ) : (

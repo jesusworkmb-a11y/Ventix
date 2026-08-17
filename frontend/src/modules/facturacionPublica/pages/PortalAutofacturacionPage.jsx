@@ -55,7 +55,7 @@ function PortalAutofacturacionPage() {
     setFacturando(true);
     try {
       const factura = await facturarPublico(slug, { folio: folio.trim(), total: Number(total), receptor });
-      setFolioCreado(factura.folio);
+      setFolioCreado(factura);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo generar la factura.');
     } finally {
@@ -77,11 +77,25 @@ function PortalAutofacturacionPage() {
     return (
       <PortalLayout empresa={empresa}>
         <div className="space-y-3 text-center">
-          <h1 className="text-xl font-bold text-gray-900">Factura {folioCreado} creada</h1>
-          <p className="text-sm text-gray-500">
-            Tu factura quedó registrada y queda en estado Pendiente hasta que se integre el timbrado ante el SAT.
-            Guardá este folio como comprobante.
-          </p>
+          <h1 className="text-xl font-bold text-gray-900">
+            Factura {folioCreado.folio} {folioCreado.estado === 'TIMBRADA' ? 'timbrada' : 'creada'}
+          </h1>
+          {folioCreado.estado === 'TIMBRADA' && (
+            <p className="text-sm text-gray-500">
+              Tu factura ya fue timbrada ante el SAT. Guardá este folio como comprobante.
+            </p>
+          )}
+          {folioCreado.estado === 'ERROR' && (
+            <p className="text-sm text-danger-700">
+              Registramos tu factura pero no pudimos timbrarla automáticamente. Guardá este folio y contactá al negocio para que la revisen.
+            </p>
+          )}
+          {folioCreado.estado !== 'TIMBRADA' && folioCreado.estado !== 'ERROR' && (
+            <p className="text-sm text-gray-500">
+              Tu factura quedó registrada y queda en estado Pendiente hasta que se timbre ante el SAT.
+              Guardá este folio como comprobante.
+            </p>
+          )}
         </div>
       </PortalLayout>
     );

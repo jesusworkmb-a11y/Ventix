@@ -17,5 +17,6 @@ router.post('/desde-venta', requierePermiso('facturacion.crear'), asyncHandler(c
 router.post('/agrupada', requierePermiso('facturacion.global.generar'), asyncHandler(controller.crearAgrupada));
 
 router.patch('/:id/cancelar', requierePermiso('facturacion.cancelar'), asyncHandler(controller.cancelar));
+router.post('/:id/timbrar', requierePermiso('facturacion.crear'), asyncHandler(controller.timbrar));
 
 module.exports = router;

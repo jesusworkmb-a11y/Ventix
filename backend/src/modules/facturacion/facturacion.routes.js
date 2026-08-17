@@ -8,12 +8,14 @@ const catalogosSatRoutes = require('./catalogosSat/catalogosSat.routes');
 const facturasRoutes = require('./facturas/facturas.routes');
 const plantillasRoutes = require('./plantillas/plantillas.routes');
 const portalPublicoRoutes = require('./portalPublico/portalPublico.routes');
+const csdRoutes = require('./csd/csd.routes');
 
 const router = express.Router();
 
 router.use('/catalogos-sat', catalogosSatRoutes);
 router.use('/facturas', facturasRoutes);
 router.use('/plantillas', plantillasRoutes);
+router.use('/csd', csdRoutes);
 
 // Portal público de autofacturación (Fase E) -- a diferencia de los tres de arriba, este
 // submódulo NO pasa por `auth` (sin login, ver portalPublico.routes.js). Es el único punto sin

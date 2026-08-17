@@ -79,6 +79,7 @@ model Empresa {
   ventas             Venta[]
   facturas           Factura[]
   facturasPlantillas FacturaPlantilla[]
+  facturasCsd        FacturaCsd[]
 
   @@map("empresas")
 }
@@ -1175,13 +1176,17 @@ model Factura {
   claveMotivoCancelacion String? @map("clave_motivo_cancelacion")
   facturaSustitutaId     String? @map("factura_sustituta_id") // id "suelto", sin @relation (mismo criterio que referenciaId en otros módulos)
 
-  // Reservado para la fase de integración con el PAC — nullable, sin lógica todavía
+  // Fase F: integración real con el PAC (Facturama).
   uuid             String?   @unique // Folio Fiscal asignado por el SAT
-  xmlTimbrado      String?   @map("xml_timbrado")
+  xmlTimbrado      String?   @map("xml_timbrado") // XML timbrado completo, base64 tal cual lo devuelve el PAC
   cadenaOriginal   String?   @map("cadena_original")
   selloSAT         String?   @map("sello_sat")
   noCertificadoSAT String?   @map("no_certificado_sat")
   fechaTimbrado    DateTime? @map("fecha_timbrado")
+  // Id interno del PAC para este documento -- lo exige Facturama para descargar el XML o
+  // cancelar (el UUID del SAT solo no alcanza, confirmado contra su sandbox real). "Suelto"
+  // sin @relation, mismo criterio que el resto de los ids externos del proyecto.
+  pacId            String?   @map("pac_id")
 
   usuarioId     String   @map("usuario_id")
   creadoEn      DateTime @default(now()) @map("creado_en")
@@ -1195,6 +1200,23 @@ model Factura {
   ventas   FacturaVenta[] // 1 fila para VENTA_POS/AUTOFACTURACION, N para GLOBAL/CONSOLIDADA_CLIENTE
 
   @@map("facturas")
+}
+
+// Fase F: qué RFC de esta empresa ya tiene un CSD (Certificado de Sello Digital) registrado en
+// el PAC. Deliberadamente NO guarda el certificado ni la llave privada -- esos viajan directo a
+// la API del PAC (Facturama) y se registran ahí, esta tabla solo trackea metadata para poder
+// mostrar "CSD cargado, vence tal fecha" en la UI y bloquear el timbrado si falta o venció.
+model FacturaCsd {
+  id            String   @id @default(uuid())
+  empresaId     String   @map("empresa_id")
+  rfc           String
+  vigenciaHasta DateTime @map("vigencia_hasta")
+  registradoEn  DateTime @default(now()) @map("registrado_en")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@unique([empresaId, rfc])
+  @@map("facturas_csd")
 }
 
 // Une Factura <-> Venta(s) del POS. Sirve tanto para "facturar una venta" (1 fila) como

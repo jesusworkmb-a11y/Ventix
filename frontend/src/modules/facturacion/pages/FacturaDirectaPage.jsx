@@ -125,7 +125,7 @@ function FacturaDirectaPage() {
   const [conceptos, setConceptos] = useState([]);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
-  const [folioCreado, setFolioCreado] = useState('');
+  const [facturaCreada, setFacturaCreada] = useState(null);
 
   const [nuevoClienteAbierto, setNuevoClienteAbierto] = useState(false);
   const [nuevoClienteNombre, setNuevoClienteNombre] = useState('');
@@ -420,7 +420,7 @@ function FacturaDirectaPage() {
           } : undefined,
         })),
       });
-      setFolioCreado(factura.folio);
+      setFacturaCreada(factura);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear la factura.');
     } finally {
@@ -460,7 +460,7 @@ function FacturaDirectaPage() {
 
   useEffect(() => {
     function onKeyDown(e) {
-      if (folioCreado || hayModalAbierto) return;
+      if (facturaCreada || hayModalAbierto) return;
       if (e.key === 'F1') {
         e.preventDefault();
         crearFactura();
@@ -492,17 +492,29 @@ function FacturaDirectaPage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folioCreado, hayModalAbierto, busquedaProducto, conceptos, clienteId, haySugerenciaVisible, sugerencia, guardando, sucursalId, formaPago]);
+  }, [facturaCreada, hayModalAbierto, busquedaProducto, conceptos, clienteId, haySugerenciaVisible, sugerencia, guardando, sucursalId, formaPago]);
 
-  if (folioCreado) {
+  if (facturaCreada) {
+    const timbrada = facturaCreada.estado === 'TIMBRADA';
+    const conError = facturaCreada.estado === 'ERROR';
     return (
       <div className="space-y-6">
         <Card>
           <div className="space-y-3 text-center">
-            <h1 className="text-xl font-bold text-gray-900">Factura {folioCreado} creada</h1>
-            <p className="text-sm text-gray-500">Queda en estado Pendiente hasta que se integre el timbrado ante el SAT.</p>
+            <h1 className="text-xl font-bold text-gray-900">
+              Factura {facturaCreada.folio} {timbrada ? 'timbrada ante el SAT' : 'creada'}
+            </h1>
+            {timbrada && <p className="font-mono text-xs text-gray-400">UUID {facturaCreada.uuid}</p>}
+            {conError && (
+              <p className="text-sm text-danger-700">
+                No se pudo timbrar: {facturaCreada.errorTimbrado || 'error desconocido'}. Podés reintentarlo desde Facturación.
+              </p>
+            )}
+            {!timbrada && !conError && (
+              <p className="text-sm text-gray-500">Queda en estado Pendiente hasta que se timbre ante el SAT.</p>
+            )}
             <div className="flex justify-center gap-2 pt-2">
-              <Button variant="secondary" onClick={() => { setFolioCreado(''); limpiarFactura(); }}>
+              <Button variant="secondary" onClick={() => { setFacturaCreada(null); limpiarFactura(); }}>
                 Crear otra
               </Button>
               <Button onClick={() => navigate('/facturacion')}>Ver facturas</Button>

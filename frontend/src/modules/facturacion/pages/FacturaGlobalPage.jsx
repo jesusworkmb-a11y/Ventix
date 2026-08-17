@@ -129,7 +129,7 @@ function FacturaGlobalPage() {
         receptor: receptorFinal,
         informacionGlobal: modo === 'GLOBAL' ? { periodicidad, meses, anio: Number(anio) } : undefined,
       });
-      setFolioCreado(factura.folio);
+      setFolioCreado(factura);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo crear la factura.');
     } finally {
@@ -138,11 +138,23 @@ function FacturaGlobalPage() {
   }
 
   if (folioCreado) {
+    const timbrada = folioCreado.estado === 'TIMBRADA';
+    const conError = folioCreado.estado === 'ERROR';
     return (
       <Card>
         <div className="space-y-3 text-center">
-          <h1 className="text-xl font-bold text-gray-900">Factura {folioCreado} creada</h1>
-          <p className="text-sm text-gray-500">Queda en estado Pendiente hasta que se integre el timbrado ante el SAT.</p>
+          <h1 className="text-xl font-bold text-gray-900">
+            Factura {folioCreado.folio} {timbrada ? 'timbrada ante el SAT' : 'creada'}
+          </h1>
+          {timbrada && <p className="font-mono text-xs text-gray-400">UUID {folioCreado.uuid}</p>}
+          {conError && (
+            <p className="text-sm text-danger-700">
+              No se pudo timbrar: {folioCreado.errorTimbrado || 'error desconocido'}. Podés reintentarlo desde Facturación.
+            </p>
+          )}
+          {!timbrada && !conError && (
+            <p className="text-sm text-gray-500">Queda en estado Pendiente hasta que se timbre ante el SAT.</p>
+          )}
           <Button onClick={() => navigate('/facturacion')}>Ver facturas</Button>
         </div>
       </Card>
