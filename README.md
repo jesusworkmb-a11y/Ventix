@@ -2262,6 +2262,29 @@ forzar un error (RFC sin CSD registrado) para confirmar que la factura queda en 
 mensaje real y que el botón de reintentar la vuelve a intentar correctamente. Datos de prueba
 (facturas, CSD, RFC/CP/claves SAT temporales) revertidos después de cada ronda.
 
+## CSD por sucursal: aclaración de arquitectura + selector de emisor (2026-08-17, sesión posterior)
+
+El usuario preguntó si, siendo Ventix multi-empresa y cada empresa con varias sucursales, cada
+sucursal podía cargar su propio CSD con datos fiscales propios. La respuesta es que **ya
+funcionaba así sin necesitar ningún cambio de arquitectura** — es consecuencia directa de dos
+piezas que ya existían y encajan solas: `resolverEmisor()` (Fase C) ya calculaba
+`rfcEmisor = sucursal.rfc || empresa.rfc`, y `FacturaCsd`/`facturama.registrarCsd` (Fase F)
+registran por RFC puro, no por sucursal — así que un CSD cargado para el RFC propio de una
+sucursal ya quedaba disponible para timbrar sus facturas. El modo **Multiemisor** de Facturama
+(elegido a propósito en la Fase F) es exactamente para esto: una cuenta, muchos RFC con su
+propio CSD cada uno.
+
+Lo único que faltaba era UX: el campo RFC del formulario de CSD era texto libre, sin relación
+visible con las sucursales ya cargadas en la sección de arriba. Se cambió a un selector que junta
+`Empresa.rfc` + cada `Sucursal.rfc` (las que tienen override propio) en opciones tipo
+"Empresa — RFC" / "Sucursal Norte — RFC"; la tabla de CSDs ya cargados ahora también resuelve y
+muestra a qué empresa/sucursal corresponde cada RFC. Si todavía no hay ningún RFC cargado, el
+formulario se reemplaza por un mensaje explicando qué completar primero. Gotcha encontrado
+verificando esto: Facturama valida que el RFC declarado coincida con el RFC real embebido en el
+certificado — un `.cer`/`.key` de un RFC no sirve para registrar otro. Verificado en vivo contra
+producción: el selector lista empresa + sucursal con RFC propio, y la tabla resuelve el nombre
+correcto para un CSD cargado.
+
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, los 10 ya tuvieron su
