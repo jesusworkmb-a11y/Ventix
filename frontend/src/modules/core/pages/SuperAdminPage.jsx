@@ -70,7 +70,7 @@ function SuperAdminPage() {
         </button>
       </header>
 
-      <main className="mx-auto max-w-4xl space-y-6 p-6">
+      <main className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Empresas</h2>
           <p className="text-sm text-gray-500">
