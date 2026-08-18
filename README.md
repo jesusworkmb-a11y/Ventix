@@ -2285,6 +2285,85 @@ certificado — un `.cer`/`.key` de un RFC no sirve para registrar otro. Verific
 producción: el selector lista empresa + sucursal con RFC propio, y la tabla resuelve el nombre
 correcto para un CSD cargado.
 
+## Plantillas de PDF seleccionables para documentos comerciales (2026-08-17, sesión posterior)
+
+El usuario trajo un brief de diseño detallado (6 conceptos visuales: Clásica Minimalista,
+Profesional Moderna, Empresarial Ejecutiva, Comercial de Ventas, Visual con Productos,
+Corporativa Premium) pidiendo poder elegir el estilo de los PDF que genera el sistema. Antes de
+tocar código se resolvieron 3 decisiones de alcance con `AskUserQuestion`: **"Remisión"**
+(mencionada en el brief) queda **fuera** de esta ronda — no existe ese concepto en el proyecto y
+construirlo hubiera sido un documento nuevo completo, no solo estilo; **Factura CFDI sí entra**,
+pese a que hoy no tenía ninguna representación en PDF (solo descarga de XML) — es el documento
+más valioso para un negocio real; y la plantilla + colores se eligen **una vez por empresa**
+(no por documento ni por usuario), en Configuración.
+
+- **Motor de plantillas compartido** en `frontend/src/shared/pdf/`: antes había 4 generadores de
+  PDF (`cotizacionPdf.js`, `compraPdf.js`, `ordenCompraPdf.js`, `reportePdf.js`) con el mismo
+  layout hardcodeado copy-pasteado (header/logo/tabla/totales) y un solo color fijo
+  (`[15,23,42]`). Se armó [`motor.js`](frontend/src/shared/pdf/motor.js) que recibe un objeto
+  `datos` canónico (misma forma para los 4 documentos: `empresa`, `contraparte`, `conceptos[]`,
+  `resumen`, `piePagina`, `extra`, documentado en JSDoc ahí mismo) y despacha al render de la
+  plantilla elegida (`empresa.plantillaPdf`); [`tema.js`](frontend/src/shared/pdf/tema.js)
+  resuelve colores hex→rgb con default por plantilla si la empresa no personalizó nada; y
+  [`componentes.js`](frontend/src/shared/pdf/componentes.js) trae los bloques reusados por las 6
+  plantillas (logo, tabla de conceptos con las 8 columnas del brief, resumen financiero, pie de
+  página, insignia de estatus, y un set de **íconos vectoriales dibujados a mano** con
+  primitivas de jsPDF — sin assets externos, se recolorean solos con el acento del tema).
+  [Cotización](frontend/src/modules/ventas/pdf/cotizacionPdf.js),
+  [Compra](frontend/src/modules/compras/pdf/compraPdf.js) y
+  [Orden de compra](frontend/src/modules/compras/pdf/ordenCompraPdf.js) se refactorizaron por
+  dentro para armar ese `datos` canónico y llamar al motor — los exports públicos
+  (`generarPdfCotizacion`/`generarBase64Cotizacion`, etc.) no cambiaron de firma, así que ningún
+  caller existente (páginas, `EnviarCorreoModal`) se tocó. De paso se agregó columna "Código"
+  (SKU) a las 3 tablas — el include de artículo en
+  [cotizaciones.service.js](backend/src/modules/ventas/cotizaciones/cotizaciones.service.js),
+  [compras.service.js](backend/src/modules/compras/compras.service.js) y
+  [ordenes.service.js](backend/src/modules/compras/ordenes/ordenes.service.js) se amplió con
+  `sku`/`imagenUrl` (esta última para que la plantilla "Visual con Productos" pueda mostrar la
+  imagen real del artículo, con degradación a una tarjeta compacta si no tiene).
+- **Representación impresa de Factura CFDI, nueva de punta a punta**: nuevo
+  [`facturaPdf.js`](frontend/src/modules/facturacion/pdf/facturaPdf.js) — usa los datos
+  **congelados en la propia `Factura`** (rfcEmisor/receptor, régimen, UUID, etc.) como fuente de
+  verdad legal, no el Cliente/Empresa en vivo. Trae los elementos que exige el SAT en una
+  representación impresa: QR de verificación armado con la URL oficial del SAT
+  (`id`/`re`/`rr`/`tt`/`fe`, nueva dependencia `qrcode`), UUID, sello digital del SAT, cadena
+  original, y — vía nuevo [`cfdiXml.js`](frontend/src/modules/facturacion/pdf/cfdiXml.js), que
+  decodifica el XML timbrado con `DOMParser` nativo del navegador sin dependencia nueva — el
+  sello y número de certificado del **emisor**, que el PAC no persiste directo en la tabla
+  `Factura`. Botón "Descargar PDF" nuevo junto a "Descargar XML" en
+  [FacturasPage.jsx](frontend/src/modules/facturacion/pages/FacturasPage.jsx), mismo gate
+  `estado === 'TIMBRADA'`. El bloque de datos fiscales solo se dibuja si la factura tiene UUID
+  (una factura sin timbrar no muestra una leyenda "SAT" vacía).
+- **Branding y selector de plantilla**: migración aditiva (`Empresa` gana `colorPrimario`,
+  `colorSecundario`, `colorAcento`, enum `PlantillaPdf` (`plantillaPdf`, default `CLASICA`),
+  `datosBancarios` y `terminosCondicionesPdf` — estos dos últimos reusados en el pie de página de
+  Cotización/Compra/Orden, no en Factura, que solo lleva lo que exige el SAT).
+  [`empresa.validators.js`](backend/src/modules/core/empresa/empresa.validators.js) valida los
+  colores como hex (`#RRGGBB`); el log de auditoría en
+  [`empresa.service.js`](backend/src/modules/core/empresa/empresa.service.js) se amplió para
+  capturar los campos nuevos. En `/administracion/empresa`, nueva sección "Plantillas de
+  documentos PDF": galería de las 6 plantillas como tarjetas (no un `<select>` plano, para poder
+  "elegir la que más agrade" — nuevo
+  [`SelectorPlantillaPdf.jsx`](frontend/src/modules/core/components/SelectorPlantillaPdf.jsx)),
+  3 selectores de color (nuevo componente reusable
+  [`ColorPicker.jsx`](frontend/src/shared/ui/ColorPicker.jsx)), los dos textareas nuevos, y un
+  botón "Vista previa" que genera un PDF de ejemplo **100% en el navegador** (dataset falso en
+  [`datosEjemplo.js`](frontend/src/shared/pdf/datosEjemplo.js), sin pegarle al backend) y lo abre
+  en una pestaña nueva — para comparar las 6 antes de decidir.
+- **Limitación conocida y aceptada**: jsPDF es una API de dibujo vectorial/texto, no motor
+  HTML+CSS — no hay Google Fonts embebidas (se usan las 3 fuentes base: helvetica/times/courier,
+  una por "familia" de plantilla) ni gradientes reales (el banner de la plantilla Premium es un
+  bloque de color sólido).
+- Verificado en vivo contra el backend local (misma Supabase que producción): generadas las 6
+  plantillas con datos de ejemplo y con una Cotización, una Compra, una Orden de compra y una
+  Factura reales de la base — incluido un caso real de línea sin `costoEstimado` en una Orden de
+  compra, que expuso un bug propio (mostraba "$0.00" en vez de "—" cuando no hay costo
+  cotizado todavía) corregido en el momento en
+  [`componentes.js`](frontend/src/shared/pdf/componentes.js) (`formatoMonedaOpcional`). Guardado
+  de plantilla/colores confirmado con entrada de auditoría. Build de producción del frontend
+  limpio. Commiteado y pusheado a `main`, desplegado en Render, y **el usuario probó las 6
+  plantillas directo en producción** — quedaron ok.
+
 ## Qué sigue
 
 Los 10 módulos del plan original están completos y en producción, los 10 ya tuvieron su
@@ -2385,12 +2464,31 @@ Factura Directa (filtro por categoría y steppers, ver esa sección), se constru
 ante el SAT vía un PAC — Facturama, ver esa sección). La Fase F corre hoy contra una cuenta
 **sandbox** (facturas apócrifas, sin valor fiscal) — pasar a timbrar de verdad en producción
 necesita que el usuario contrate una cuenta de Facturama de producción y cargue el CSD real de la
-empresa (la UI para cargarlo ya está lista en `/administracion/fiscal`). Ideas para retomar
-después:
+empresa (la UI para cargarlo ya está lista en `/administracion/fiscal`). Por último, ya se
+agregaron **6 plantillas de PDF seleccionables** (Clásica Minimalista, Profesional Moderna,
+Empresarial Ejecutiva, Comercial de Ventas, Visual con Productos, Corporativa Premium) para
+Cotización/Compra/Orden de compra/Factura CFDI, con selección global por empresa más branding
+(colores, datos bancarios, términos y condiciones) en `/administracion/empresa` — incluida la
+primera representación impresa en PDF de una Factura CFDI (antes solo existía el XML), con QR de
+verificación del SAT y los datos fiscales que exige el Anexo 20 (ver "Plantillas de PDF
+seleccionables para documentos comerciales" arriba); probadas por el usuario directo en
+producción. Por último, se depuraron en producción los tres bloqueos que impedían timbrar
+realmente (clave SAT de unidad faltante, variables de entorno de Facturama nunca replicadas a
+Render, código postal de expedición de sucursal sin cargar — ver "Depuración de timbrado en
+producción" arriba); el usuario confirmó que el flujo de timbrado ya quedó funcionando de punta a
+punta en producción. Quedan dos pendientes menores de esa sesión: reemplazar el código postal de
+prueba (`06600`) cargado en la sucursal Matriz por el real, y cargar la clave de producto/servicio
+SAT en 7Up/Fanta/Sprite/Paquete Atún (siguen sin poder facturarse, mismo motivo que tenía Coca
+Cola 600ml antes del fix). Por último, ya se hizo una tercera ronda de QA (2 bugs críticos de
+condición de carrera entre facturar y cancelar/devolver una venta, corregidos y verificados en
+vivo) y, sobre dos hallazgos que quedaron fuera de su alcance, se agregó rate limiting por IP a
+`/login`/`/registro` y se cerró la segunda ronda del blindaje Decimal en catálogo (costo/precio de
+Artículo, tasa de Impuesto, valor de Descuento) — ver "Rate limiting por IP en /login y /registro,
+y segunda ronda del blindaje Decimal" arriba. Ideas para retomar después:
 - **Pasar Facturación a producción real**: contratar una cuenta de Facturama de producción,
   tramitar/cargar el CSD real de la empresa (necesita e.firma vigente del SAT) y cargarlo desde
   `/administracion/fiscal` — con eso el timbrado deja de ser sandbox.
-- Una tercera ronda de QA, o profundizar en algún módulo específico.
+- Una cuarta ronda de QA, o profundizar en algún módulo específico.
 - Otros campos de empresa editables (correo, teléfono, sitio web ya existen en el modelo
   `Empresa` pero no en la UI).
 - Nuevas funcionalidades fuera del plan original.
@@ -2399,3 +2497,91 @@ después:
   solo se compra en alterna, se vende en base — descartado a propósito por el usuario), migrar
   artículos ya existentes a variantes de un padre común, o propagar descuentos/promociones del
   padre a sus variantes automáticamente.
+
+## Depuración de timbrado en producción: 3 bloqueos encadenados (2026-08-17, sesión posterior)
+
+El usuario reportó que no podía facturar "Coca Cola 600ml" desde Factura Directa (la tarjeta del
+producto no se dejaba seleccionar). Se investigó y resolvió en vivo contra producción, en tres
+capas sucesivas — cada fix destapaba el siguiente bloqueo:
+
+1. **Artículo no seleccionable ("Sin clave SAT")**: no era un bug — el gate en
+   [`FacturaDirectaPage.jsx`](frontend/src/modules/facturacion/pages/FacturaDirectaPage.jsx)
+   (`facturable = Boolean(a.claveProdServSat && a.unidadBase?.claveUnidadSat)`) exige **dos**
+   claves SAT, en dos pantallas distintas: `claveProdServSat` se carga en el propio artículo
+   (Catálogo → Artículos → Editar), pero `claveUnidadSat` vive en la **Unidad** que el artículo usa
+   como unidad base (Catálogo → Configuración → Unidades) — el usuario solo había cargado la
+   primera. Coca Cola 600ml ya tenía su `claveProdServSat` correctamente guardado; su unidad
+   "Pieza" tenía `claveUnidadSat` vacío. Se completó en vivo (`H87 — Pieza`), confirmado
+   persistente tras recarga completa, y el artículo pasó a mostrarse facturable de inmediato. Sigue
+   pendiente para 7Up/Fanta/Sprite/Paquete Atún, que comparten el mismo bloqueo.
+2. **"El timbrado no está configurado en el servidor."**: `facturama.service.js` lanza este error
+   si faltan `FACTURAMA_BASE_URL`/`FACTURAMA_USER`/`FACTURAMA_PASSWORD` como variables de entorno.
+   Ya estaban en `backend/.env` local desde que se construyó la Fase F, pero nunca se habían
+   agregado al servicio de backend en Render — a diferencia de `RESEND_API_KEY`, que sí se
+   replicó ahí cuando se implementó el envío de correos. El usuario las agregó al dashboard de
+   Render con los mismos valores del sandbox y redepliegó.
+3. **"La sucursal no tiene código postal de expedición configurado."**: el campo existe
+   (`Sucursal.codigoPostal`, ya soportado en el backend) pero el usuario lo buscó en
+   Configuración → Sucursales (`SucursalesPage.jsx`), que **no** tiene ese campo — vive en
+   Configuración → Datos fiscales (`ConfiguracionFiscalPage.jsx`, `/administracion/fiscal`),
+   tabla "Sucursales — override de facturación", columna "C.P. expedición". Detalle de diseño
+   encontrado de paso: a diferencia de RFC/razón social/régimen fiscal (que si la sucursal los deja
+   vacíos, `resolverEmisor()` los hereda de `Empresa`), el código postal **no tiene ese respaldo**
+   porque `Empresa` no tiene ningún campo de código postal propio en el schema — cada sucursal
+   necesita el suyo sí o sí, a propósito (cada sucursal es una ubicación física distinta con su
+   propio CP real ante el SAT). El texto de ayuda de esa tarjeta ("dejá los campos vacíos para
+   heredar de la empresa") es impreciso justo para este campo. Se cargó un valor de prueba
+   (`06600`) en Matriz para confirmar que el guardado persiste — **queda pendiente que el usuario
+   lo reemplace por el CP real** de esa sucursal (y cargue el de cualquier otra desde la que vaya a
+   facturar, ej. Sucursal Norte).
+
+Con los tres bloqueos resueltos, se armó en vivo un concepto de Factura Directa completo para
+Coca Cola 600ml (`COCA600 · 1 · H87 · $20.00`, IVA $3.20, total $23.20) sin llegar a presionar
+"Crear factura" (para no generar un timbrado real, aunque sea sandbox, sin autorización expresa).
+El usuario continuó solo desde ahí y confirmó que el flujo completo de timbrado ya quedó
+funcionando en producción.
+
+## Rate limiting por IP en /login y /registro, y segunda ronda del blindaje Decimal (2026-08-18, sesión posterior)
+
+Dos endurecimientos de seguridad/consistencia sobre hallazgos que habían quedado fuera de alcance
+de la tercera ronda de QA (condiciones de carrera facturar/cancelar-devolver, ya corregidas y
+desplegadas por separado), spawneados como tareas aparte y retomados en esta sesión.
+
+- **Rate limiting por IP en `/core/login` y `/core/registro`**: eran, junto con el portal público
+  de autofacturación, los únicos dos endpoints sin autenticar de todo el backend, y a diferencia
+  del portal público no tenían ningún límite por IP — solo el bloqueo por cuenta tras 5 intentos
+  fallidos (`bloqueadoHasta` en `auth.service.js`), que no protege contra fuerza bruta distribuida
+  entre muchas cuentas desde una misma IP ni contra spam de `/registro`. Se agregó `limitarAuth`
+  (20 intentos/10min por IP, `express-rate-limit`, mismo patrón que `limitarPortalPublico` en
+  `facturacion.routes.js`) a ambas rutas en
+  [`auth.routes.js`](backend/src/modules/core/auth/auth.routes.js). Verificado en vivo contra
+  producción con 22 requests reales: los primeros devuelven `400`/headers `RateLimit-*`
+  decrementando, y desde la request #20 en adelante `429` con el mensaje esperado — confirmado
+  que ambas rutas comparten el mismo balde por IP (misma instancia de middleware). Pusheado a
+  `main` (`734f7cc`) con permiso explícito del usuario.
+- **Segunda ronda del blindaje Decimal — catálogo**: la primera ronda (ver "Bug de precisión
+  Decimal en Caja" y su extensión a Ventas/Compras/Cotizaciones/Devoluciones/Caja) había dejado
+  pendiente una categoría de menor urgencia — campos Decimal de dinero en catálogo que recibían
+  un `number` crudo directo del body (`z.coerce.number()`, sin pasar por `redondear()`), mismo
+  riesgo técnico de ruido de punto flotante al convertirse a Decimal en Prisma. Se aplicó el
+  helper `aDecimalString()` (`backend/src/shared/decimal.js`) en
+  [`articulos.service.js`](backend/src/modules/catalogo/articulos/articulos.service.js)
+  (`costo`/`precio` en crear/actualizar/`setPrecios`),
+  [`impuestos.service.js`](backend/src/modules/catalogo/impuestos/impuestos.service.js) (`tasa`),
+  [`descuentos.service.js`](backend/src/modules/catalogo/descuentos/descuentos.service.js)
+  (`valor`) y en la importación CSV de Artículos en
+  [`herramientas.service.js`](backend/src/modules/herramientas/herramientas.service.js)
+  (`costo`/`precio`). Deliberadamente sin tocar — mismo criterio que la primera ronda — los campos
+  de cantidad (`stockMinimo`/`stockMaximo`), donde forzar 2 decimales arriesgaría truncar
+  precisión legítima. Verificado en vivo contra producción creando un Impuesto/Artículo/Descuento
+  de prueba con valores explícitamente ruidosos (`0.29000000000000004`, `19.999999999999996`,
+  `10.000000000000002`) — los tres volvieron limpios (`"0.29"`, `"20"`, `"10"`). Pusheado a `main`
+  (`0eb9501`) con permiso explícito.
+- **Auditoría en vivo del import/export CSV de Herramientas** (a pedido del usuario, sin cambios
+  de código): se probó contra producción el import de Artículos (incluida la ruta CSV del fix de
+  Decimal recién hecho, no solo la API JSON — confirmado limpio también ahí), Clientes (round-trip
+  de los 3 campos fiscales + lista de precio, con advertencia correcta si la lista no existe) y
+  Proveedores, más los rechazos esperados (fila sin nombre, sin unidad base, tipo `KIT`, correo
+  inválido). La protección contra inyección de fórmulas CSV y el manejo de BOM UTF-8 ya estaban
+  cubiertos por la primera ronda de QA de Herramientas (2026-08-03) y no mostraron regresión.
+  **Sin hallazgos nuevos.**
