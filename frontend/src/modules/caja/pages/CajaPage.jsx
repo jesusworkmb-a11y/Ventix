@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Plus } from 'lucide-react';
 import {
   listarCajas,
   crearCaja,
@@ -14,6 +15,7 @@ import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
 import Select from '../../../shared/ui/Select';
 import Badge from '../../../shared/ui/Badge';
+import Modal from '../../../shared/ui/Modal';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
 import { formatoMoneda } from '../../../shared/format';
 
@@ -33,6 +35,7 @@ function CajaPage() {
   const [saldoReal, setSaldoReal] = useState('');
 
   const [sucursales, setSucursales] = useState([]);
+  const [modalCajaAbierto, setModalCajaAbierto] = useState(false);
   const [nuevaCajaNombre, setNuevaCajaNombre] = useState('');
   const [nuevaCajaSucursalId, setNuevaCajaSucursalId] = useState('');
   const [errorNuevaCaja, setErrorNuevaCaja] = useState('');
@@ -61,6 +64,7 @@ function CajaPage() {
     try {
       const caja = await crearCaja({ sucursalId: nuevaCajaSucursalId, nombre: nuevaCajaNombre });
       setNuevaCajaNombre('');
+      setModalCajaAbierto(false);
       await cargarCajas();
       setCajaId(caja.id);
     } catch (err) {
@@ -145,29 +149,35 @@ function CajaPage() {
         </p>
       )}
 
-      {cajas.length > 0 && (
-        <Card>
-          <Select id="cajaSel" label="Caja" value={cajaId} onChange={(e) => setCajaId(e.target.value)} className="max-w-xs">
-            {cajas.map((c) => (
-              <option key={c.id} value={c.id}>{c.nombre}</option>
-            ))}
-          </Select>
-        </Card>
-      )}
+      <Card>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          {cajas.length > 0 ? (
+            <Select id="cajaSel" label="Caja" value={cajaId} onChange={(e) => setCajaId(e.target.value)} className="max-w-xs">
+              {cajas.map((c) => (
+                <option key={c.id} value={c.id}>{c.nombre}</option>
+              ))}
+            </Select>
+          ) : (
+            <p className="text-sm text-gray-500">No hay cajas registradas todavía.</p>
+          )}
+          <Button type="button" variant="secondary" size="sm" onClick={() => setModalCajaAbierto(true)}>
+            <Plus size={16} /> Nueva caja
+          </Button>
+        </div>
+      </Card>
 
-      <Card title="Nueva caja">
+      <Modal abierto={modalCajaAbierto} onCerrar={() => setModalCajaAbierto(false)} titulo="Nueva caja" ancho="max-w-sm">
         {sucursales.length === 0 ? (
           <p className="text-sm text-gray-500">
             Primero necesitás al menos una sucursal (Configuración → Sucursales).
           </p>
         ) : (
-          <form onSubmit={handleCrearCaja} className="flex flex-wrap items-end gap-3">
+          <form onSubmit={handleCrearCaja} className="flex flex-col gap-4">
             <Select
               id="nuevaCajaSucursal"
               label="Sucursal"
               value={nuevaCajaSucursalId}
               onChange={(e) => setNuevaCajaSucursalId(e.target.value)}
-              className="w-48"
             >
               {sucursales.map((s) => (
                 <option key={s.id} value={s.id}>{s.nombre}</option>
@@ -178,16 +188,15 @@ function CajaPage() {
               label="Nombre"
               value={nuevaCajaNombre}
               onChange={(e) => setNuevaCajaNombre(e.target.value)}
-              className="w-48"
               required
             />
             {errorNuevaCaja && (
-              <p className="w-full rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorNuevaCaja}</p>
+              <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorNuevaCaja}</p>
             )}
-            <Button type="submit" variant="secondary">Crear caja</Button>
+            <Button type="submit">Crear caja</Button>
           </form>
         )}
-      </Card>
+      </Modal>
 
       {cajaId && !sesion && (
         <Card title="Abrir sesión">
