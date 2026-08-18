@@ -2585,3 +2585,27 @@ desplegadas por separado), spawneados como tareas aparte y retomados en esta ses
   inválido). La protección contra inyección de fórmulas CSV y el manejo de BOM UTF-8 ya estaban
   cubiertos por la primera ronda de QA de Herramientas (2026-08-03) y no mostraron regresión.
   **Sin hallazgos nuevos.**
+
+## PDF de venta en Ventas recientes (2026-08-18, sesión posterior)
+
+Funcionalidad nueva a pedido del usuario: un botón "PDF" en Ventas recientes que genera el
+comprobante completo de una venta con el motor de 6 plantillas ya construido para
+Cotización/Compra/Orden de compra/Factura CFDI (colores/branding de empresa incluidos) — separado
+del ticket térmico (`TicketVenta.jsx`/`ticketPdf.js`, 80mm), que sigue existiendo igual para la
+caja física o como adjunto de correo. Mismo patrón exacto que el botón "PDF" ya existente en
+Compras/Cotizaciones.
+
+- **Backend:** el `select` de artículo en `ventas.service.js#obtener` ahora incluye `imagenUrl` y
+  `unidadBase` (antes solo traía `nombre`/`sku`) — los necesita la plantilla "Visual con
+  productos" y para mostrar la unidad de cada línea.
+- **Frontend:** nuevo
+  [`ventaPdf.js`](frontend/src/modules/ventas/pdf/ventaPdf.js), mismo criterio que
+  [`compraPdf.js`](frontend/src/modules/compras/pdf/compraPdf.js): `Venta` ya persiste
+  `subtotal`/`impuestos`/`total`, se usan tal cual sin recalcular (a diferencia de `Cotización`,
+  que si recalcula desde las líneas). Botón "PDF" agregado en
+  [`VentasHistorialPage.jsx`](frontend/src/modules/ventas/pages/VentasHistorialPage.jsx), junto a
+  "Imprimir"/"Enviar", con `import()` dinámico (jsPDF solo se descarga cuando se pide el PDF).
+- Verificado en vivo contra producción tras el deploy: `GET /ventas/ventas/:id` ya devuelve
+  `imagenUrl`/`unidadBase`, y se generó el PDF real de una venta (con y sin descuento de línea) —
+  ambos casos con encabezado `%PDF-1.3` válido, sin errores. Pusheado a `main` (`f299dde`) con
+  permiso explícito del usuario.
