@@ -7,6 +7,7 @@ const { ROL_PERMISOS_DEFAULT } = require('../../../shared/permisos.catalog');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const { buildSecuenciasIniciales } = require('../../../shared/services/secuencia.service');
 const { resolverPermisosDeUsuario } = require('../../../shared/services/permisos.service');
+const { formatearFechaCorta } = require('../../../shared/formatearFecha');
 
 const ROLES_BASE = ['Administrador', 'Supervisor', 'Cajero', 'Almacenista'];
 const MAX_INTENTOS_FALLIDOS = 5;
@@ -157,6 +158,15 @@ async function login({ correo, password }) {
   }
   if (usuarioEmpresa.empresa.estado !== 'ACTIVA') {
     throw new AppError(403, 'Esta empresa está suspendida. Contacta al administrador de la plataforma.');
+  }
+  // Vigencia separada de `estado` a propósito: "venció la suscripción" y "lo suspendió el
+  // superadmin a mano" son motivos distintos, cada uno con su propio mensaje para el cliente.
+  const { vigenciaHasta } = usuarioEmpresa.empresa;
+  if (vigenciaHasta && vigenciaHasta < new Date()) {
+    throw new AppError(
+      403,
+      `La vigencia de tu suscripción venció el ${formatearFechaCorta(vigenciaHasta)}. Contacta al administrador de la plataforma para renovarla.`,
+    );
   }
 
   const token = generarToken({

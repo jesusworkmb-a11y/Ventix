@@ -10,6 +10,7 @@ async function listarEmpresas() {
       razonSocial: true,
       correo: true,
       estado: true,
+      vigenciaHasta: true,
       creadoEn: true,
       _count: { select: { usuariosEmpresa: true, sucursales: true } },
     },
@@ -37,4 +38,24 @@ async function cambiarEstado({ id, estado, usuarioEjecutorId }) {
   });
 }
 
-module.exports = { listarEmpresas, cambiarEstado };
+async function actualizarVigencia({ id, vigenciaHasta, usuarioEjecutorId }) {
+  const empresa = await prisma.empresa.findUnique({ where: { id } });
+  if (!empresa) throw new AppError(404, 'Empresa no encontrada.');
+
+  return prisma.$transaction(async (tx) => {
+    const actualizada = await tx.empresa.update({ where: { id }, data: { vigenciaHasta } });
+    await registrarAuditoria(tx, {
+      empresaId: id,
+      usuarioEjecutorId,
+      accion: 'ACTUALIZAR',
+      entidad: 'Empresa',
+      entidadId: id,
+      motivo: 'Cambio de vigencia por el superadmin de la plataforma.',
+      valoresAntes: { vigenciaHasta: empresa.vigenciaHasta ? empresa.vigenciaHasta.toISOString() : null },
+      valoresDespues: { vigenciaHasta: actualizada.vigenciaHasta ? actualizada.vigenciaHasta.toISOString() : null },
+    });
+    return actualizada;
+  });
+}
+
+module.exports = { listarEmpresas, cambiarEstado, actualizarVigencia };

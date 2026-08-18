@@ -69,3 +69,6 @@ export function listarEmpresasSuperadmin() {
 export function cambiarEstadoEmpresaSuperadmin(id, estado) {
   return api.patch(`/core/superadmin/empresas/${id}/estado`, { estado }).then((res) => res.data);
 }
+export function actualizarVigenciaEmpresaSuperadmin(id, vigenciaHasta) {
+  return api.patch(`/core/superadmin/empresas/${id}/vigencia`, { vigenciaHasta }).then((res) => res.data);
+}

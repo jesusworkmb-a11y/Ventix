@@ -9,5 +9,6 @@ router.use(auth, requiereSuperAdmin);
 
 router.get('/empresas', asyncHandler(controller.listarEmpresas));
 router.patch('/empresas/:id/estado', asyncHandler(controller.cambiarEstadoEmpresa));
+router.patch('/empresas/:id/vigencia', asyncHandler(controller.actualizarVigenciaEmpresa));
 
 module.exports = router;

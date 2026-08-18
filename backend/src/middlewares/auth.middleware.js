@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const prisma = require('../config/db');
 const AppError = require('../shared/errors/AppError');
+const { formatearFechaCorta } = require('../shared/formatearFecha');
 
 // Verifica el Bearer token y deja identidad en req.auth. Todo endpoint de módulos futuros
 // debe filtrar sus queries con req.auth.empresaId — nunca confiar en un empresaId del body/params.
@@ -40,7 +41,7 @@ async function auth(req, res, next) {
     // sucursales, por ejemplo. Se resuelve en vivo en cada request, igual que el estado.
     const usuarioEmpresa = await prisma.usuarioEmpresa.findFirst({
       where: { usuarioId: payload.sub, empresaId: payload.empresaId, activo: true },
-      select: { rolId: true, empresa: { select: { estado: true } } },
+      select: { rolId: true, empresa: { select: { estado: true, vigenciaHasta: true } } },
     });
     if (!usuarioEmpresa) {
       return next(new AppError(401, 'Tu sesión ya no es válida. Inicia sesión de nuevo.'));
@@ -49,6 +50,13 @@ async function auth(req, res, next) {
     // cortarse de inmediato, no seguir sirviendo hasta que el JWT expire solo.
     if (usuarioEmpresa.empresa.estado !== 'ACTIVA') {
       return next(new AppError(403, 'Esta empresa está suspendida. Contacta al administrador de la plataforma.'));
+    }
+    const { vigenciaHasta } = usuarioEmpresa.empresa;
+    if (vigenciaHasta && vigenciaHasta < new Date()) {
+      return next(new AppError(
+        403,
+        `La vigencia de tu suscripción venció el ${formatearFechaCorta(vigenciaHasta)}. Contacta al administrador de la plataforma para renovarla.`,
+      ));
     }
 
     req.auth = { usuarioId: payload.sub, empresaId: payload.empresaId, rolId: usuarioEmpresa.rolId, esSuperAdmin: false };

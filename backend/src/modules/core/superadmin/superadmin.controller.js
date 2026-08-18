@@ -1,6 +1,6 @@
 const AppError = require('../../../shared/errors/AppError');
 const service = require('./superadmin.service');
-const { cambiarEstadoSchema } = require('./superadmin.validators');
+const { cambiarEstadoSchema, actualizarVigenciaSchema } = require('./superadmin.validators');
 
 async function listarEmpresas(req, res) {
   const empresas = await service.listarEmpresas();
@@ -19,4 +19,16 @@ async function cambiarEstadoEmpresa(req, res) {
   res.json(empresa);
 }
 
-module.exports = { listarEmpresas, cambiarEstadoEmpresa };
+async function actualizarVigenciaEmpresa(req, res) {
+  const parsed = actualizarVigenciaSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'Fecha de vigencia inválida.');
+
+  const empresa = await service.actualizarVigencia({
+    id: req.params.id,
+    vigenciaHasta: parsed.data.vigenciaHasta,
+    usuarioEjecutorId: req.auth.usuarioId,
+  });
+  res.json(empresa);
+}
+
+module.exports = { listarEmpresas, cambiarEstadoEmpresa, actualizarVigenciaEmpresa };

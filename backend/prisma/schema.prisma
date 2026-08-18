@@ -63,6 +63,11 @@ model Empresa {
   // Slug de la URL pública del portal de autofacturación (/facturar/:slug). null = portal apagado.
   slugPublico            String?       @unique @map("slug_publico")
   estado                 EstadoGeneral @default(ACTIVA)
+  // Vigencia de suscripción (gestión del superadmin de plataforma, ver core/superadmin):
+  // null = sin vencimiento definido. Se valida al vuelo en login/auth.middleware, separado de
+  // `estado` a propósito -- "venció la vigencia" y "lo suspendió el superadmin a mano" son dos
+  // motivos distintos y no deben pisarse entre sí (ver discusión en el chat, 2026-08-18).
+  vigenciaHasta          DateTime?     @map("vigencia_hasta")
   // Branding de documentos PDF (§Plantillas de documentos): colores libres en hex, sin
   // validar contra una paleta fija — cada plantilla ya trae sus propios defaults si la
   // empresa no personalizó nada (ver frontend/src/shared/pdf/plantillas).
