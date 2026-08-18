@@ -308,29 +308,16 @@ async function persistirFactura(tx, {
 }
 
 // Fase F: timbra ante el PAC una factura ya persistida localmente (estado PENDIENTE o ERROR de
-// un intento previo). Corre FUERA de cualquier transacción de Prisma a propósito -- es una
-// llamada de red al PAC, no debe mantener conexiones/locks de la DB abiertos mientras espera.
-// Si el PAC falla, la Factura local queda en estado ERROR (no se revierte su creación: la venta
-// ya está reclamada y el documento existe, solo falta timbrarlo) y se devuelve igual el registro
-// con un campo `errorTimbrado` transitorio (no persistido) para que el caller lo muestre.
+// un intento previo, o TIMBRADA sin XML -- ver más abajo). Corre FUERA de cualquier transacción
+// de Prisma a propósito -- es una llamada de red al PAC, no debe mantener conexiones/locks de la
+// DB abiertos mientras espera. Si facturama.timbrar() falla, la Factura local queda en estado
+// ERROR (no se revierte su creación: la venta ya está reclamada y el documento existe, solo
+// falta timbrarlo) y se devuelve igual el registro con un campo `errorTimbrado` transitorio (no
+// persistido) para que el caller lo muestre.
 async function intentarTimbrar(factura) {
+  let timbre;
   try {
-    const timbre = await facturama.timbrar(cfdiDesdeFactura(factura));
-    const xmlTimbrado = await facturama.obtenerXmlBase64(timbre.pacId);
-    return prisma.factura.update({
-      where: { id: factura.id },
-      data: {
-        estado: 'TIMBRADA',
-        pacId: timbre.pacId,
-        uuid: timbre.uuid,
-        fechaTimbrado: new Date(timbre.fechaTimbrado),
-        selloSAT: timbre.selloSAT,
-        noCertificadoSAT: timbre.noCertificadoSAT,
-        cadenaOriginal: timbre.cadenaOriginal,
-        xmlTimbrado,
-      },
-      include: { detalles: { include: { impuestos: true } } },
-    });
+    timbre = await facturama.timbrar(cfdiDesdeFactura(factura));
   } catch (err) {
     const actualizada = await prisma.factura.update({
       where: { id: factura.id },
@@ -339,17 +326,65 @@ async function intentarTimbrar(factura) {
     });
     return { ...actualizada, errorTimbrado: err.publicMessage || 'No se pudo timbrar la factura.' };
   }
+
+  // A partir de acá el CFDI YA EXISTE legalmente en el SAT (tiene UUID) -- se persiste TIMBRADA
+  // de inmediato, antes de intentar bajar el XML. Bug real encontrado y corregido en la tercera
+  // ronda de QA (2026-08-18): la versión anterior hacía las dos llamadas dentro del mismo
+  // try/catch, así que si facturama.timbrar() tenía éxito pero obtenerXmlBase64() fallaba
+  // después (ej. timeout de red), el catch marcaba la factura como ERROR sin guardar el
+  // pacId/uuid ya obtenidos -- un "reintentar" desde ese estado volvía a llamar
+  // facturama.timbrar(), generando un SEGUNDO CFDI duplicado ante el SAT para la misma venta.
+  // Bajar el XML ahora es best-effort y reintentable por separado (ver `descargarXml` más abajo)
+  // sin volver a timbrar nunca.
+  let xmlTimbrado = null;
+  try {
+    xmlTimbrado = await facturama.obtenerXmlBase64(timbre.pacId);
+  } catch {
+    // No-op a propósito: el CFDI ya es válido aunque no se haya podido bajar el XML todavía.
+  }
+
+  return prisma.factura.update({
+    where: { id: factura.id },
+    data: {
+      estado: 'TIMBRADA',
+      pacId: timbre.pacId,
+      uuid: timbre.uuid,
+      fechaTimbrado: new Date(timbre.fechaTimbrado),
+      selloSAT: timbre.selloSAT,
+      noCertificadoSAT: timbre.noCertificadoSAT,
+      cadenaOriginal: timbre.cadenaOriginal,
+      xmlTimbrado,
+    },
+    include: { detalles: { include: { impuestos: true } } },
+  });
 }
 
-// Reintento manual (factura quedó en ERROR, o PENDIENTE si el timbrado automático nunca corrió).
+// Reintenta SOLO bajar el XML de una factura que ya quedó TIMBRADA en el PAC (pacId existe) pero
+// sin xmlTimbrado persistido -- nunca vuelve a llamar facturama.timbrar(), justamente para no
+// generar un CFDI duplicado (ver comentario en intentarTimbrar).
+async function reintentarXml(factura) {
+  const xmlTimbrado = await facturama.obtenerXmlBase64(factura.pacId);
+  return prisma.factura.update({
+    where: { id: factura.id },
+    data: { xmlTimbrado },
+    include: { detalles: { include: { impuestos: true } } },
+  });
+}
+
+// Reintento manual (factura quedó en ERROR, o PENDIENTE si el timbrado automático nunca corrió;
+// o TIMBRADA sin XML por el bug descrito en intentarTimbrar, para facturas que quedaron en ese
+// estado antes del fix).
 async function timbrar({ empresaId, facturaId }) {
   const factura = await prisma.factura.findFirst({
     where: { id: facturaId, empresaId },
     include: { detalles: { include: { impuestos: true } } },
   });
   if (!factura) throw new AppError(404, 'Factura no encontrada.');
-  if (factura.estado === 'TIMBRADA') throw new AppError(400, 'Esta factura ya está timbrada.');
   if (factura.estado === 'CANCELADA') throw new AppError(400, 'Esta factura está cancelada.');
+  if (factura.estado === 'TIMBRADA') {
+    if (factura.xmlTimbrado) throw new AppError(400, 'Esta factura ya está timbrada.');
+    return reintentarXml(factura);
+  }
   return intentarTimbrar(factura);
 }
 
@@ -399,8 +434,18 @@ async function crearDesdeVenta({ empresaId, usuarioId, tipo, ventaId, receptor }
   const id = crypto.randomUUID();
 
   const factura = await prisma.$transaction(async (tx) => {
-    const reclamada = await tx.venta.updateMany({ where: { id: ventaId, facturaId: null }, data: { facturaId: id } });
-    if (reclamada.count === 0) throw new AppError(409, 'Esta venta ya fue facturada.');
+    // El candado reclama facturaId Y estado a la vez -- reclamar solo facturaId dejaba una
+    // ventana real: si un cancelar() concurrente pasaba su propio candado (que solo reclama
+    // estado) mientras esta transacción ya estaba en curso, la venta terminaba CANCELADA con
+    // stock revertido pero facturaId apuntando a una Factura recién TIMBRADA (CFDI legal en el
+    // SAT para una venta que el POS dice que nunca ocurrió). Verificado en vivo disparando
+    // crearDesdeVenta y ventas.cancelar en paralelo sobre la misma venta (2026-08-18, tercera
+    // ronda de QA): ambas tuvieron éxito antes de este fix.
+    const reclamada = await tx.venta.updateMany({
+      where: { id: ventaId, facturaId: null, estado: 'CONFIRMADA' },
+      data: { facturaId: id },
+    });
+    if (reclamada.count === 0) throw new AppError(409, 'Esta venta ya fue facturada o cancelada.');
 
     return persistirFactura(tx, {
       id, empresaId, sucursalId: venta.sucursalId, clienteId: venta.clienteId, tipo, usuarioId,
@@ -434,12 +479,14 @@ async function crearAgrupada({ empresaId, sucursalId, usuarioId, tipo, ventaIds,
   const id = crypto.randomUUID();
 
   const factura = await prisma.$transaction(async (tx) => {
+    // Mismo fix que crearDesdeVenta: reclamar facturaId Y estado a la vez, para no dejar la
+    // misma ventana de carrera con un cancelar() concurrente sobre alguna de las ventas.
     const reclamadas = await tx.venta.updateMany({
-      where: { id: { in: ventaIds }, facturaId: null },
+      where: { id: { in: ventaIds }, facturaId: null, estado: 'CONFIRMADA' },
       data: { facturaId: id },
     });
     if (reclamadas.count !== ventaIds.length) {
-      throw new AppError(409, 'Alguna de las ventas seleccionadas ya fue facturada por otra solicitud simultánea.');
+      throw new AppError(409, 'Alguna de las ventas seleccionadas ya fue facturada o cancelada por otra solicitud simultánea.');
     }
 
     return persistirFactura(tx, {

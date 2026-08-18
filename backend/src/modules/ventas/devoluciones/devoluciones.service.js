@@ -45,6 +45,13 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
   if (venta.estado !== 'CONFIRMADA') {
     throw new AppError(400, 'Solo se pueden procesar devoluciones sobre ventas confirmadas.');
   }
+  // Mismo gap que en ventas.cancelar (verificado en vivo, tercera ronda de QA 2026-08-18): sin
+  // este check, una devolución quedaba registrada (reembolso + reversión de stock) sobre una
+  // venta cuya Factura seguía TIMBRADA ante el SAT con el monto/cantidad original, sin ningún
+  // reflejo del reembolso en el CFDI.
+  if (venta.facturaId) {
+    throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de procesar una devolución.');
+  }
 
   const autorizador = await prisma.usuarioEmpresa.findUnique({
     where: { usuarioId_empresaId: { usuarioId: autorizadoPorId, empresaId } },
@@ -86,6 +93,16 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
   }
 
   return prisma.$transaction(async (tx) => {
+    // El check de venta.facturaId de arriba no es atómico con esta transacción -- sin releerlo
+    // con FOR UPDATE acá, un crearDesdeVenta() concurrente (que sí reclama facturaId atómicamente,
+    // ver facturas.service.js) podía facturar la venta mientras esta devolución seguía en curso,
+    // dejando un reembolso/reversión de stock registrado sobre una venta ya facturada. Mismo
+    // patrón FOR UPDATE que ya se usa más abajo para ventaDetalle.
+    const [ventaLock] = await tx.$queryRaw`SELECT factura_id AS "facturaId" FROM ventas WHERE id = ${ventaId} FOR UPDATE`;
+    if (ventaLock.facturaId) {
+      throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de procesar una devolución.');
+    }
+
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId: venta.sucursalId, tipoDocumento: 'DEV' });
 
     const devolucion = await tx.devolucion.create({

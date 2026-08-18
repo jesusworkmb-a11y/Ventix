@@ -393,6 +393,13 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
   const venta = await prisma.venta.findFirst({ where: { id: ventaId, empresaId }, include: { detalles: true } });
   if (!venta) throw new AppError(404, 'Venta no encontrada.');
   if (venta.estado !== 'CONFIRMADA') throw new AppError(400, 'Solo se pueden cancelar ventas confirmadas.');
+  // Sin este check, la venta quedaba CANCELADA con stock revertido mientras su Factura seguía
+  // TIMBRADA (CFDI legal vigente ante el SAT) apuntando a una venta que el POS dice que nunca
+  // ocurrió — verificado en vivo (2026-08-18, tercera ronda de QA). facturas.cancelar() ya libera
+  // Venta.facturaId al cancelar el CFDI, así que ese es el orden correcto a seguir.
+  if (venta.facturaId) {
+    throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de cancelar la venta.');
+  }
 
   return prisma.$transaction(async (tx) => {
     // El check de arriba no es atómico con el resto: dos cancelar() casi simultáneos sobre la
@@ -401,12 +408,18 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
     // éxito y el stock volvió a 115 en vez de 100 (la reversión se aplicó 4 veces). Mismo patrón
     // ya usado en compras.cancelar/transferencias.recibir/conteos.cambiarEstado: se reclama la
     // venta con un UPDATE...WHERE estado='CONFIRMADA' antes de aplicar los movimientos.
+    // También exige facturaId: null en el mismo WHERE -- el check de arriba (líneas 396-402) no
+    // es atómico con esta transacción, así que sin esto un crearDesdeVenta() concurrente podía
+    // reclamar facturaId (su propio candado ya exige estado='CONFIRMADA' AND facturaId IS NULL,
+    // ver facturas.service.js) mientras esta transacción seguía en curso, y como este UPDATE no
+    // tocaba/verificaba facturaId, igual cancelaba la venta -- ambas operaciones "ganaban" a la
+    // vez. Verificado en vivo disparando facturar+cancelar en paralelo antes de este fix.
     const reclamada = await tx.venta.updateMany({
-      where: { id: ventaId, estado: 'CONFIRMADA' },
+      where: { id: ventaId, estado: 'CONFIRMADA', facturaId: null },
       data: { estado: 'CANCELADA' },
     });
     if (reclamada.count === 0) {
-      throw new AppError(400, 'Solo se pueden cancelar ventas confirmadas.');
+      throw new AppError(400, 'Solo se pueden cancelar ventas confirmadas y no facturadas.');
     }
 
     for (const detalle of venta.detalles) {

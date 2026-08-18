@@ -381,12 +381,16 @@ function VentasHistorialPage() {
                           </button>
                         )
                       )}
-                      <button type="button" onClick={() => handleCancelar(v.id)} className="text-sm text-danger-600 hover:underline">
-                        Cancelar
-                      </button>
-                      <button type="button" onClick={() => abrirDevolucion(v)} className="text-sm text-primary-600 hover:underline">
-                        Devolver
-                      </button>
+                      {!v.facturaId && (
+                        <>
+                          <button type="button" onClick={() => handleCancelar(v.id)} className="text-sm text-danger-600 hover:underline">
+                            Cancelar
+                          </button>
+                          <button type="button" onClick={() => abrirDevolucion(v)} className="text-sm text-primary-600 hover:underline">
+                            Devolver
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
                 </div>

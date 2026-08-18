@@ -223,6 +223,16 @@ async function crear({
     // estado de la orden. Todo dentro de la misma transacción para que orden y compra queden
     // consistentes o fallen juntas.
     if (ordenCompra) {
+      // Bloquea la fila de la orden ANTES de leer/recalcular su estado -- los increments de
+      // cantidadRecibidaBase de abajo son atómicos a nivel SQL (no pierden datos bajo
+      // concurrencia), pero sin este lock dos recepciones simultáneas contra la MISMA orden
+      // podían cada una leer los totales antes de que la otra confirmara su incremento y
+      // terminar pisando el `estado` de la orden con un valor desactualizado (ej. quedar en
+      // PARCIAL cuando en realidad, sumando ambas recepciones, ya estaba RECIBIDA). Mismo patrón
+      // FOR UPDATE ya usado en devoluciones/sesiones_caja para serializar exactamente este tipo
+      // de lectura-antes-de-recalcular.
+      await tx.$queryRaw`SELECT id FROM ordenes_compra WHERE id = ${ordenCompra.id} FOR UPDATE`;
+
       const detallePorArticulo = new Map(ordenCompra.detalles.map((d) => [d.articuloId, d]));
       for (const linea of lineas) {
         const detalleOrden = detallePorArticulo.get(linea.articuloId);
@@ -323,23 +333,31 @@ async function cancelar({ empresaId, usuarioId, compraId }) {
     // línea de la orden y recalcula el estado — salvo que la orden ya esté CERRADA a mano (una
     // decisión manual de que "no va a llegar más" no debe reabrirse solo porque se canceló una
     // recepción vieja).
-    if (ordenCompra && ordenCompra.estado !== 'CERRADA') {
-      const detallePorArticulo = new Map(ordenCompra.detalles.map((d) => [d.articuloId, d]));
-      for (const reversion of reversiones) {
-        const detalleOrden = detallePorArticulo.get(reversion.articuloId);
-        if (!detalleOrden) continue;
-        await tx.ordenCompraDetalle.update({
-          where: { id: detalleOrden.id },
-          data: { cantidadRecibidaBase: { decrement: reversion.cantidadBase } },
-        });
-      }
+    if (ordenCompra) {
+      // Mismo lock que en crear() -- serializa contra cualquier otra recepción/cancelación
+      // concurrente sobre esta orden antes de leer su estado real (no el snapshot de antes de la
+      // transacción) y recalcular. Se relee el estado fresco acá porque el snapshot de arriba
+      // (`ordenCompra`, leído antes de la transacción) puede haber quedado desactualizado.
+      const [ordenActual] = await tx.$queryRaw`SELECT estado FROM ordenes_compra WHERE id = ${ordenCompra.id} FOR UPDATE`;
 
-      const detallesActualizados = await tx.ordenCompraDetalle.findMany({ where: { ordenCompraId: ordenCompra.id } });
-      const completa = detallesActualizados.every((d) => Number(d.cantidadRecibidaBase) >= Number(d.cantidadBase));
-      const algoRecibido = detallesActualizados.some((d) => Number(d.cantidadRecibidaBase) > 0);
-      const nuevoEstado = completa ? 'RECIBIDA' : (algoRecibido ? 'PARCIAL' : 'ENVIADA');
-      if (nuevoEstado !== ordenCompra.estado) {
-        await tx.ordenCompra.update({ where: { id: ordenCompra.id }, data: { estado: nuevoEstado } });
+      if (ordenActual.estado !== 'CERRADA') {
+        const detallePorArticulo = new Map(ordenCompra.detalles.map((d) => [d.articuloId, d]));
+        for (const reversion of reversiones) {
+          const detalleOrden = detallePorArticulo.get(reversion.articuloId);
+          if (!detalleOrden) continue;
+          await tx.ordenCompraDetalle.update({
+            where: { id: detalleOrden.id },
+            data: { cantidadRecibidaBase: { decrement: reversion.cantidadBase } },
+          });
+        }
+
+        const detallesActualizados = await tx.ordenCompraDetalle.findMany({ where: { ordenCompraId: ordenCompra.id } });
+        const completa = detallesActualizados.every((d) => Number(d.cantidadRecibidaBase) >= Number(d.cantidadBase));
+        const algoRecibido = detallesActualizados.some((d) => Number(d.cantidadRecibidaBase) > 0);
+        const nuevoEstado = completa ? 'RECIBIDA' : (algoRecibido ? 'PARCIAL' : 'ENVIADA');
+        if (nuevoEstado !== ordenActual.estado) {
+          await tx.ordenCompra.update({ where: { id: ordenCompra.id }, data: { estado: nuevoEstado } });
+        }
       }
     }
 
