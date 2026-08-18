@@ -9,6 +9,7 @@ const usuariosRoutes = require('./usuarios/usuarios.routes');
 const rolesRoutes = require('./roles/roles.routes');
 const permisosRoutes = require('./permisos/permisos.routes');
 const auditoriaRoutes = require('./auditoria/auditoria.routes');
+const superadminRoutes = require('./superadmin/superadmin.routes');
 
 const router = express.Router();
 
@@ -19,5 +20,6 @@ router.use('/usuarios', usuariosRoutes);
 router.use('/roles', rolesRoutes);
 router.use('/permisos', permisosRoutes);
 router.use('/auditoria', auditoriaRoutes);
+router.use('/superadmin', superadminRoutes);
 
 module.exports = router;

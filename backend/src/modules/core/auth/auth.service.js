@@ -129,6 +129,25 @@ async function login({ correo, password }) {
     throw new AppError(401, 'Correo o contraseña incorrectos.');
   }
 
+  await prisma.usuario.update({
+    where: { id: usuario.id },
+    data: { intentosFallidos: 0, bloqueadoHasta: null, ultimoAcceso: new Date() },
+  });
+
+  // Superadmin de plataforma: no está vinculado a ninguna empresa, así que no pasa por
+  // UsuarioEmpresa ni por el check de Empresa.estado de abajo. Administra el panel de tenants
+  // aparte (ver core/superadmin).
+  if (usuario.esSuperAdmin) {
+    const token = generarToken({ usuarioId: usuario.id, empresaId: null, rolId: null });
+    return {
+      token,
+      usuario: { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo },
+      empresa: null,
+      rol: null,
+      esSuperAdmin: true,
+    };
+  }
+
   const usuarioEmpresa = await prisma.usuarioEmpresa.findFirst({
     where: { usuarioId: usuario.id, activo: true },
     include: { empresa: true, rol: true },
@@ -136,11 +155,9 @@ async function login({ correo, password }) {
   if (!usuarioEmpresa) {
     throw new AppError(403, 'Tu cuenta no está vinculada a ninguna empresa activa.');
   }
-
-  await prisma.usuario.update({
-    where: { id: usuario.id },
-    data: { intentosFallidos: 0, bloqueadoHasta: null, ultimoAcceso: new Date() },
-  });
+  if (usuarioEmpresa.empresa.estado !== 'ACTIVA') {
+    throw new AppError(403, 'Esta empresa está suspendida. Contacta al administrador de la plataforma.');
+  }
 
   const token = generarToken({
     usuarioId: usuario.id,
@@ -153,19 +170,28 @@ async function login({ correo, password }) {
     usuario: { id: usuario.id, nombre: usuario.nombre, correo: usuario.correo },
     empresa: usuarioEmpresa.empresa,
     rol: usuarioEmpresa.rol,
+    esSuperAdmin: false,
   };
 }
 
 // Resuelve permisos EN VIVO (no del JWT) para que el frontend pueda mostrar/ocultar UI;
 // la aplicación real de permisos siempre vive en el backend vía requierePermiso.
-async function obtenerMe({ usuarioId, empresaId, rolId }) {
+async function obtenerMe({ usuarioId, empresaId, rolId, esSuperAdmin }) {
+  if (esSuperAdmin) {
+    const usuario = await prisma.usuario.findUnique({
+      where: { id: usuarioId },
+      select: { id: true, nombre: true, correo: true },
+    });
+    return { usuario, empresa: null, rol: null, permisos: [], esSuperAdmin: true };
+  }
+
   const [usuario, empresa, rol, permisos] = await Promise.all([
     prisma.usuario.findUnique({ where: { id: usuarioId }, select: { id: true, nombre: true, correo: true } }),
     prisma.empresa.findUnique({ where: { id: empresaId } }),
     prisma.rol.findUnique({ where: { id: rolId } }),
     resolverPermisosDeUsuario({ usuarioId, rolId }),
   ]);
-  return { usuario, empresa, rol, permisos };
+  return { usuario, empresa, rol, permisos, esSuperAdmin: false };
 }
 
 module.exports = { registrarEmpresa, login, obtenerMe };

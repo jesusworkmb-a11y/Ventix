@@ -4,7 +4,7 @@ import { login as loginRequest, me as meRequest } from '../../modules/core/api/c
 
 const AuthContext = createContext(null);
 
-const CONTEXTO_VACIO = { usuario: null, empresa: null, rol: null, permisos: [] };
+const CONTEXTO_VACIO = { usuario: null, empresa: null, rol: null, permisos: [], esSuperAdmin: false };
 
 export function AuthProvider({ children }) {
   const [status, setStatus] = useState('loading'); // loading | anon | auth
@@ -31,7 +31,13 @@ export function AuthProvider({ children }) {
   // los permisos resueltos en vivo llegan después vía /me, sin bloquear la navegación.
   function setSesion(data) {
     localStorage.setItem(TOKEN_KEY, data.token);
-    setContexto({ usuario: data.usuario, empresa: data.empresa, rol: data.rol, permisos: [] });
+    setContexto({
+      usuario: data.usuario,
+      empresa: data.empresa,
+      rol: data.rol,
+      permisos: [],
+      esSuperAdmin: data.esSuperAdmin,
+    });
     setStatus('auth');
     meRequest().then(setContexto).catch(() => {});
   }

@@ -18,8 +18,8 @@ function LoginPage() {
     setError('');
     setCargando(true);
     try {
-      await login({ correo, password });
-      navigate('/dashboard');
+      const data = await login({ correo, password });
+      navigate(data.esSuperAdmin ? '/superadmin' : '/dashboard');
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo iniciar sesión.');
     } finally {

@@ -62,3 +62,10 @@ export function listarPermisos() {
 export function listarAuditoria(filtros) {
   return api.get('/core/auditoria', { params: filtros }).then((res) => res.data);
 }
+
+export function listarEmpresasSuperadmin() {
+  return api.get('/core/superadmin/empresas').then((res) => res.data);
+}
+export function cambiarEstadoEmpresaSuperadmin(id, estado) {
+  return api.patch(`/core/superadmin/empresas/${id}/estado`, { estado }).then((res) => res.data);
+}

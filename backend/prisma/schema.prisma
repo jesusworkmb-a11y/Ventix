@@ -153,6 +153,9 @@ model Usuario {
   ultimoAcceso     DateTime?     @map("ultimo_acceso")
   intentosFallidos Int           @default(0) @map("intentos_fallidos")
   bloqueadoHasta   DateTime?     @map("bloqueado_hasta")
+  // Dueño de la plataforma Ventix (yo), no de una empresa cliente — administra el panel de
+  // tenants en /core/superadmin sin pasar por UsuarioEmpresa/Rol de ninguna empresa.
+  esSuperAdmin     Boolean       @default(false) @map("es_super_admin")
   creadoEn         DateTime      @default(now()) @map("creado_en")
 
   empresas          UsuarioEmpresa[]

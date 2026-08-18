@@ -1,8 +1,10 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './shared/context/AuthContext';
 import ProtectedRoute from './shared/components/ProtectedRoute';
+import SuperAdminRoute from './shared/components/SuperAdminRoute';
 import RegistroPage from './modules/core/pages/RegistroPage';
 import LoginPage from './modules/core/pages/LoginPage';
+import SuperAdminPage from './modules/core/pages/SuperAdminPage';
 import EmpresaPage from './modules/core/pages/EmpresaPage';
 import ConfiguracionFiscalPage from './modules/core/pages/ConfiguracionFiscalPage';
 import SucursalesPage from './modules/core/pages/SucursalesPage';
@@ -45,6 +47,14 @@ function App() {
         <Route path="/registro" element={<RegistroPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/facturar/:slug" element={<PortalAutofacturacionPage />} />
+        <Route
+          path="/superadmin"
+          element={(
+            <SuperAdminRoute>
+              <SuperAdminPage />
+            </SuperAdminRoute>
+          )}
+        />
         <Route
           path="/dashboard"
           element={(

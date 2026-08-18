@@ -20,10 +20,17 @@ async function auth(req, res, next) {
     // de inmediato en vez de seguir siendo válidos hasta que expiren solos.
     const usuario = await prisma.usuario.findUnique({
       where: { id: payload.sub },
-      select: { estado: true },
+      select: { estado: true, esSuperAdmin: true },
     });
     if (!usuario || usuario.estado !== 'ACTIVO') {
       return next(new AppError(401, 'Tu sesión ya no es válida. Inicia sesión de nuevo.'));
+    }
+
+    // Superadmin de plataforma: no tiene empresaId/rolId (su token se emitió sin ellos), así
+    // que no pasa por UsuarioEmpresa ni por el check de empresa de abajo.
+    if (usuario.esSuperAdmin) {
+      req.auth = { usuarioId: payload.sub, empresaId: null, rolId: null, esSuperAdmin: true };
+      return next();
     }
 
     // Mismo criterio para el rol: el `rolId` del JWT es una foto del momento del login, no una
@@ -33,13 +40,18 @@ async function auth(req, res, next) {
     // sucursales, por ejemplo. Se resuelve en vivo en cada request, igual que el estado.
     const usuarioEmpresa = await prisma.usuarioEmpresa.findFirst({
       where: { usuarioId: payload.sub, empresaId: payload.empresaId, activo: true },
-      select: { rolId: true },
+      select: { rolId: true, empresa: { select: { estado: true } } },
     });
     if (!usuarioEmpresa) {
       return next(new AppError(401, 'Tu sesión ya no es válida. Inicia sesión de nuevo.'));
     }
+    // Mismo patrón: si la empresa se suspende, las sesiones ya abiertas de sus usuarios deben
+    // cortarse de inmediato, no seguir sirviendo hasta que el JWT expire solo.
+    if (usuarioEmpresa.empresa.estado !== 'ACTIVA') {
+      return next(new AppError(403, 'Esta empresa está suspendida. Contacta al administrador de la plataforma.'));
+    }
 
-    req.auth = { usuarioId: payload.sub, empresaId: payload.empresaId, rolId: usuarioEmpresa.rolId };
+    req.auth = { usuarioId: payload.sub, empresaId: payload.empresaId, rolId: usuarioEmpresa.rolId, esSuperAdmin: false };
     next();
   } catch (error) {
     next(new AppError(401, 'Tu sesión expiró o no es válida. Inicia sesión de nuevo.'));
