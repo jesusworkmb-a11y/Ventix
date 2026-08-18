@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import {
   listarCajas,
+  crearCaja,
   listarSesiones,
   obtenerSesion,
   abrirSesion,
   cerrarSesion,
   registrarMovimiento,
 } from '../api/caja.api';
+import { listarSucursales } from '../../core/api/core.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Input from '../../../shared/ui/Input';
@@ -30,14 +32,41 @@ function CajaPage() {
   const [movMotivo, setMovMotivo] = useState('');
   const [saldoReal, setSaldoReal] = useState('');
 
+  const [sucursales, setSucursales] = useState([]);
+  const [nuevaCajaNombre, setNuevaCajaNombre] = useState('');
+  const [nuevaCajaSucursalId, setNuevaCajaSucursalId] = useState('');
+  const [errorNuevaCaja, setErrorNuevaCaja] = useState('');
+
+  function cargarCajas() {
+    return listarCajas().then((data) => {
+      setCajas(data);
+      if (data.length) setCajaId((actual) => actual || data[0].id);
+      return data;
+    });
+  }
+
   useEffect(() => {
-    listarCajas()
+    cargarCajas().catch(() => {});
+    listarSucursales()
       .then((data) => {
-        setCajas(data);
-        if (data.length) setCajaId((actual) => actual || data[0].id);
+        setSucursales(data);
+        setNuevaCajaSucursalId((actual) => actual || data[0]?.id || '');
       })
       .catch(() => {});
   }, []);
+
+  async function handleCrearCaja(e) {
+    e.preventDefault();
+    setErrorNuevaCaja('');
+    try {
+      const caja = await crearCaja({ sucursalId: nuevaCajaSucursalId, nombre: nuevaCajaNombre });
+      setNuevaCajaNombre('');
+      await cargarCajas();
+      setCajaId(caja.id);
+    } catch (err) {
+      setErrorNuevaCaja(err.response?.data?.error || 'No se pudo crear la caja.');
+    }
+  }
 
   useEffect(() => {
     if (cajaId) cargarSesionAbierta(cajaId);
@@ -116,12 +145,6 @@ function CajaPage() {
         </p>
       )}
 
-      {cajas.length === 0 && (
-        <Card>
-          <p className="text-sm text-gray-500">No hay cajas registradas todavía (créalas vía la API).</p>
-        </Card>
-      )}
-
       {cajas.length > 0 && (
         <Card>
           <Select id="cajaSel" label="Caja" value={cajaId} onChange={(e) => setCajaId(e.target.value)} className="max-w-xs">
@@ -131,6 +154,40 @@ function CajaPage() {
           </Select>
         </Card>
       )}
+
+      <Card title="Nueva caja">
+        {sucursales.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            Primero necesitás al menos una sucursal (Configuración → Sucursales).
+          </p>
+        ) : (
+          <form onSubmit={handleCrearCaja} className="flex flex-wrap items-end gap-3">
+            <Select
+              id="nuevaCajaSucursal"
+              label="Sucursal"
+              value={nuevaCajaSucursalId}
+              onChange={(e) => setNuevaCajaSucursalId(e.target.value)}
+              className="w-48"
+            >
+              {sucursales.map((s) => (
+                <option key={s.id} value={s.id}>{s.nombre}</option>
+              ))}
+            </Select>
+            <Input
+              id="nuevaCajaNombre"
+              label="Nombre"
+              value={nuevaCajaNombre}
+              onChange={(e) => setNuevaCajaNombre(e.target.value)}
+              className="w-48"
+              required
+            />
+            {errorNuevaCaja && (
+              <p className="w-full rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorNuevaCaja}</p>
+            )}
+            <Button type="submit" variant="secondary">Crear caja</Button>
+          </form>
+        )}
+      </Card>
 
       {cajaId && !sesion && (
         <Card title="Abrir sesión">

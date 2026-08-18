@@ -3,6 +3,12 @@ import api from '../../../shared/api';
 export function listarCajas(params) {
   return api.get('/caja/cajas', { params }).then((res) => res.data);
 }
+export function crearCaja(datos) {
+  return api.post('/caja/cajas', datos).then((res) => res.data);
+}
+export function actualizarCaja(id, datos) {
+  return api.patch(`/caja/cajas/${id}`, datos).then((res) => res.data);
+}
 
 export function listarSesiones(params) {
   return api.get('/caja/sesiones', { params }).then((res) => res.data);
