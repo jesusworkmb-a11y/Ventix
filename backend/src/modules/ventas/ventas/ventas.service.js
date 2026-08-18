@@ -83,7 +83,13 @@ async function obtener({ empresaId, ventaId }) {
   const articuloIds = [...new Set(venta.detalles.map((d) => d.articuloId))];
   const articulos = await prisma.articulo.findMany({
     where: { id: { in: articuloIds } },
-    select: { id: true, nombre: true, sku: true },
+    select: {
+      id: true,
+      nombre: true,
+      sku: true,
+      imagenUrl: true,
+      unidadBase: { select: { nombre: true, abreviatura: true } },
+    },
   });
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
 

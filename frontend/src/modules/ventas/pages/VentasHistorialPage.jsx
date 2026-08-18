@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Search, Trash2, Printer, Mail, Receipt } from 'lucide-react';
+import {
+  Search, Trash2, Printer, Mail, Receipt, FileDown,
+} from 'lucide-react';
 import {
   listarVentas, cancelarVenta, obtenerVenta, enviarTicketPorCorreo,
 } from '../api/ventas.api';
@@ -112,6 +114,21 @@ function VentasHistorialPage() {
   function sesionParaSucursal(sucursalId) {
     const cajaIds = cajas.filter((c) => c.sucursalId === sucursalId).map((c) => c.id);
     return sesionesAbiertas.find((s) => cajaIds.includes(s.cajaId)) || null;
+  }
+
+  // jsPDF (+ el motor de plantillas, ~250kB gzip) solo se descarga cuando alguien realmente pide
+  // el PDF, vía import() dinámico — mismo criterio que descargarPdf en ComprasHistorialPage.
+  async function descargarPdf(ventaId) {
+    setError('');
+    try {
+      const [detalle, { generarPdfVenta }] = await Promise.all([
+        obtenerVenta(ventaId),
+        import('../pdf/ventaPdf'),
+      ]);
+      generarPdfVenta(detalle, empresa);
+    } catch (err) {
+      setError('No se pudo generar el PDF de la venta.');
+    }
   }
 
   async function imprimirTicket(ventaId) {
@@ -355,6 +372,14 @@ function VentasHistorialPage() {
                     title="Imprimir ticket"
                   >
                     <Printer size={14} /> Imprimir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => descargarPdf(v.id)}
+                    className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 hover:underline"
+                    title="Descargar PDF"
+                  >
+                    <FileDown size={14} /> PDF
                   </button>
                   <button
                     type="button"
