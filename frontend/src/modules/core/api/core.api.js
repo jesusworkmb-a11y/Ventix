@@ -72,3 +72,6 @@ export function cambiarEstadoEmpresaSuperadmin(id, estado) {
 export function actualizarVigenciaEmpresaSuperadmin(id, vigenciaHasta) {
   return api.patch(`/core/superadmin/empresas/${id}/vigencia`, { vigenciaHasta }).then((res) => res.data);
 }
+export function actualizarPlanEmpresaSuperadmin(id, plan) {
+  return api.patch(`/core/superadmin/empresas/${id}/plan`, { plan }).then((res) => res.data);
+}

@@ -68,6 +68,9 @@ model Empresa {
   // `estado` a propósito -- "venció la vigencia" y "lo suspendió el superadmin a mano" son dos
   // motivos distintos y no deben pisarse entre sí (ver discusión en el chat, 2026-08-18).
   vigenciaHasta          DateTime?     @map("vigencia_hasta")
+  // Texto libre por ahora (un solo plan real hoy) -- pensado para cuando haya varios niveles
+  // reales que gatear (límites de sucursales/usuarios/módulos), sin necesitar otra migración.
+  plan                   String        @default("Estándar")
   // Branding de documentos PDF (§Plantillas de documentos): colores libres en hex, sin
   // validar contra una paleta fija — cada plantilla ya trae sus propios defaults si la
   // empresa no personalizó nada (ver frontend/src/shared/pdf/plantillas).

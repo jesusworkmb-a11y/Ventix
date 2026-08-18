@@ -10,4 +10,8 @@ const actualizarVigenciaSchema = z.object({
   vigenciaHasta: z.coerce.date().nullable(),
 });
 
-module.exports = { cambiarEstadoSchema, actualizarVigenciaSchema };
+const actualizarPlanSchema = z.object({
+  plan: z.string().trim().min(1).max(60),
+});
+
+module.exports = { cambiarEstadoSchema, actualizarVigenciaSchema, actualizarPlanSchema };

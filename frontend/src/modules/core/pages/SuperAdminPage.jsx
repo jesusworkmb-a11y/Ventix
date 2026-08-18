@@ -8,6 +8,7 @@ import {
   listarEmpresasSuperadmin,
   cambiarEstadoEmpresaSuperadmin,
   actualizarVigenciaEmpresaSuperadmin,
+  actualizarPlanEmpresaSuperadmin,
 } from '../api/core.api';
 
 const ESTADO_TONO = { ACTIVA: 'success', SUSPENDIDA: 'warning', ARCHIVADA: 'gray' };
@@ -42,6 +43,17 @@ function SuperAdminPage() {
     } finally {
       setActualizandoId(null);
     }
+  }
+
+  function guardarPlan(empresa, valor) {
+    const nuevo = valor.trim();
+    if (!nuevo || nuevo === empresa.plan) return;
+    setActualizandoId(empresa.id);
+    setError('');
+    actualizarPlanEmpresaSuperadmin(empresa.id, nuevo)
+      .then(cargar)
+      .catch((err) => setError(err.response?.data?.error || 'No se pudo actualizar el plan.'))
+      .finally(() => setActualizandoId(null));
   }
 
   async function alternarEstado(empresa) {
@@ -84,8 +96,8 @@ function SuperAdminPage() {
         {error && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
 
         <Card>
-          <Table columnas={['Empresa', 'Correo', 'Usuarios', 'Sucursales', 'Alta', 'Vigencia', 'Estado', '']}>
-            {!cargando && empresas.length === 0 && <TablaVacia colSpan={8} />}
+          <Table columnas={['Empresa', 'Correo', 'Usuarios', 'Sucursales', 'Plan', 'Alta', 'Vigencia', 'Estado', '']}>
+            {!cargando && empresas.length === 0 && <TablaVacia colSpan={9} />}
             {empresas.map((e) => {
               const vencida = e.vigenciaHasta && new Date(e.vigenciaHasta) < new Date();
               return (
@@ -94,6 +106,18 @@ function SuperAdminPage() {
                   <Celda>{e.correo || '—'}</Celda>
                   <Celda>{e._count.usuariosEmpresa}</Celda>
                   <Celda>{e._count.sucursales}</Celda>
+                  <Celda>
+                    <input
+                      type="text"
+                      key={e.plan}
+                      defaultValue={e.plan}
+                      aria-label={`Plan de ${e.nombreComercial}`}
+                      onBlur={(ev) => guardarPlan(e, ev.target.value)}
+                      disabled={actualizandoId === e.id}
+                      className="w-28 rounded-lg border border-gray-300 px-2 py-1 text-sm text-gray-900
+                        focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    />
+                  </Celda>
                   <Celda>{new Date(e.creadoEn).toLocaleDateString('es-MX')}</Celda>
                   <Celda>
                     <div className="flex items-center gap-2">
