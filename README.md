@@ -2609,3 +2609,66 @@ Compras/Cotizaciones.
   `imagenUrl`/`unidadBase`, y se generó el PDF real de una venta (con y sin descuento de línea) —
   ambos casos con encabezado `%PDF-1.3` válido, sin errores. Pusheado a `main` (`f299dde`) con
   permiso explícito del usuario.
+
+## Panel de superadmin, vigencia y plan por empresa (2026-08-18, sesión posterior)
+
+Funcionalidad nueva fuera del plan original, a pedido del usuario: una forma real de administrar
+las empresas (tenants) que contraten Ventix. Motivada por un hallazgo concreto —
+`Empresa.estado` (`ACTIVA`/`SUSPENDIDA`/`ARCHIVADA`) existía en el schema desde Fase 0 pero nadie
+lo leía en ningún lado, así que "suspender" una empresa no bloqueaba nada.
+
+- **`Usuario.esSuperAdmin`** (flag booleano nuevo): paralelo al sistema de roles/permisos, que es
+  100% por-empresa (`Rol.empresaId`) — el dueño de la plataforma no pertenece a ninguna empresa,
+  así que no tiene sentido forzarlo dentro de ese sistema. Cuenta real:
+  `jesusworkmb@gmail.com` (contraseña no documentada aquí), creada directo en la base, sin pasar
+  por `/registro`.
+- **`login()` y `auth.middleware.js`** ahora validan, además del estado de usuario/rol de
+  siempre: (1) `Empresa.estado !== 'ACTIVA'` → rechaza login y corta sesiones ya abiertas al
+  siguiente request, mismo patrón que el bloqueo de usuario; (2) `Empresa.vigenciaHasta`
+  (fecha, nullable) vencida → mismo bloqueo pero con su **propio mensaje** ("tu vigencia venció,
+  contacta para renovar"), a propósito separado de la suspensión manual — son dos motivos de
+  negocio distintos. Sin cron: se resuelve al vuelo en cada request porque el backend en Render
+  free tier duerme por inactividad, así que un job programado no sería confiable; extender la
+  fecha reactiva el acceso al instante.
+- **`Empresa.plan`** (texto libre, default `"Estándar"`): agregado para no necesitar otra
+  migración el día que haya niveles reales que gatear — hoy es solo una etiqueta, sin ninguna
+  lógica de límites todavía (decisión explícita: no tiene sentido construir gating para clientes
+  que no existen aún).
+- **Panel en `/superadmin`**
+  ([`SuperAdminPage.jsx`](frontend/src/modules/core/pages/SuperAdminPage.jsx), backend
+  `core/superadmin`, protegido por `requiereSuperAdmin`): lista todas las empresas con
+  Suspender/Reactivar, fecha de vigencia editable inline (con badge "Vencida") y plan editable
+  inline — layout ancho (`max-w-7xl`), sin el Sidebar normal porque el superadmin no tiene
+  empresa asociada.
+- Verificado en vivo en producción varias veces durante la sesión, incluido un bug real
+  encontrado y corregido en el camino: el mensaje de vigencia vencida mostraba un día antes del
+  guardado por usar getters de fecha en zona horaria local sobre un valor guardado en UTC
+  medianoche (corregido en
+  [`formatearFecha.js`](backend/src/shared/formatearFecha.js) usando getters UTC).
+- Pusheado a `main` en varios commits (`6a69628`, `e3ae5f1`, `ac20ce0`, `b8a36ef`).
+
+**Decisión de negocio, documentada para no perderla**: precio de lanzamiento fijado en
+**$499 MXN/mes por empresa**, plan único, **sin límites** de usuarios/sucursales/ventas/productos
+para las primeras empresas — investigado contra el mercado mexicano de POS SaaS (planes de
+entrada tipo Loyverse/Alegra básico no suelen incluir CFDI real ni multi-sucursal; Ventix sí las
+tiene de fábrica, lo que lo acerca más a competidores de gama media como PoloTab). Framing:
+precio de fundador, no el precio de lista definitivo. Sin límites porque no existe lógica de
+gating todavía y sería trabajo para un problema que no existe aún — el freno de negocio real hoy
+es `estado`/`vigenciaHasta` (paga o se corta el acceso). Pendiente para más adelante: cobro
+automático (hoy la renovación es 100% manual, el superadmin actualiza `vigenciaHasta` a mano tras
+recibir el pago) y niveles de plan reales con límites, una vez haya 3-5 clientes pagando pidiendo
+algo específico.
+
+## Alta de caja desde la UI (2026-08-18, sesión posterior)
+
+Bug reportado en vivo por el usuario mientras alguien probaba el sistema: `CajaPage.jsx`
+literalmente decía *"No hay cajas registradas todavía (créalas vía la API)"* cuando una empresa
+no tenía ninguna — el backend siempre soportó `POST /caja/cajas`, pero nunca se conectó al
+frontend.
+
+Se agregó un botón **"+ Nueva caja"** junto al selector de caja que abre un `Modal` con el
+formulario (sucursal + nombre) — inicialmente se implementó como tarjeta siempre visible, pero
+el usuario pidió explícitamente el patrón de botón + ventana modal en su lugar, mismo criterio
+que el resto de los diálogos de alta/edición del proyecto. Al crear, la caja nueva queda
+seleccionada de una vez y el modal se cierra solo. Verificado en vivo en local y producción.
+Pusheado a `main` (`4f1ae66`, `2b46064`).
