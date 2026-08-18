@@ -6,6 +6,7 @@ const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.se
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
+const { aDecimalString } = require('../../../shared/decimal');
 
 // Devolucion no tiene empresaId propio — se valida pertenencia yendo a través de su Venta.
 async function listar({ empresaId, filtros }) {
@@ -106,7 +107,7 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId: venta.sucursalId, tipoDocumento: 'DEV' });
 
     const devolucion = await tx.devolucion.create({
-      data: { ventaId, folio, motivo, usuarioId, autorizadoPorId, reembolso },
+      data: { ventaId, folio, motivo, usuarioId, autorizadoPorId, reembolso: aDecimalString(reembolso) },
     });
 
     await tx.devolucionDetalle.createMany({

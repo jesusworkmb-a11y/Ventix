@@ -1,4 +1,5 @@
 const AppError = require('../errors/AppError');
+const { aDecimalString } = require('../decimal');
 
 // Único punto de escritura de MovimientoCaja del proyecto — usado por Caja (INGRESO/RETIRO
 // manuales) y por Ventas (VENTA/DEVOLUCION contra la sesión abierta), mismo patrón que
@@ -45,7 +46,7 @@ async function registrarMovimientoCaja(tx, {
   if (sesion.cerradaEn) throw new AppError(400, 'La sesión de caja indicada no está abierta.');
 
   const movimiento = await tx.movimientoCaja.create({
-    data: { sesionCajaId, tipo, monto, motivo, referenciaTipo, referenciaId, usuarioId, autorizadoPorId },
+    data: { sesionCajaId, tipo, monto: aDecimalString(monto), motivo, referenciaTipo, referenciaId, usuarioId, autorizadoPorId },
   });
 
   return { sesion, caja, movimiento };

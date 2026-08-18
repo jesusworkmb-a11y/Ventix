@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const redondear = require('../../../shared/redondear');
+const { aDecimalString } = require('../../../shared/decimal');
 const toJson = require('../../../shared/toJson');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.service');
@@ -11,14 +12,6 @@ const facturama = require('../../../shared/services/facturama.service');
 const { cfdiDesdeFactura } = require('./facturas.pac');
 
 const COLUMNAS_ORDENABLES = { folio: 'folio', total: 'total', creadoEn: 'creadoEn', estado: 'estado' };
-
-// Pasar SIEMPRE un string (no un number crudo) a un campo Decimal de Prisma — un `number` de JS
-// puede reintroducir ruido de punto flotante en la conversión interna a Decimal aunque la
-// variable de origen ya esté redondeada (bug real encontrado y documentado en Caja, 2026-08-03:
-// 9.7 volvía como "9.699999999999999"). decimal.js parsea un string de forma exacta.
-function aDecimalString(valor) {
-  return redondear(Number(valor)).toFixed(2);
-}
 
 // sucursal.<campo> ?? empresa.<campo> — comportamiento "matriz" acordado con el usuario: una
 // sucursal sin datos fiscales propios factura con los de la empresa.

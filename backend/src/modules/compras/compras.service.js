@@ -6,6 +6,7 @@ const { registrarAuditoria } = require('../../shared/services/auditoria.service'
 const { enviarCorreoConAdjunto } = require('../../shared/services/correo.service');
 const toJson = require('../../shared/toJson');
 const redondear = require('../../shared/redondear');
+const { aDecimalString } = require('../../shared/decimal');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../shared/paginacion');
 
 const COLUMNAS_ORDENABLES = {
@@ -178,7 +179,11 @@ async function crear({
 
     const compra = await tx.compra.create({
       data: {
-        empresaId, sucursalId, proveedorId, usuarioId, folio, subtotal, impuestos, total, folioProveedor, observaciones,
+        empresaId, sucursalId, proveedorId, usuarioId, folio,
+        subtotal: aDecimalString(subtotal),
+        impuestos: aDecimalString(impuestos),
+        total: aDecimalString(total),
+        folioProveedor, observaciones,
         ordenCompraId: ordenCompra?.id,
       },
     });
@@ -189,9 +194,9 @@ async function crear({
         articuloId: l.articuloId,
         unidadId: l.unidadId,
         cantidad: l.cantidad,
-        costo: l.costo,
-        descuentoMonto: l.descuentoMonto,
-        impuestoTasa: l.impuestoTasa,
+        costo: aDecimalString(l.costo),
+        descuentoMonto: aDecimalString(l.descuentoMonto),
+        impuestoTasa: aDecimalString(l.impuestoTasa),
       })),
     });
 
@@ -213,7 +218,7 @@ async function crear({
       // no se revierte al cancelar (documentado en el plan de esta fase).
       await tx.articulo.update({
         where: { id: linea.articuloId },
-        data: { costo: linea.costo / linea.factor },
+        data: { costo: aDecimalString(linea.costo / linea.factor) },
       });
     }
 

@@ -4,6 +4,7 @@ const { registrarAuditoria } = require('../../../shared/services/auditoria.servi
 const { registrarMovimientoCaja } = require('../../../shared/services/caja.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
+const { aDecimalString } = require('../../../shared/decimal');
 
 // SesionCaja no tiene empresaId propio — se valida pertenencia yendo a través de su Caja.
 async function obtenerSesionValidada({ empresaId, sesionId }) {
@@ -58,7 +59,7 @@ async function abrir({ empresaId, usuarioId, cajaId, fondoInicial }) {
     if (abierta) throw new AppError(409, 'Esta caja ya tiene una sesión abierta.');
 
     const sesion = await tx.sesionCaja.create({
-      data: { cajaId, usuarioResponsableId: usuarioId, fondoInicial },
+      data: { cajaId, usuarioResponsableId: usuarioId, fondoInicial: aDecimalString(fondoInicial) },
     });
     await registrarAuditoria(tx, {
       empresaId,
@@ -149,9 +150,9 @@ async function cerrar({ empresaId, usuarioId, sesionId, saldoReal }) {
       where: { id: sesionId },
       data: {
         cerradaEn: new Date(),
-        saldoEsperado: saldoEsperado.toFixed(2),
-        saldoReal: Number(saldoReal).toFixed(2),
-        diferencia: diferencia.toFixed(2),
+        saldoEsperado: aDecimalString(saldoEsperado),
+        saldoReal: aDecimalString(saldoReal),
+        diferencia: aDecimalString(diferencia),
       },
     });
     await registrarAuditoria(tx, {

@@ -4,6 +4,7 @@ const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.se
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const { enviarCorreoConAdjunto } = require('../../../shared/services/correo.service');
 const toJson = require('../../../shared/toJson');
+const { aDecimalString } = require('../../../shared/decimal');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 // Mismo módulo top-level "compras" (submódulo, no cruza §3.1) — reusa el cálculo de factor
 // unidad→base ya probado en compras.service.js, en vez de duplicarlo.
@@ -129,7 +130,7 @@ async function crear({
         unidadId: l.unidadId,
         cantidad: l.cantidad,
         cantidadBase: l.cantidadBase,
-        costoEstimado: l.costoEstimado,
+        costoEstimado: l.costoEstimado != null ? aDecimalString(l.costoEstimado) : null,
       })),
     });
 

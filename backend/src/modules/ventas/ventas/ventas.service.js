@@ -8,6 +8,7 @@ const { enviarCorreoConAdjunto } = require('../../../shared/services/correo.serv
 const { usuarioTienePermiso } = require('../../../shared/services/permisos.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
+const { aDecimalString } = require('../../../shared/decimal');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 
 const COLUMNAS_ORDENABLES = {
@@ -323,9 +324,9 @@ async function crear({
         usuarioId,
         sesionCajaId,
         folio,
-        subtotal,
-        impuestos,
-        total,
+        subtotal: aDecimalString(subtotal),
+        impuestos: aDecimalString(impuestos),
+        total: aDecimalString(total),
         autorizadoPorId: autorizadoPorId || null,
       },
     });
@@ -335,17 +336,17 @@ async function crear({
         ventaId: venta.id,
         articuloId: l.articuloId,
         cantidad: l.cantidad,
-        precio: l.precio,
-        impuestoTasa: l.impuestoTasa,
+        precio: aDecimalString(l.precio),
+        impuestoTasa: aDecimalString(l.impuestoTasa),
         costoUnitario: l.costoUnitario,
         descuentoId: l.descuentoId,
         promocionId: l.promocionId,
-        descuentoMonto: l.descuentoMonto,
+        descuentoMonto: aDecimalString(l.descuentoMonto),
       })),
     });
 
     await tx.pago.createMany({
-      data: pagos.map((p) => ({ ventaId: venta.id, metodo: p.metodo, monto: p.monto })),
+      data: pagos.map((p) => ({ ventaId: venta.id, metodo: p.metodo, monto: aDecimalString(p.monto) })),
     });
 
     for (const linea of lineas) {

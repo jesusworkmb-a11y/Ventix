@@ -5,6 +5,7 @@ const { registrarAuditoria } = require('../../../shared/services/auditoria.servi
 const { enviarCorreoConAdjunto } = require('../../../shared/services/correo.service');
 const toJson = require('../../../shared/toJson');
 const redondear = require('../../../shared/redondear');
+const { aDecimalString } = require('../../../shared/decimal');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
 // Reusa ventas.service.js#crear en vez de duplicar la transacción de venta — es un sub-recurso
 // del mismo módulo (MOD-008), no un import entre módulos distintos (§3.1 solo prohíbe eso).
@@ -147,7 +148,7 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, vigencia, ob
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId, tipoDocumento: 'COT' });
 
     const cotizacion = await tx.cotizacion.create({
-      data: { empresaId, sucursalId, clienteId, usuarioId, folio, total, vigencia, observaciones },
+      data: { empresaId, sucursalId, clienteId, usuarioId, folio, total: aDecimalString(total), vigencia, observaciones },
     });
 
     await tx.cotizacionDetalle.createMany({
@@ -155,9 +156,9 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, vigencia, ob
         cotizacionId: cotizacion.id,
         articuloId: l.articuloId,
         cantidad: l.cantidad,
-        precio: l.precio,
-        descuentoMonto: l.descuentoMonto,
-        impuestoTasa: l.impuestoTasa,
+        precio: aDecimalString(l.precio),
+        descuentoMonto: aDecimalString(l.descuentoMonto),
+        impuestoTasa: aDecimalString(l.impuestoTasa),
       })),
     });
 
