@@ -3,6 +3,16 @@ const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
+const { aDecimalString } = require('../../../shared/decimal');
+
+// valor llega como number crudo del body (z.coerce.number, sin redondear()) -- mismo riesgo de
+// ruido de punto flotante que costo/precio en Articulo, ver shared/decimal.js. Aplica tanto para
+// PORCENTAJE (0-100) como MONTO_FIJO, ambos con 2 decimales de precisión real de negocio.
+function aDatosConDecimales(datos) {
+  const limpios = { ...datos };
+  if (limpios.valor !== undefined) limpios.valor = aDecimalString(limpios.valor);
+  return limpios;
+}
 
 async function listar({ empresaId }) {
   return prisma.descuento.findMany({ where: { empresaId }, orderBy: { nombre: 'asc' } });
@@ -10,7 +20,7 @@ async function listar({ empresaId }) {
 
 async function crear({ empresaId, usuarioEjecutorId, datos }) {
   return prisma.$transaction(async (tx) => {
-    const descuento = await tx.descuento.create({ data: { empresaId, ...datos } });
+    const descuento = await tx.descuento.create({ data: { empresaId, ...aDatosConDecimales(datos) } });
     await registrarAuditoria(tx, {
       empresaId,
       usuarioEjecutorId,
@@ -28,7 +38,7 @@ async function actualizar({ empresaId, usuarioEjecutorId, descuentoId, datos }) 
   if (!descuento) throw new AppError(404, 'Descuento no encontrado.');
 
   return prisma.$transaction(async (tx) => {
-    const actualizado = await tx.descuento.update({ where: { id: descuentoId }, data: datos });
+    const actualizado = await tx.descuento.update({ where: { id: descuentoId }, data: aDatosConDecimales(datos) });
     await registrarAuditoria(tx, {
       empresaId,
       usuarioEjecutorId,

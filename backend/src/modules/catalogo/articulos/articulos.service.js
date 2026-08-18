@@ -4,6 +4,17 @@ const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
+const { aDecimalString } = require('../../../shared/decimal');
+
+// costo/precio llegan como number crudo del body (z.coerce.number en articulos.validators.js,
+// sin pasar por redondear() como sí hacen los flujos transaccionales) -- mismo riesgo de ruido
+// de punto flotante al convertirse a Decimal en Prisma, ver shared/decimal.js.
+function aDatosConDecimales(datos) {
+  const limpios = { ...datos };
+  if (limpios.costo !== undefined) limpios.costo = aDecimalString(limpios.costo);
+  if (limpios.precio !== undefined) limpios.precio = aDecimalString(limpios.precio);
+  return limpios;
+}
 
 const COLUMNAS_ORDENABLES = {
   nombre: 'nombre',
@@ -139,7 +150,7 @@ async function crear({ empresaId, usuarioEjecutorId, datos }) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const articulo = await tx.articulo.create({ data: { empresaId, ...datos } });
+      const articulo = await tx.articulo.create({ data: { empresaId, ...aDatosConDecimales(datos) } });
       await registrarAuditoria(tx, {
         empresaId,
         usuarioEjecutorId,
@@ -164,7 +175,7 @@ async function actualizar({ empresaId, usuarioEjecutorId, articuloId, datos }) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const actualizado = await tx.articulo.update({ where: { id: articuloId }, data: datos });
+      const actualizado = await tx.articulo.update({ where: { id: articuloId }, data: aDatosConDecimales(datos) });
       await registrarAuditoria(tx, {
         empresaId,
         usuarioEjecutorId,
@@ -237,7 +248,7 @@ async function setPrecios({ empresaId, usuarioEjecutorId, articuloId, precios })
     await tx.precioArticulo.deleteMany({ where: { articuloId } });
     if (precios.length) {
       await tx.precioArticulo.createMany({
-        data: precios.map((p) => ({ articuloId, listaPrecioId: p.listaPrecioId, precio: p.precio })),
+        data: precios.map((p) => ({ articuloId, listaPrecioId: p.listaPrecioId, precio: aDecimalString(p.precio) })),
       });
     }
     await registrarAuditoria(tx, {

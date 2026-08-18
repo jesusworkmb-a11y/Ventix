@@ -3,8 +3,18 @@ const AppError = require('../../../shared/errors/AppError');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const toJson = require('../../../shared/toJson');
 const { validarNombreUnico, relanzarConflictoNombre } = require('../../../shared/nombreUnico');
+const { aDecimalString } = require('../../../shared/decimal');
 
 const MENSAJE_DUPLICADO = 'Ya existe un impuesto con ese nombre.';
+
+// tasa llega como number crudo del body (z.coerce.number, sin redondear()) -- mismo riesgo de
+// ruido de punto flotante que costo/precio en Articulo, ver shared/decimal.js. Las tasas reales
+// (IVA 0/0.08/0.16, IEPS) siempre caben en 2 decimales, así que no hay pérdida de precisión.
+function aDatosConDecimales(datos) {
+  const limpios = { ...datos };
+  if (limpios.tasa !== undefined) limpios.tasa = aDecimalString(limpios.tasa);
+  return limpios;
+}
 
 async function listar({ empresaId }) {
   return prisma.impuesto.findMany({ where: { empresaId }, orderBy: { nombre: 'asc' } });
@@ -17,7 +27,7 @@ async function crear({ empresaId, usuarioEjecutorId, datos }) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const impuesto = await tx.impuesto.create({ data: { empresaId, ...datos } });
+      const impuesto = await tx.impuesto.create({ data: { empresaId, ...aDatosConDecimales(datos) } });
       await registrarAuditoria(tx, {
         empresaId,
         usuarioEjecutorId,
@@ -43,7 +53,7 @@ async function actualizar({ empresaId, usuarioEjecutorId, impuestoId, datos }) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const actualizado = await tx.impuesto.update({ where: { id: impuestoId }, data: datos });
+      const actualizado = await tx.impuesto.update({ where: { id: impuestoId }, data: aDatosConDecimales(datos) });
       await registrarAuditoria(tx, {
         empresaId,
         usuarioEjecutorId,

@@ -4,6 +4,7 @@ const AppError = require('../../shared/errors/AppError');
 const { aCsv, parsearCsv } = require('../../shared/csv');
 const { registrarAuditoria } = require('../../shared/services/auditoria.service');
 const toJson = require('../../shared/toJson');
+const { aDecimalString } = require('../../shared/decimal');
 
 // Convierte una columna numérica del CSV, rechazando con un mensaje de negocio limpio en vez de
 // dejar pasar NaN hasta Prisma -- que lo rechaza con un volcado técnico crudo del validador
@@ -217,8 +218,8 @@ async function importarArticulos({ empresaId, usuarioId, csv }) {
         impuestoId,
         unidadBaseId: unidad.id,
         claveProdServSat: fila.claveProdServSat || undefined,
-        costo: numeroDeColumna(fila.costo, 'costo', 0),
-        precio: numeroDeColumna(fila.precio, 'precio', 0),
+        costo: aDecimalString(numeroDeColumna(fila.costo, 'costo', 0)),
+        precio: aDecimalString(numeroDeColumna(fila.precio, 'precio', 0)),
         stockMinimo: numeroDeColumna(fila.stockMinimo, 'stockMinimo', undefined),
         stockMaximo: numeroDeColumna(fila.stockMaximo, 'stockMaximo', undefined),
         activo: activoDeColumna(fila.activo),
