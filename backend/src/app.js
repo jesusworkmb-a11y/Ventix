@@ -21,6 +21,13 @@ const facturacionRoutes = require('./modules/facturacion/facturacion.routes');
 
 const app = express();
 
+// Render pone la app detrás de un único proxy inverso, que es quien fija X-Forwarded-For.
+// Sin esto, express-rate-limit (auth y portal público de facturación) no confía en ese header
+// y no puede aislar por IP real — todos los clientes comparten el mismo contador. Se confía
+// solo en 1 hop (no `true`), para que un cliente no pueda spoofear su propio X-Forwarded-For
+// y saltarse el límite.
+app.set('trust proxy', 1);
+
 app.use(cors({ origin: process.env.FRONTEND_URL || '*' }));
 // Límite subido de 100kb (default de express) a 8mb: el logo de la empresa viaja como data URI
 // (base64) en el body de PATCH /core/empresa, y los PDFs/CSVs adjuntos en los endpoints
