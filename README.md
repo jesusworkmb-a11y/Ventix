@@ -2701,3 +2701,88 @@ directamente por el usuario.
   [`app.js`](backend/src/app.js) — solo 1 hop, no `true`, para que un cliente no pueda spoofear
   su propio `X-Forwarded-For` y evadir el límite. Pusheado a `main` (`7d35d1d`), verificado en
   logs tras el deploy: el warning ya no aparece en el boot.
+
+## Rebrand a BOX POS: logo, favicon y textos (2026-08-20, sesión posterior)
+
+El producto comercial pasó a llamarse **BOX POS** (Ventix sigue siendo el nombre histórico del
+repo/código, no se renombró nada a nivel técnico). El usuario entregó un kit de marca
+(`BOXPOS_logo_assets.zip`) fuera del repo con el isotipo en sus variantes.
+
+- Assets copiados a `frontend/src/assets/brand/` (íconos, importados vía Vite) y
+  `frontend/public/` (favicons, 3 tamaños). `frontend/index.html` ganó `<link rel="icon">`/
+  `apple-touch-icon` — antes no existía ningún favicon.
+- Sidebar (fondo oscuro) usa la variante "paraFondoOscuro" del kit (blanco+azul); Login/Registro
+  (fondo claro) usa la variante normal (azul+negro) — mismo isotipo, dos versiones según fondo.
+- 3 menciones de texto sueltas "Ventix" → "BOX POS" en la UI (`SuperAdminPage.jsx`,
+  `ConfiguracionFiscalPage.jsx`).
+- El logo de la **empresa cliente** (`Empresa.logoUrl`, lo sube cada tenant, con fallback a un
+  ícono genérico) es un concepto aparte que no se tocó — es contenido dinámico por negocio, no
+  branding del producto.
+- Pusheado a `main` (`6562cba`) con permiso explícito. Poco después de este deploy el backend
+  quedó caído en Render (`/api/health` en 503 persistente, sin logs nuevos) — resuelto con un
+  reinicio manual del servicio desde el dashboard de Render, sin relación con el commit de
+  branding; no se tocó código para arreglarlo.
+
+**Pendiente para timbrar CFDI en producción real** (Fase F de Facturación, ver más arriba): el
+usuario bajó un CSD de producción (`CSD_MABJ9312256J8_...`) pero el ZIP solo trae `.key` + `.sdg`
+(acuse de Certifica, no el certificado) y una `Contraseña.txt` vacía — falta el archivo `.cer`
+(certificado público) y su contraseña real. Sin eso no se puede registrar el CSD en Facturama.
+Antes de retomar esto, confirmar si el `.cer` y la contraseña ya están disponibles en vez de
+asumir que siguen faltando.
+
+## Número de empresa y recuperación de contraseña por correo (2026-08-20, sesión posterior)
+
+El usuario pidió, para mejorar la administración: (1) una forma de recuperar el acceso ligando
+correo + número de empresa, y (2) que ese número sirva para que el superadmin identifique
+empresas sin usar el uuid. No existía ningún flujo de recuperación de contraseña hasta ahora.
+
+- **`Empresa.numero`** (`Int @unique @default(autoincrement())`, formato mostrado `BOX-0001` vía
+  [`numeroEmpresa.js`](backend/src/shared/numeroEmpresa.js)/`frontend/src/shared/format.js`):
+  contador global nativo de Postgres, no el patrón de tabla `Secuencia` del resto del proyecto
+  (ese es por empresa/sucursal/tipoDocumento; esto es una sola serie global). Visible en
+  `/superadmin` (columna nueva) y en `/administracion/empresa` (texto de solo lectura). Los 5
+  registros existentes en producción se backfillearon solos al aplicar la migración.
+- **Recuperación de contraseña**: tabla nueva `PasswordResetToken` (solo guarda el hash SHA-256
+  del token, nunca el crudo). `POST /api/core/recuperar` (correo + número de empresa, ambos
+  obligatorios) manda un link de un solo uso válido 1 hora si coinciden con una cuenta — mismo
+  mensaje genérico exista o no la cuenta, para no dar un oráculo (mismo criterio que el portal
+  público de autofacturación); el superadmin de plataforma no pasa por este flujo (no tiene
+  empresa). `POST /api/core/restablecer` (token + contraseña nueva) reclama el token de forma
+  atómica (`UPDATE...WHERE usadoEn IS NULL`, mismo patrón anti-carrera de todo el proyecto) e
+  invalida cualquier otro link pendiente del mismo usuario. Frontend: `/olvide-password` y
+  `/restablecer-password?token=...`, con link "¿Olvidaste tu contraseña?" en el login.
+- Migración aplicada con un truco nuevo porque `prisma migrate dev` no corre en este entorno
+  (no-interactivo): generar el SQL con `prisma migrate diff --from-schema-datasource ... --script`
+  contra la DB viva, guardarlo a mano en `prisma/migrations/<timestamp>_<nombre>/migration.sql`, y
+  aplicarlo con `prisma migrate deploy` (sí es no-interactivo-safe). Reusar este patrón la próxima
+  vez que haga falta migrar el schema desde una sesión de Claude Code.
+- Verificado en vivo de punta a punta (mensaje genérico en los 3 casos, solo el correcto crea un
+  token; token inválido/expirado/reusado rechazado; reset real cambia la contraseña y el login
+  viejo deja de funcionar) antes y después del deploy. Pusheado a `main` (`9c6325e`).
+
+## Aviso de vigencia por vencer: franja + campanita (2026-08-20, sesión posterior)
+
+El usuario pidió que la empresa reciba un aviso cuando le queden pocos días de vigencia, para que
+se contacte a pagar. Cálculo 100% en el frontend (`frontend/src/shared/vigencia.js`) a partir de
+`Empresa.vigenciaHasta`, que ya viaja completo en `/me`/login — sin endpoint nuevo.
+
+- **Campanita de TopBar**: sección "Tu plan" nueva, sumada a las alertas de stock existentes en
+  el mismo ícono de campana (el contador rojo ahora suma ambas). Clic navega a
+  `/administracion/empresa`.
+- **Franja fija** arriba del dashboard ([`VigenciaBanner.jsx`](frontend/src/shared/layout/VigenciaBanner.jsx))
+  cuando falten 5 días o menos, con una "x" para cerrarla (a pedido explícito): el cierre se
+  guarda en `localStorage` (`ventix_vigencia_banner_cerrado`, mismo criterio que la preferencia
+  de sidebar colapsado) junto con la fecha y el valor de `vigenciaHasta` vigente al momento de
+  cerrar — si cambia la vigencia (el superadmin la renueva/ajusta) o pasa a otro día, el cierre
+  queda obsoleto y la franja vuelve a aparecer, para no dejar de cumplir su función de
+  recordatorio.
+- Ambos avisos son visibles **solo** para quien tiene permiso de administrar la empresa
+  (`administracion.empresa.editar`) — el resto del personal no los ve.
+- Verificado en vivo con la empresa de prueba: sin aviso con 10 días de sobra, aviso correcto con
+  3/4 días (franja + campanita + navegación), cierre persistiendo entre navegaciones (esta app
+  remonta el layout en cada cambio de ruta porque cada `<Route>` envuelve su propia
+  `<ProtectedRoute>`, así que un estado en memoria no habría alcanzado), y reaparición al cambiar
+  el valor de `vigenciaHasta`. También se confirmó que `auth.middleware.js` ya revalida
+  `vigenciaHasta` en **cada** request (no solo al loguear), así que el caso "ya vencida con sesión
+  abierta" casi no se llega a ver en la práctica — el aviso de "5 días o menos" es el que
+  realmente importa. Pusheado a `main` (`6ad8ec3`, `a07a2c0`).
