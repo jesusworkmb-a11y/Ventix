@@ -2476,10 +2476,11 @@ producción. Por último, se depuraron en producción los tres bloqueos que impe
 realmente (clave SAT de unidad faltante, variables de entorno de Facturama nunca replicadas a
 Render, código postal de expedición de sucursal sin cargar — ver "Depuración de timbrado en
 producción" arriba); el usuario confirmó que el flujo de timbrado ya quedó funcionando de punta a
-punta en producción. Quedan dos pendientes menores de esa sesión: reemplazar el código postal de
+punta en producción. Quedaron dos pendientes menores de esa sesión: reemplazar el código postal de
 prueba (`06600`) cargado en la sucursal Matriz por el real, y cargar la clave de producto/servicio
 SAT en 7Up/Fanta/Sprite/Paquete Atún (siguen sin poder facturarse, mismo motivo que tenía Coca
-Cola 600ml antes del fix). Por último, ya se hizo una tercera ronda de QA (2 bugs críticos de
+Cola 600ml antes del fix). **Ambos ya se resolvieron sin intervención de código** — ver "Verificación
+de C.P. de Matriz y claves SAT pendientes" más abajo (2026-08-20). Por último, ya se hizo una tercera ronda de QA (2 bugs críticos de
 condición de carrera entre facturar y cancelar/devolver una venta, corregidos y verificados en
 vivo) y, sobre dos hallazgos que quedaron fuera de su alcance, se agregó rate limiting por IP a
 `/login`/`/registro` y se cerró la segunda ronda del blindaje Decimal en catálogo (costo/precio de
@@ -2921,3 +2922,71 @@ líneas de kardex en vez de una.
 
 Pusheado a `main` en dos commits (`1f0f182` la ronda completa, `2f932ab` el fix de cancelar-vs-
 devolución encontrado verificando el primero en vivo).
+
+## Bitácora de auditoría: ocultar acciones de plataforma, retención de 30 días y detalle legible (2026-08-20, sesión posterior)
+
+El usuario reportó tres problemas en `/administracion/auditoria` mientras revisaba el panel antes
+del lanzamiento:
+
+- **Cuando el superadmin cambia estado/vigencia/plan de una empresa (ver "Panel de superadmin" más
+  arriba), esa acción quedaba visible en la propia bitácora de la empresa**, mostrando el
+  `usuarioEjecutorId` del superadmin (sin resolver a nombre, porque no pertenece a la lista de
+  usuarios de esa empresa) y el motivo literal ("Cambio de vigencia por el superadmin de la
+  plataforma."). Es una acción de la plataforma, no de la empresa ni de ninguno de sus usuarios, y
+  no debería ser visible para el cliente.
+- **La bitácora no tenía ningún límite de retención**, acumulando filas indefinidamente.
+- **La columna "Detalle" mostraba un volcado crudo de JSON** (`<pre>{JSON.stringify(...)}</pre>`)
+  en vez de un resumen legible del cambio.
+
+Solución para cada uno:
+
+- **`Auditoria.esAccionPlataforma`** (`Boolean @default(false)`, migración
+  `20260820153039_agregar_es_accion_plataforma_auditoria`): las tres mutaciones de
+  `superadmin.service.js` (`cambiarEstado`/`actualizarVigencia`/`actualizarPlan`) ahora marcan
+  `esAccionPlataforma: true` al auditar. `auditoria.service.js#listar` (el endpoint que consume la
+  empresa) filtra `esAccionPlataforma: false` — la fila se sigue guardando en la DB para
+  trazabilidad interna, solo deja de mostrarse al tenant. Se hizo backfill de los registros ya
+  existentes (`UPDATE auditorias SET es_accion_plataforma = true WHERE motivo IN (...)`, las tres
+  frases de motivo literales que usa `superadmin.service.js`) para que también quedaran ocultos los
+  cambios de vigencia/estado/plan hechos antes de este fix.
+- **Retención de 30 días**: sin cron confiable en este entorno (el backend duerme por inactividad en
+  Render free tier, mismo motivo por el que la vigencia se resuelve al vuelo — ver "Panel de
+  superadmin" arriba), `auditoria.service.js#listar` purga los registros de esa empresa con más de
+  30 días **al vuelo**, cada vez que alguien abre su propia bitácora — antes de responder la
+  consulta. Bajo tráfico a esta pantalla, así que no compite con las rutas de negocio de alto
+  volumen.
+- **Detalle legible**: `AuditoriaPage.jsx` reemplaza el `<pre>` de JSON crudo por una lista
+  `Campo: antes → después` (nombres de campo traducidos, fechas/booleanos formateados). Cubre bien
+  el caso más común (diff de pares campo-valor, la mayoría de las acciones auditadas); valores que
+  no son objetos planos (ej. el arreglo de claves de permiso en `RolPermiso`) caen a mostrar
+  antes/después como listas en vez de un diff campo por campo.
+
+Verificado en vivo contra producción tras el deploy: filtrando por entidad "Empresa" en la
+bitácora del tenant, ningún registro con motivo de superadmin quedó visible (18 de 21 antes del
+backfill); una fila de prueba con `creadoEn` de 40 días atrás se purgó sola al abrir la página; y
+"ver" en una venta cancelada mostró `Estado: CONFIRMADA → CANCELADA` en vez de JSON. Datos de
+prueba (la fila de retención y dos cambios de vigencia hechos para probar el filtro) limpiados
+después. Pusheado a `main` (`8470ce9`).
+
+## Verificación de C.P. de Matriz y claves SAT pendientes (2026-08-20, sesión posterior)
+
+Los dos pendientes menores que había dejado la sesión de depuración de timbrado del 2026-08-17
+(ver arriba) resultaron **ya resueltos** al revisar la base de datos — sin que hiciera falta
+ningún cambio de código:
+
+- **Código postal de la sucursal Matriz**: ya no tenía el valor de prueba `06600` documentado,
+  sino `01020`. El usuario confirmó que ese es el C.P. real, así que no se tocó.
+- **Clave de producto/servicio SAT en 7Up/Fanta/Sprite/Paquete Atún**: los cuatro ya tenían
+  `claveProdServSat` cargado (`50202306` para las gaseosas, igual que Coca Cola 600ml; `50467007`
+  para el atún), y su unidad base compartida "Pieza" ya tenía `claveUnidadSat = H87` desde el fix
+  de Coca Cola del 17 de agosto — al ser la misma unidad, ese fix ya los había desbloqueado a los
+  cuatro de paso.
+
+No quedó claro cuándo se cargaron estos valores (no hay una sesión de Claude Code documentada que
+lo haya hecho), probablemente el usuario los completó directo desde la UI. Verificado en vivo
+contra producción en Factura Directa: los cinco productos (Coca Cola incluida) aparecen
+seleccionables sin ningún aviso de "Sin clave SAT", y se agregó 7Up 600ml como concepto real
+(`SEVENUP600 · H87 · $20.00`, IVA $3.20, total $23.20) sin llegar a presionar "Crear factura" para
+no generar un timbrado real sin autorización — carrito limpiado después. Con esto, del roadmap de
+lanzamiento solo queda pendiente conseguir el `.cer` y la contraseña real del CSD de producción
+(ver "Rebrand a BOX POS" arriba) para dejar de timbrar en modo sandbox.
