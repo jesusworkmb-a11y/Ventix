@@ -2,13 +2,15 @@ const { X509Certificate } = require('crypto');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const facturama = require('../../../shared/services/facturama.service');
+const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
+const toJson = require('../../../shared/toJson');
 
 // El certificado/llave privada NUNCA se guardan en la DB de Ventix -- viajan directo al PAC
 // (Facturama) para registrarse ahí, y acá solo se persiste la metadata (RFC + vigencia) que
 // necesita la UI para mostrar "CSD cargado, vence tal fecha". Ver comentario del modelo
 // FacturaCsd en schema.prisma.
 async function registrar({
-  empresaId, rfc, certificadoBase64, llaveBase64, contrasena,
+  empresaId, usuarioId, rfc, certificadoBase64, llaveBase64, contrasena,
 }) {
   let vigenciaHasta;
   try {
@@ -21,10 +23,25 @@ async function registrar({
     rfc, certificadoBase64, llaveBase64, contrasena,
   });
 
-  return prisma.facturaCsd.upsert({
-    where: { empresaId_rfc: { empresaId, rfc } },
-    update: { vigenciaHasta: new Date(vigenciaHasta), registradoEn: new Date() },
-    create: { empresaId, rfc, vigenciaHasta: new Date(vigenciaHasta) },
+  // A diferencia de Factura crear/cancelar, este registro no dejaba rastro en Auditoría pese a
+  // ser un dato legal/fiscal sensible (encontrado en la ronda de QA pre-lanzamiento) -- no se
+  // audita el certificado/llave en sí (nunca se persisten, ver comentario de arriba), solo el
+  // hecho de que alguien registró/reemplazó el CSD de un RFC y cuándo.
+  return prisma.$transaction(async (tx) => {
+    const csd = await tx.facturaCsd.upsert({
+      where: { empresaId_rfc: { empresaId, rfc } },
+      update: { vigenciaHasta: new Date(vigenciaHasta), registradoEn: new Date() },
+      create: { empresaId, rfc, vigenciaHasta: new Date(vigenciaHasta) },
+    });
+    await registrarAuditoria(tx, {
+      empresaId,
+      usuarioEjecutorId: usuarioId,
+      accion: 'CREAR',
+      entidad: 'FacturaCsd',
+      entidadId: csd.id,
+      valoresDespues: toJson({ rfc, vigenciaHasta: csd.vigenciaHasta }),
+    });
+    return csd;
   });
 }
 

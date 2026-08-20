@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const { rfcSchema } = require('../../../shared/rfc');
 
 // logoUrl viaja como data URI (base64) generada en el navegador — no hay almacenamiento de
 // archivos en este backend (mismo criterio que Articulo.imagenUrl, que tampoco lo tiene). El
@@ -28,12 +29,6 @@ const actualizarEmpresaSchema = z.object({
 // se gatea con su propio permiso (administracion.fiscal.editar) en vez de reusar
 // administracion.empresa.editar. rfc/razonSocial ya existían en el modelo pero nunca tuvieron
 // UI ni endpoint propio hasta ahora (solo nombreComercial/logoUrl eran editables).
-const rfcSchema = z
-  .string()
-  .trim()
-  .regex(/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i, 'RFC con formato inválido.')
-  .transform((v) => v.toUpperCase());
-
 const actualizarFiscalEmpresaSchema = z.object({
   rfc: rfcSchema.nullable().optional(),
   razonSocial: z.string().min(1).nullable().optional(),

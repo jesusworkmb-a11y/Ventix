@@ -31,7 +31,11 @@ function construirDocTicket(venta, empresa, cambio) {
   doc.setFont(undefined, 'normal');
   doc.setFontSize(7.5);
   y += 4;
-  if (empresa?.rfc) { doc.text(`RFC: ${empresa.rfc}`, ANCHO / 2, y, { align: 'center' }); y += 3.5; }
+  // Mismo criterio que TicketVenta.jsx (recibo impreso): el RFC emisor real es el de la
+  // sucursal si tiene uno propio, si no el de la empresa -- antes acá siempre era empresa.rfc a
+  // secas, mostrando el RFC equivocado para una sucursal con RFC distinto al de la empresa.
+  const rfcTicket = venta.sucursal?.rfc || empresa?.rfc;
+  if (rfcTicket) { doc.text(`RFC: ${rfcTicket}`, ANCHO / 2, y, { align: 'center' }); y += 3.5; }
   if (empresa?.telefono) { doc.text(`Tel: ${empresa.telefono}`, ANCHO / 2, y, { align: 'center' }); y += 3.5; }
   if (venta.sucursal?.nombre) { doc.text(venta.sucursal.nombre, ANCHO / 2, y, { align: 'center' }); y += 3.5; }
   if (venta.sucursal?.direccion) { doc.text(venta.sucursal.direccion, ANCHO / 2, y, { align: 'center' }); y += 3.5; }

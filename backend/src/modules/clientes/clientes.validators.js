@@ -1,11 +1,14 @@
 const { z } = require('zod');
+const { rfcSchema } = require('../../shared/rfc');
 
 // esGeneral NO es aceptado desde el cliente HTTP: lo maneja el sistema (ver asegurarClienteGeneral).
 const crearClienteSchema = z.object({
   nombre: z.string().min(1),
   telefono: z.string().optional(),
   correo: z.string().email().optional(),
-  rfc: z.string().optional(),
+  // rfcSchema en vez de z.string() suelto: no se validaba formato (encontrado en la ronda de QA
+  // pre-lanzamiento) pese a usarse como default para prellenar el receptor al facturar.
+  rfc: rfcSchema.optional(),
   direccion: z.string().optional(),
   // Código postal del domicilio fiscal — distinto de `direccion` (contacto general): lo usa
   // Facturación para prellenar el receptor del CFDI (ver receptorDesdeCliente en el frontend).

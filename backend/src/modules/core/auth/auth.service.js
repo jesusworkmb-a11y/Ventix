@@ -249,7 +249,15 @@ async function solicitarRecuperacion({ correo, numeroEmpresa }) {
         where: { usuarioId: usuario.id, empresa: { numero } },
       });
       if (vinculo) {
-        await emitirTokenRecuperacionYEnviar(usuario);
+        // No se espera esta promesa: awaitear el envío de correo (llamada de red real a Resend,
+        // cientos de ms) solo en la rama "sí coincidía" abría un canal de timing que permitía
+        // distinguir un correo+número de empresa válido de uno inválido por la duración de la
+        // respuesta, pese al mensaje genérico -- el mismo oráculo que este código dice evitar
+        // (encontrado en la ronda de QA pre-lanzamiento). Sin el await, ambas ramas responden en
+        // el tiempo de un par de lecturas locales a la DB.
+        emitirTokenRecuperacionYEnviar(usuario).catch((error) => {
+          console.error('Error en solicitarRecuperacion (envío de correo):', error); // eslint-disable-line no-console
+        });
       }
     }
   } catch (error) {

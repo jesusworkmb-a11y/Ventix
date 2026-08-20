@@ -1,16 +1,18 @@
 const prisma = require('../../config/db');
 
 // El override individual (PermisoUsuarioExcepcion) gana sobre el rol (§7.4).
-async function usuarioTienePermiso({ usuarioId, rolId, clave }) {
-  const permiso = await prisma.permiso.findUnique({ where: { clave } });
+// `client` opcional (default prisma) para poder llamarla dentro de una transacción/lock del
+// caller (ver usuarios.service.js#quedariaSinAdministradorDeUsuarios) sin duplicar la lógica.
+async function usuarioTienePermiso({ usuarioId, rolId, clave }, client = prisma) {
+  const permiso = await client.permiso.findUnique({ where: { clave } });
   if (!permiso) return false;
 
-  const excepcion = await prisma.permisoUsuarioExcepcion.findUnique({
+  const excepcion = await client.permisoUsuarioExcepcion.findUnique({
     where: { usuarioId_permisoId: { usuarioId, permisoId: permiso.id } },
   });
   if (excepcion) return excepcion.concedido;
 
-  const rolPermiso = await prisma.rolPermiso.findUnique({
+  const rolPermiso = await client.rolPermiso.findUnique({
     where: { rolId_permisoId: { rolId, permisoId: permiso.id } },
   });
   return Boolean(rolPermiso);

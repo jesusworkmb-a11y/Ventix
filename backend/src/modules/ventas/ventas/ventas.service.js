@@ -341,7 +341,12 @@ async function crear({
       data: lineas.map((l) => ({
         ventaId: venta.id,
         articuloId: l.articuloId,
-        cantidad: l.cantidad,
+        // aDecimalString(): mismo motivo que el resto de los campos Decimal de esta línea --
+        // VentaDetalle.cantidad es Decimal y el proyecto soporta cantidades fraccionarias
+        // (unidad Kilogramo, inputs con step="0.01"), así que un number crudo de JS corre el
+        // mismo riesgo de ruido de punto flotante ya documentado para los campos de dinero
+        // (encontrado en la ronda de QA pre-lanzamiento).
+        cantidad: aDecimalString(l.cantidad),
         precio: aDecimalString(l.precio),
         impuestoTasa: aDecimalString(l.impuestoTasa),
         costoUnitario: l.costoUnitario,

@@ -10,13 +10,21 @@ function TicketVenta({ venta, cambio }) {
   const { empresa } = useAuth();
   if (!venta) return null;
 
+  // El RFC emisor real de esta venta es el de su sucursal si tiene uno propio, si no el de la
+  // empresa -- mismo criterio de resolución que facturas.service.js#resolverEmisor. Antes acá
+  // siempre se mostraba empresa.rfc a secas, así que una empresa con RFC distinto por sucursal
+  // imprimía el RFC equivocado en el ticket -- encontrado al agregar el RFC como factor de
+  // verificación en el portal público de autofacturación (que sí valida contra el RFC real de
+  // la sucursal): el cliente nunca podría teclear el que ve impreso porque no coincidía.
+  const rfcTicket = venta.sucursal?.rfc || empresa?.rfc;
+
   const descuentoTotal = (venta.detalles || []).reduce((acc, d) => acc + Number(d.descuentoMonto || 0), 0);
 
   return (
     <div id="ticket-imprimible" className="mx-auto w-[80mm] bg-white p-3 font-mono text-xs leading-relaxed text-gray-900">
       <div className="text-center">
         <p className="text-sm font-bold">{empresa?.nombreComercial}</p>
-        {empresa?.rfc && <p>RFC: {empresa.rfc}</p>}
+        {rfcTicket && <p>RFC: {rfcTicket}</p>}
         {empresa?.telefono && <p>Tel: {empresa.telefono}</p>}
         <p className="mt-1">{venta.sucursal?.nombre}</p>
         {venta.sucursal?.direccion && <p>{venta.sucursal.direccion}</p>}

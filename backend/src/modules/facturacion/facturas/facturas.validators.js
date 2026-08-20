@@ -1,10 +1,5 @@
 const { z } = require('zod');
-
-const rfcSchema = z
-  .string()
-  .trim()
-  .regex(/^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i, 'RFC con formato inválido.')
-  .transform((v) => v.toUpperCase());
+const { rfcSchema } = require('../../../shared/rfc');
 
 const receptorSchema = z.object({
   clienteId: z.string().min(1).optional(),

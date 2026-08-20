@@ -10,10 +10,23 @@ const COLUMNAS_ORDENABLES = { nombre: 'nombre', correo: 'correo', telefono: 'tel
 // específico). Resuelto de forma perezosa aquí (no en el registro de empresa de Core) para
 // que funcione sin importar cuándo se creó la empresa ni cuándo reinició el servidor —
 // evita el hueco que tendría un backfill global corrido solo al arrancar.
+// No hay constraint único en la DB que exprese "un solo esGeneral:true por empresa" (necesitaría
+// un índice parcial, no expresable en schema.prisma sin SQL a mano) -- dos primeros listar()
+// concurrentes de una empresa recién creada podían pasar ambos el check y crear dos "Cliente
+// General" (investigado en la ronda de QA de Catálogo 2026-08-03, dejado como riesgo
+// autolimitado; cerrado en la ronda de QA pre-lanzamiento con el mismo advisory lock ya usado
+// para la invariante de administradores de Core). Key fija 2 para no compartir keyspace con
+// usuarios.service.js (key fija 1).
 async function asegurarClienteGeneral(empresaId) {
   const existente = await prisma.cliente.findFirst({ where: { empresaId, esGeneral: true } });
   if (existente) return existente;
-  return prisma.cliente.create({ data: { empresaId, esGeneral: true, nombre: 'Cliente General' } });
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, hashtext(${empresaId}))`;
+    const existenteBajoLock = await tx.cliente.findFirst({ where: { empresaId, esGeneral: true } });
+    if (existenteBajoLock) return existenteBajoLock;
+    return tx.cliente.create({ data: { empresaId, esGeneral: true, nombre: 'Cliente General' } });
+  });
 }
 
 async function validarListaPrecio({ empresaId, listaPrecioId }) {

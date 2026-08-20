@@ -10,6 +10,7 @@ const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../sha
 const plantillasService = require('../plantillas/plantillas.service');
 const facturama = require('../../../shared/services/facturama.service');
 const { cfdiDesdeFactura } = require('./facturas.pac');
+const reintentarEscritura = require('../../../shared/reintentarEscritura');
 
 const COLUMNAS_ORDENABLES = { folio: 'folio', total: 'total', creadoEn: 'creadoEn', estado: 'estado' };
 
@@ -336,20 +337,42 @@ async function intentarTimbrar(factura) {
     // No-op a propósito: el CFDI ya es válido aunque no se haya podido bajar el XML todavía.
   }
 
-  return prisma.factura.update({
-    where: { id: factura.id },
-    data: {
-      estado: 'TIMBRADA',
-      pacId: timbre.pacId,
-      uuid: timbre.uuid,
-      fechaTimbrado: new Date(timbre.fechaTimbrado),
-      selloSAT: timbre.selloSAT,
-      noCertificadoSAT: timbre.noCertificadoSAT,
-      cadenaOriginal: timbre.cadenaOriginal,
-      xmlTimbrado,
-    },
-    include: { detalles: { include: { impuestos: true } } },
-  });
+  // Encontrado en la ronda de QA pre-lanzamiento: este UPDATE (el que persiste que el CFDI ya
+  // existe en el SAT) no tenía ningún manejo de error -- un blip transitorio de conexión acá
+  // (no la llamada al PAC, que ya tuvo éxito arriba) dejaba la Factura en su estado previo sin
+  // pacId/uuid guardados en ningún lado, y `timbrar()` la volvía a mandar por intentarTimbrar()
+  // en el siguiente intento, generando un SEGUNDO CFDI real duplicado ante el SAT. Se reintenta
+  // unas pocas veces (mismo motivo que ya justificó separar la descarga del XML del timbrado en
+  // sí, ver comentario de arriba) antes de rendirse.
+  try {
+    return await reintentarEscritura(() => prisma.factura.update({
+      where: { id: factura.id },
+      data: {
+        estado: 'TIMBRADA',
+        pacId: timbre.pacId,
+        uuid: timbre.uuid,
+        fechaTimbrado: new Date(timbre.fechaTimbrado),
+        selloSAT: timbre.selloSAT,
+        noCertificadoSAT: timbre.noCertificadoSAT,
+        cadenaOriginal: timbre.cadenaOriginal,
+        xmlTimbrado,
+      },
+      include: { detalles: { include: { impuestos: true } } },
+    }));
+  } catch (error) {
+    // Se agotaron los reintentos: el CFDI quedó timbrado de verdad en el SAT pero no se pudo
+    // reflejar localmente. Se loguea como CRÍTICO con todos los identificadores necesarios para
+    // reconciliar a mano -- NO se debe volver a llamar facturama.timbrar() para esta factura.
+    // eslint-disable-next-line no-console
+    console.error(
+      'CRÍTICO: CFDI timbrado en el SAT pero no se pudo persistir localmente tras reintentos.',
+      { facturaId: factura.id, empresaId: factura.empresaId, pacId: timbre.pacId, uuid: timbre.uuid },
+    );
+    throw new AppError(
+      500,
+      'La factura se timbró ante el SAT pero no se pudo guardar en el sistema. NO reintentes -- contactá soporte con este folio.',
+    );
+  }
 }
 
 // Reintenta SOLO bajar el XML de una factura que ya quedó TIMBRADA en el PAC (pacId existe) pero
@@ -381,8 +404,21 @@ async function timbrar({ empresaId, facturaId }) {
   return intentarTimbrar(factura);
 }
 
+// Mismo criterio que ventas.service.js (que sí valida clienteId contra empresaId antes de
+// usarlo): Factura.clienteId/FacturaPlantilla.clienteId son FKs simples, no compuestas con
+// empresaId, así que sin este chequeo un clienteId de otra empresa (adivinado o filtrado) se
+// persistía igual -- encontrado en la ronda de QA pre-lanzamiento. Hoy sin impacto activo (nada
+// lista facturas por clienteId sin también filtrar por empresaId), pero es el mismo tipo de
+// defensa en profundidad que ya existe en el resto del proyecto.
+async function validarClientePropio({ empresaId, clienteId }) {
+  if (!clienteId) return;
+  const cliente = await prisma.cliente.findFirst({ where: { id: clienteId, empresaId } });
+  if (!cliente) throw new AppError(400, 'El cliente indicado no pertenece a esta empresa.');
+}
+
 // Flujo 1: Factura Directa, sin venta previa del POS.
 async function crearDirecta({ empresaId, sucursalId, usuarioId, receptor, conceptos: conceptosCrudos, formaPago, metodoPago, moneda, tipoCambio }) {
+  await validarClientePropio({ empresaId, clienteId: receptor.clienteId });
   const emisor = await resolverEmisor({ empresaId, sucursalId });
   const conceptos = conceptosCrudos.map(construirConceptoDirecta);
 
@@ -414,15 +450,13 @@ async function crearDirecta({ empresaId, sucursalId, usuarioId, receptor, concep
 async function crearDesdeVenta({ empresaId, usuarioId, tipo, ventaId, receptor }) {
   const venta = await prisma.venta.findFirst({
     where: { id: ventaId, empresaId },
-    include: { detalles: true, pagos: true },
+    include: { pagos: true },
   });
   if (!venta) throw new AppError(404, 'Venta no encontrada.');
   if (venta.estado !== 'CONFIRMADA') throw new AppError(400, 'Solo se pueden facturar ventas confirmadas.');
   if (venta.facturaId) throw new AppError(409, 'Esta venta ya fue facturada.');
 
   const emisor = await resolverEmisor({ empresaId, sucursalId: venta.sucursalId });
-  const { conceptos, ...totales } = await construirConceptosDesdeVentas(venta.detalles);
-  if (conceptos.length === 0) throw new AppError(400, 'La venta no tiene líneas facturables (todo fue devuelto).');
   const formaPago = resolverFormaPago(venta.pagos);
   const id = crypto.randomUUID();
 
@@ -440,6 +474,18 @@ async function crearDesdeVenta({ empresaId, usuarioId, tipo, ventaId, receptor }
     });
     if (reclamada.count === 0) throw new AppError(409, 'Esta venta ya fue facturada o cancelada.');
 
+    // Los detalles (con cantidadDevuelta) se releen ACÁ, después del candado, no antes de la
+    // transacción -- releerlos antes dejaba una ventana real: una devolución podía commitear
+    // entre esa lectura y este punto, y el CFDI se armaba igual con las cantidades
+    // pre-devolución, timbrando de más ante el SAT (encontrado en la ronda de QA
+    // pre-lanzamiento). El candado de arriba y el FOR UPDATE que devoluciones.service.js toma
+    // sobre esta misma fila de venta se serializan entre sí (mismo row lock de Postgres), así
+    // que para cuando este punto se alcanza cualquier devolución que ya haya ganado la carrera
+    // quedó commiteada antes de esta lectura.
+    const detallesFrescos = await tx.ventaDetalle.findMany({ where: { ventaId } });
+    const { conceptos, ...totales } = await construirConceptosDesdeVentas(detallesFrescos);
+    if (conceptos.length === 0) throw new AppError(400, 'La venta no tiene líneas facturables (todo fue devuelto).');
+
     return persistirFactura(tx, {
       id, empresaId, sucursalId: venta.sucursalId, clienteId: venta.clienteId, tipo, usuarioId,
       receptor, emisor, formaPago, metodoPago: 'PUE', moneda: 'MXN', tipoCambio: null,
@@ -455,9 +501,10 @@ async function crearDesdeVenta({ empresaId, usuarioId, tipo, ventaId, receptor }
 // todo o nada: si alguna ya fue reclamada por otra solicitud simultánea, la transacción entera
 // se revierte (Postgres deshace también las que sí se alcanzaron a marcar en este intento).
 async function crearAgrupada({ empresaId, sucursalId, usuarioId, tipo, ventaIds, receptor, informacionGlobal }) {
+  await validarClientePropio({ empresaId, clienteId: receptor.clienteId });
   const ventas = await prisma.venta.findMany({
     where: { id: { in: ventaIds }, empresaId, sucursalId, estado: 'CONFIRMADA', facturaId: null },
-    include: { detalles: true, pagos: true },
+    include: { pagos: true },
   });
   if (ventas.length !== ventaIds.length) {
     throw new AppError(
@@ -467,8 +514,6 @@ async function crearAgrupada({ empresaId, sucursalId, usuarioId, tipo, ventaIds,
   }
 
   const emisor = await resolverEmisor({ empresaId, sucursalId });
-  const { conceptos, ...totales } = await construirConceptosDesdeVentas(ventas.flatMap((v) => v.detalles));
-  if (conceptos.length === 0) throw new AppError(400, 'Las ventas seleccionadas no tienen líneas facturables.');
   const id = crypto.randomUUID();
 
   const factura = await prisma.$transaction(async (tx) => {
@@ -481,6 +526,13 @@ async function crearAgrupada({ empresaId, sucursalId, usuarioId, tipo, ventaIds,
     if (reclamadas.count !== ventaIds.length) {
       throw new AppError(409, 'Alguna de las ventas seleccionadas ya fue facturada o cancelada por otra solicitud simultánea.');
     }
+
+    // Mismo motivo que crearDesdeVenta: releer los detalles (cantidadDevuelta) DESPUÉS del
+    // candado, no antes -- evita timbrar cantidades pre-devolución si una devolución ganó la
+    // carrera sobre alguna de las ventas del grupo.
+    const detallesFrescos = await tx.ventaDetalle.findMany({ where: { ventaId: { in: ventaIds } } });
+    const { conceptos, ...totales } = await construirConceptosDesdeVentas(detallesFrescos);
+    if (conceptos.length === 0) throw new AppError(400, 'Las ventas seleccionadas no tienen líneas facturables.');
 
     return persistirFactura(tx, {
       id, empresaId, sucursalId, clienteId: receptor.clienteId, tipo, usuarioId,
@@ -525,36 +577,52 @@ async function cancelar({ empresaId, usuarioId, facturaId, claveMotivoCancelacio
     await facturama.cancelar({ pacId: factura.pacId, motivo: claveMotivoCancelacion, uuidSustituto });
   }
 
-  return prisma.$transaction(async (tx) => {
-    const reclamada = await tx.factura.updateMany({
-      where: { id: facturaId, estado: { not: 'CANCELADA' } },
-      data: { estado: 'CANCELADA', claveMotivoCancelacion, facturaSustitutaId: facturaSustitutaId || null },
-    });
-    if (reclamada.count === 0) throw new AppError(400, 'Esta factura ya está cancelada.');
-
-    const ventasFactura = await tx.facturaVenta.findMany({ where: { facturaId }, select: { ventaId: true } });
-    if (ventasFactura.length > 0) {
-      await tx.venta.updateMany({
-        where: { id: { in: ventasFactura.map((v) => v.ventaId) } },
-        data: { facturaId: null },
+  // A partir de acá el CFDI YA está cancelado de verdad ante el SAT (si tenía pacId) -- mismo
+  // riesgo que en intentarTimbrar (ver comentario ahí, encontrado en la misma ronda de QA
+  // pre-lanzamiento): un blip transitorio en esta transacción local no debe traducirse en volver
+  // a llamar facturama.cancelar() en un reintento, así que se reintenta la escritura local unas
+  // pocas veces antes de rendirse.
+  try {
+    return await reintentarEscritura(() => prisma.$transaction(async (tx) => {
+      const reclamada = await tx.factura.updateMany({
+        where: { id: facturaId, estado: { not: 'CANCELADA' } },
+        data: { estado: 'CANCELADA', claveMotivoCancelacion, facturaSustitutaId: facturaSustitutaId || null },
       });
+      if (reclamada.count === 0) throw new AppError(400, 'Esta factura ya está cancelada.');
+
+      const ventasFactura = await tx.facturaVenta.findMany({ where: { facturaId }, select: { ventaId: true } });
+      if (ventasFactura.length > 0) {
+        await tx.venta.updateMany({
+          where: { id: { in: ventasFactura.map((v) => v.ventaId) } },
+          data: { facturaId: null },
+        });
+      }
+
+      await registrarAuditoria(tx, {
+        empresaId,
+        sucursalId: factura.sucursalId,
+        usuarioEjecutorId: usuarioId,
+        accion: 'CANCELAR',
+        entidad: 'Factura',
+        entidadId: factura.id,
+        folio: factura.folio,
+        motivo: claveMotivoCancelacion,
+        valoresAntes: toJson({ estado: factura.estado }),
+        valoresDespues: toJson({ estado: 'CANCELADA', claveMotivoCancelacion }),
+      });
+
+      return tx.factura.findUnique({ where: { id: facturaId } });
+    }));
+  } catch (error) {
+    if (factura.pacId) {
+      // eslint-disable-next-line no-console
+      console.error(
+        'CRÍTICO: CFDI cancelado en el SAT pero no se pudo persistir localmente tras reintentos.',
+        { facturaId: factura.id, empresaId, pacId: factura.pacId },
+      );
     }
-
-    await registrarAuditoria(tx, {
-      empresaId,
-      sucursalId: factura.sucursalId,
-      usuarioEjecutorId: usuarioId,
-      accion: 'CANCELAR',
-      entidad: 'Factura',
-      entidadId: factura.id,
-      folio: factura.folio,
-      motivo: claveMotivoCancelacion,
-      valoresAntes: toJson({ estado: factura.estado }),
-      valoresDespues: toJson({ estado: 'CANCELADA', claveMotivoCancelacion }),
-    });
-
-    return tx.factura.findUnique({ where: { id: facturaId } });
-  });
+    throw error;
+  }
 }
 
 async function listar({ empresaId, filtros, paginacion, ordenamiento }) {

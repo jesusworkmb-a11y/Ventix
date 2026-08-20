@@ -16,6 +16,12 @@ function numeroDeColumna(valor, nombreColumna, porDefecto) {
   if (Number.isNaN(numero)) {
     throw new AppError(400, `La columna "${nombreColumna}" no es un número válido: "${valor}".`);
   }
+  // La ruta JSON (articulos.validators.js) ya exige .min(0) en costo/precio/stockMinimo/
+  // stockMaximo -- esta ruta CSV no heredaba esa validación (encontrado en la ronda de QA
+  // pre-lanzamiento), así que un CSV con "costo" negativo importaba sin error.
+  if (numero < 0) {
+    throw new AppError(400, `La columna "${nombreColumna}" no puede ser negativa: "${valor}".`);
+  }
   return numero;
 }
 
@@ -273,6 +279,10 @@ async function importarArticulos({ empresaId, usuarioId, csv }) {
 }
 
 const REGEX_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Mismo regex que shared/rfc.js -- se duplica en vez de importar el zod schema porque acá se
+// necesita el patrón crudo, no un schema.parse() (ronda de QA pre-lanzamiento: el CSV no
+// validaba formato de RFC, igual que ya se corrigió en la ruta JSON de clientes/proveedores).
+const REGEX_RFC = /^[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}$/i;
 
 // Create-only, fila por fila, mismo criterio que importarArticulos. listaPrecio se resuelve por
 // nombre (igual que categoria/marca/impuesto en Artículos) contra ListaPrecio -- sin importar
@@ -294,6 +304,9 @@ async function importarClientes({ empresaId, usuarioId, csv }) {
       if (!fila.nombre) throw new AppError(400, 'Falta el nombre.');
       if (fila.correo && !REGEX_CORREO.test(fila.correo)) {
         throw new AppError(400, `El correo "${fila.correo}" no es válido.`);
+      }
+      if (fila.rfc && !REGEX_RFC.test(fila.rfc)) {
+        throw new AppError(400, `El RFC "${fila.rfc}" no tiene un formato válido.`);
       }
 
       const advertenciasFila = [];
@@ -359,6 +372,9 @@ async function importarProveedores({ empresaId, usuarioId, csv }) {
       if (!fila.nombre) throw new AppError(400, 'Falta el nombre.');
       if (fila.correo && !REGEX_CORREO.test(fila.correo)) {
         throw new AppError(400, `El correo "${fila.correo}" no es válido.`);
+      }
+      if (fila.rfc && !REGEX_RFC.test(fila.rfc)) {
+        throw new AppError(400, `El RFC "${fila.rfc}" no tiene un formato válido.`);
       }
 
       const datos = {

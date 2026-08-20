@@ -5,7 +5,7 @@ const { registrarCsdSchema } = require('./csd.validators');
 async function registrar(req, res) {
   const parsed = registrarCsdSchema.safeParse(req.body);
   if (!parsed.success) throw new AppError(400, 'Datos de CSD inválidos.');
-  const csd = await service.registrar({ empresaId: req.auth.empresaId, ...parsed.data });
+  const csd = await service.registrar({ empresaId: req.auth.empresaId, usuarioId: req.auth.usuarioId, ...parsed.data });
   res.status(201).json(csd);
 }
 

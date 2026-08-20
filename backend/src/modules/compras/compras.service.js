@@ -236,7 +236,16 @@ async function crear({
       // PARCIAL cuando en realidad, sumando ambas recepciones, ya estaba RECIBIDA). Mismo patrón
       // FOR UPDATE ya usado en devoluciones/sesiones_caja para serializar exactamente este tipo
       // de lectura-antes-de-recalcular.
-      await tx.$queryRaw`SELECT id FROM ordenes_compra WHERE id = ${ordenCompra.id} FOR UPDATE`;
+      // Se relee el estado bajo el lock y se vuelve a validar -- el check de arriba (línea 133)
+      // no es atómico con esta transacción: sin esto, un cerrar()/cancelar() concurrente de la
+      // orden (que sí reclama con su propio UPDATE...WHERE) podía cerrarla mientras esta
+      // recepción seguía en curso, y como acá se comparaba contra el `estado` leído ANTES de la
+      // transacción, la recepción igual completaba las líneas y "reabría" la orden a
+      // RECIBIDA/PARCIAL, pisando el cierre manual (encontrado en la ronda de QA pre-lanzamiento).
+      const [ordenLock] = await tx.$queryRaw`SELECT estado FROM ordenes_compra WHERE id = ${ordenCompra.id} FOR UPDATE`;
+      if (!['ENVIADA', 'PARCIAL'].includes(ordenLock.estado)) {
+        throw new AppError(400, 'Esta orden de compra ya no admite más recepciones.');
+      }
 
       const detallePorArticulo = new Map(ordenCompra.detalles.map((d) => [d.articuloId, d]));
       for (const linea of lineas) {
@@ -251,8 +260,8 @@ async function crear({
       const detallesActualizados = await tx.ordenCompraDetalle.findMany({ where: { ordenCompraId: ordenCompra.id } });
       const completa = detallesActualizados.every((d) => Number(d.cantidadRecibidaBase) >= Number(d.cantidadBase));
       const algoRecibido = detallesActualizados.some((d) => Number(d.cantidadRecibidaBase) > 0);
-      const nuevoEstado = completa ? 'RECIBIDA' : (algoRecibido ? 'PARCIAL' : ordenCompra.estado);
-      if (nuevoEstado !== ordenCompra.estado) {
+      const nuevoEstado = completa ? 'RECIBIDA' : (algoRecibido ? 'PARCIAL' : ordenLock.estado);
+      if (nuevoEstado !== ordenLock.estado) {
         await tx.ordenCompra.update({ where: { id: ordenCompra.id }, data: { estado: nuevoEstado } });
       }
     }

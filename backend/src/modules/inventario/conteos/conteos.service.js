@@ -87,6 +87,16 @@ async function reemplazarDetalles({ empresaId, usuarioEjecutorId, conteoId, deta
   const existenciaPorArticulo = new Map(existencias.map((e) => [e.articuloId, Number(e.cantidad)]));
 
   return prisma.$transaction(async (tx) => {
+    // El check de estado de arriba no es atómico con esta transacción: un cambiarEstado()
+    // concurrente (CAPTURA→REVISION) podía pasar mientras esta edición seguía en curso y
+    // terminar reescribiendo las líneas de un conteo que ya avanzó a REVISION (encontrado en la
+    // ronda de QA pre-lanzamiento). Se bloquea la fila y se releé el estado antes de tocar las
+    // líneas -- mismo patrón FOR UPDATE que devoluciones.service.js usa para revalidar contra el
+    // valor fresco.
+    const [conteoLock] = await tx.$queryRaw`SELECT estado FROM conteos_fisicos WHERE id = ${conteoId} FOR UPDATE`;
+    if (conteoLock.estado !== 'CAPTURA') {
+      throw new AppError(400, 'Solo se pueden editar las líneas mientras el conteo está en captura.');
+    }
     await tx.conteoDetalle.deleteMany({ where: { conteoId } });
     if (detalles.length) {
       await tx.conteoDetalle.createMany({

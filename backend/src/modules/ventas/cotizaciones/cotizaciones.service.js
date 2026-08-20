@@ -155,7 +155,9 @@ async function crear({ empresaId, usuarioId, sucursalId, clienteId, vigencia, ob
       data: lineas.map((l) => ({
         cotizacionId: cotizacion.id,
         articuloId: l.articuloId,
-        cantidad: l.cantidad,
+        // aDecimalString(): mismo motivo que ventas.service.js -- CotizacionDetalle.cantidad
+        // es Decimal, no exento del riesgo de ruido de punto flotante (ronda de QA pre-lanzamiento).
+        cantidad: aDecimalString(l.cantidad),
         precio: aDecimalString(l.precio),
         descuentoMonto: aDecimalString(l.descuentoMonto),
         impuestoTasa: aDecimalString(l.impuestoTasa),

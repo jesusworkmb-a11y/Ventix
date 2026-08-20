@@ -45,6 +45,13 @@ async function registrarMovimientoCaja(tx, {
 
   if (sesion.cerradaEn) throw new AppError(400, 'La sesión de caja indicada no está abierta.');
 
+  // sesiones.service.js#abrir ya exige caja.activa=true para ABRIR una sesión, pero nada
+  // revalidaba el flag en cada movimiento posterior -- una caja desactivada a mitad de una
+  // sesión ya abierta seguía aceptando ingresos/retiros/ventas/devoluciones sin límite (mismo
+  // tipo de vacío que BLOQUEADO en Core/activa en Compras/activo en Catálogo, encontrado en la
+  // ronda de QA pre-lanzamiento).
+  if (!caja.activa) throw new AppError(400, 'Esta caja fue desactivada; no se pueden registrar movimientos.');
+
   const movimiento = await tx.movimientoCaja.create({
     data: { sesionCajaId, tipo, monto: aDecimalString(monto), motivo, referenciaTipo, referenciaId, usuarioId, autorizadoPorId },
   });

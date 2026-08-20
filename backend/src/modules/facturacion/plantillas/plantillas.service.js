@@ -26,6 +26,18 @@ async function crear({ empresaId, sucursalId, clienteId, nombre, esPredeterminad
     throw new AppError(400, 'Alguno de los artículos de la plantilla no pertenece a esta empresa.');
   }
 
+  // sucursalId/clienteId no se validaban contra empresaId como sí se hace con articuloId arriba
+  // (encontrado en la ronda de QA pre-lanzamiento) -- mismo criterio que
+  // facturas.service.js#validarClientePropio.
+  if (sucursalId) {
+    const sucursal = await prisma.sucursal.findFirst({ where: { id: sucursalId, empresaId } });
+    if (!sucursal) throw new AppError(400, 'La sucursal indicada no pertenece a esta empresa.');
+  }
+  if (clienteId) {
+    const cliente = await prisma.cliente.findFirst({ where: { id: clienteId, empresaId } });
+    if (!cliente) throw new AppError(400, 'El cliente indicado no pertenece a esta empresa.');
+  }
+
   return prisma.$transaction(async (tx) => {
     if (esPredeterminada) {
       await tx.facturaPlantilla.updateMany({

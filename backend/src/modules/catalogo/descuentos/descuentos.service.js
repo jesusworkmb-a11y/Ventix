@@ -14,11 +14,29 @@ function aDatosConDecimales(datos) {
   return limpios;
 }
 
+// A diferencia de articulos.service.js#validarReferencias (mismo tipo de referencia cruzada:
+// categoriaId), este módulo no validaba que categoriaId/articuloId pertenecieran a la empresa
+// del caller antes de guardarlos -- un usuario podía mandar el ID de otra empresa (encontrado en
+// la ronda de QA pre-lanzamiento). Sin impacto real hoy (ventas.service.js igual filtra el
+// artículo por empresa antes de aplicar el descuento, así que la referencia cruzada nunca
+// coincide con nada), pero se cierra por consistencia con el resto del proyecto.
+async function validarReferencias({ empresaId, categoriaId, articuloId }) {
+  if (categoriaId) {
+    const categoria = await prisma.categoria.findFirst({ where: { id: categoriaId, empresaId } });
+    if (!categoria) throw new AppError(400, 'La categoría indicada no pertenece a esta empresa.');
+  }
+  if (articuloId) {
+    const articulo = await prisma.articulo.findFirst({ where: { id: articuloId, empresaId } });
+    if (!articulo) throw new AppError(400, 'El artículo indicado no pertenece a esta empresa.');
+  }
+}
+
 async function listar({ empresaId }) {
   return prisma.descuento.findMany({ where: { empresaId }, orderBy: { nombre: 'asc' } });
 }
 
 async function crear({ empresaId, usuarioEjecutorId, datos }) {
+  await validarReferencias({ empresaId, categoriaId: datos.categoriaId, articuloId: datos.articuloId });
   return prisma.$transaction(async (tx) => {
     const descuento = await tx.descuento.create({ data: { empresaId, ...aDatosConDecimales(datos) } });
     await registrarAuditoria(tx, {
@@ -36,6 +54,8 @@ async function crear({ empresaId, usuarioEjecutorId, datos }) {
 async function actualizar({ empresaId, usuarioEjecutorId, descuentoId, datos }) {
   const descuento = await prisma.descuento.findFirst({ where: { id: descuentoId, empresaId } });
   if (!descuento) throw new AppError(404, 'Descuento no encontrado.');
+
+  await validarReferencias({ empresaId, categoriaId: datos.categoriaId, articuloId: datos.articuloId });
 
   return prisma.$transaction(async (tx) => {
     const actualizado = await tx.descuento.update({ where: { id: descuentoId }, data: aDatosConDecimales(datos) });

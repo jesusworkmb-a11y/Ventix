@@ -94,12 +94,18 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
   }
 
   return prisma.$transaction(async (tx) => {
-    // El check de venta.facturaId de arriba no es atómico con esta transacción -- sin releerlo
-    // con FOR UPDATE acá, un crearDesdeVenta() concurrente (que sí reclama facturaId atómicamente,
-    // ver facturas.service.js) podía facturar la venta mientras esta devolución seguía en curso,
-    // dejando un reembolso/reversión de stock registrado sobre una venta ya facturada. Mismo
-    // patrón FOR UPDATE que ya se usa más abajo para ventaDetalle.
-    const [ventaLock] = await tx.$queryRaw`SELECT factura_id AS "facturaId" FROM ventas WHERE id = ${ventaId} FOR UPDATE`;
+    // Los checks de venta.estado/venta.facturaId de arriba no son atómicos con esta transacción --
+    // sin releerlos con FOR UPDATE acá, un cancelar() o crearDesdeVenta() concurrente (que sí
+    // reclaman la venta atómicamente, ver ventas.service.js#cancelar y facturas.service.js) podía
+    // cancelar/facturar la venta mientras esta devolución seguía en curso, dejando un
+    // reembolso/reversión de stock registrado sobre una venta ya cancelada o facturada. Mismo
+    // patrón FOR UPDATE que ya se usa más abajo para ventaDetalle. (Encontrado en la ronda de QA
+    // pre-lanzamiento: el candado original solo releía facturaId, no estado -- una devolución
+    // concurrente con una cancelación pasaba igual porque facturaId seguía null.)
+    const [ventaLock] = await tx.$queryRaw`SELECT estado, factura_id AS "facturaId" FROM ventas WHERE id = ${ventaId} FOR UPDATE`;
+    if (ventaLock.estado !== 'CONFIRMADA') {
+      throw new AppError(400, 'Solo se pueden procesar devoluciones sobre ventas confirmadas.');
+    }
     if (ventaLock.facturaId) {
       throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de procesar una devolución.');
     }
@@ -114,7 +120,9 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
       data: lineas.map((l) => ({
         devolucionId: devolucion.id,
         articuloId: l.articuloId,
-        cantidad: l.cantidad,
+        // aDecimalString(): mismo motivo que ventas.service.js/cotizaciones.service.js --
+        // DevolucionDetalle.cantidad es Decimal (ronda de QA pre-lanzamiento).
+        cantidad: aDecimalString(l.cantidad),
         vuelveAStock: l.vuelveAStock,
       })),
     });
@@ -141,7 +149,7 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
 
       await tx.ventaDetalle.update({
         where: { id: linea.ventaDetalleId },
-        data: { cantidadDevuelta: { increment: linea.cantidad } },
+        data: { cantidadDevuelta: { increment: aDecimalString(linea.cantidad) } },
       });
 
       if (linea.vuelveAStock) {

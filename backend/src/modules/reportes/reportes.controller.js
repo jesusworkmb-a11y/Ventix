@@ -2,6 +2,17 @@ const AppError = require('../../shared/errors/AppError');
 const { enviarDocumentoSchema } = require('../../shared/validators/enviarDocumento.validator');
 const service = require('./reportes.service');
 
+// `?dias=abc`/`?limite=abc` pasaban Number(valor) sin chequear NaN -- el default del service solo
+// aplica a `undefined`, así que un query mal formado colaba un NaN hasta el cálculo (fecha de
+// corte "Invalid Date" en reporteProductosSinMovimiento) en vez de un 400 claro (encontrado en la
+// ronda de QA pre-lanzamiento).
+function numeroQuery(valor, nombreParametro) {
+  if (valor === undefined || valor === '') return undefined;
+  const numero = Number(valor);
+  if (Number.isNaN(numero)) throw new AppError(400, `El parámetro "${nombreParametro}" debe ser un número.`);
+  return numero;
+}
+
 async function ventas(req, res) {
   const {
     desde, hasta, sucursalId, usuarioId, clienteId,
@@ -21,7 +32,7 @@ async function articulosMasVendidos(req, res) {
     desde,
     hasta,
     sucursalId,
-    limite: limite ? Number(limite) : undefined,
+    limite: numeroQuery(limite, 'limite'),
     usuarioId,
     clienteId,
     categoriaId,
@@ -68,7 +79,7 @@ async function productosSinMovimiento(req, res) {
   const { dias, categoriaId } = req.query;
   const reporte = await service.reporteProductosSinMovimiento({
     empresaId: req.auth.empresaId,
-    dias: dias ? Number(dias) : undefined,
+    dias: numeroQuery(dias, 'dias'),
     categoriaId,
   });
   res.json(reporte);

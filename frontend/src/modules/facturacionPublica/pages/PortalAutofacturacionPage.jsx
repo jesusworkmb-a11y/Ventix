@@ -10,10 +10,11 @@ import Input from '../../../shared/ui/Input';
 import Button from '../../../shared/ui/Button';
 import { formatoMoneda, formatoFecha } from '../../../shared/format';
 
-// Portal público de autofacturación (Fase E): sin login, el cliente ingresa el folio + monto de
-// su ticket para encontrarlo (el monto actúa como segundo factor liviano, ver
-// portalPublico.service.js en el backend) y completa sus datos fiscales para generar el CFDI.
-// Tres pasos en una sola pantalla: buscar ticket -> completar receptor -> listo.
+// Portal público de autofacturación (Fase E): sin login, el cliente ingresa el folio + monto +
+// RFC de la empresa/sucursal emisora (impreso en su ticket) para encontrarlo -- monto y RFC
+// actúan como segundo/tercer factor livianos, ver portalPublico.service.js en el backend -- y
+// completa sus datos fiscales para generar el CFDI. Tres pasos en una sola pantalla: buscar
+// ticket -> completar receptor -> listo.
 function PortalAutofacturacionPage() {
   const { slug } = useParams();
   const [empresa, setEmpresa] = useState(null);
@@ -21,6 +22,7 @@ function PortalAutofacturacionPage() {
 
   const [folio, setFolio] = useState('');
   const [total, setTotal] = useState('');
+  const [rfcEmisor, setRfcEmisor] = useState('');
   const [venta, setVenta] = useState(null);
   const [receptor, setReceptor] = useState(RECEPTOR_VACIO);
   const [error, setError] = useState('');
@@ -37,10 +39,13 @@ function PortalAutofacturacionPage() {
   async function buscarTicket(e) {
     e.preventDefault();
     setError('');
-    if (!folio.trim() || !total) { setError('Completá el folio y el monto del ticket.'); return; }
+    if (!folio.trim() || !total || !rfcEmisor.trim()) {
+      setError('Completá el folio, el monto y el RFC del ticket.');
+      return;
+    }
     setBuscando(true);
     try {
-      const encontrada = await buscarVentaPublica(slug, { folio: folio.trim(), total: Number(total) });
+      const encontrada = await buscarVentaPublica(slug, { folio: folio.trim(), total: Number(total), rfcEmisor: rfcEmisor.trim() });
       setVenta(encontrada);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo buscar el ticket.');
@@ -54,7 +59,7 @@ function PortalAutofacturacionPage() {
     setError('');
     setFacturando(true);
     try {
-      const factura = await facturarPublico(slug, { folio: folio.trim(), total: Number(total), receptor });
+      const factura = await facturarPublico(slug, { folio: folio.trim(), total: Number(total), rfcEmisor: rfcEmisor.trim(), receptor });
       setFolioCreado(factura);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo generar la factura.');
@@ -110,6 +115,7 @@ function PortalAutofacturacionPage() {
           <p className="text-sm text-gray-500">Ingresá el folio y el monto total de tu ticket para facturarlo.</p>
           <Input id="folio" label="Folio del ticket" value={folio} onChange={(e) => setFolio(e.target.value)} placeholder="VTA-MAT-000123" required autoFocus />
           <Input id="total" label="Monto total" type="number" step="0.01" min="0" value={total} onChange={(e) => setTotal(e.target.value)} required />
+          <Input id="rfcEmisor" label="RFC de la empresa (impreso en tu ticket)" value={rfcEmisor} onChange={(e) => setRfcEmisor(e.target.value)} placeholder="XAXX010101000" required />
           <Button type="submit" disabled={buscando} className="w-full">{buscando ? 'Buscando…' : 'Buscar ticket'}</Button>
         </form>
       )}

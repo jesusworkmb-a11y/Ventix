@@ -13,27 +13,29 @@ const PERMISO_ADMINISTRAR_USUARIOS = 'administracion.usuarios.editar';
 // (mismo criterio ya usado para proteger al Cliente General de ser desactivado): sin esto, un
 // admin podía desactivarse a sí mismo o degradar su propio rol (o el del último administrador)
 // y la empresa quedaba sin nadie que pudiera revertirlo desde la UI.
-async function quedariaSinAdministradorDeUsuarios({ empresaId, usuarioId, relacion, datos }) {
+// `client` (tx bajo el advisory lock de `actualizar`, ver abajo) para que la relectura del resto
+// de admins de la empresa quede serializada contra ediciones concurrentes.
+async function quedariaSinAdministradorDeUsuarios({ empresaId, usuarioId, relacion, datos }, client) {
   const teniaPermiso = await usuarioTienePermiso({
     usuarioId,
     rolId: relacion.rolId,
     clave: PERMISO_ADMINISTRAR_USUARIOS,
-  });
+  }, client);
   if (!teniaPermiso) return false;
 
   const seDesactiva = Boolean(datos.estado) && datos.estado !== 'ACTIVO';
   const rolIdFinal = datos.rolId || relacion.rolId;
   const tendraPermiso =
-    !seDesactiva && (await usuarioTienePermiso({ usuarioId, rolId: rolIdFinal, clave: PERMISO_ADMINISTRAR_USUARIOS }));
+    !seDesactiva && (await usuarioTienePermiso({ usuarioId, rolId: rolIdFinal, clave: PERMISO_ADMINISTRAR_USUARIOS }, client));
   if (tendraPermiso) return false;
 
-  const otros = await prisma.usuarioEmpresa.findMany({
+  const otros = await client.usuarioEmpresa.findMany({
     where: { empresaId, activo: true, usuarioId: { not: usuarioId }, usuario: { estado: 'ACTIVO' } },
     select: { usuarioId: true, rolId: true },
   });
   for (const otro of otros) {
     // eslint-disable-next-line no-await-in-loop
-    if (await usuarioTienePermiso({ usuarioId: otro.usuarioId, rolId: otro.rolId, clave: PERMISO_ADMINISTRAR_USUARIOS })) {
+    if (await usuarioTienePermiso({ usuarioId: otro.usuarioId, rolId: otro.rolId, clave: PERMISO_ADMINISTRAR_USUARIOS }, client)) {
       return false;
     }
   }
@@ -146,14 +148,25 @@ async function actualizar({ empresaId, usuarioEjecutorId, usuarioId, datos }) {
     if (!rol) throw new AppError(400, 'El rol indicado no pertenece a esta empresa.');
   }
 
-  if (await quedariaSinAdministradorDeUsuarios({ empresaId, usuarioId, relacion, datos })) {
-    throw new AppError(
-      409,
-      'No puedes hacer este cambio: dejaría a la empresa sin ningún usuario activo que pueda administrar usuarios.',
-    );
-  }
-
   return prisma.$transaction(async (tx) => {
+    // Serializa ediciones concurrentes de usuarios de la misma empresa que puedan afectar la
+    // invariante "siempre queda alguien que administra usuarios": el check de arriba lee el
+    // estado de TODOS los admins de la empresa, no de una sola fila, así que un SELECT...FOR
+    // UPDATE puntual no alcanza a protegerlo. Sin este lock, dos admins degradándose el uno al
+    // otro casi al mismo tiempo (A degrada a B, B degrada a A) podían pasar ambos el check
+    // contra el estado previo al cambio del otro, dejando la empresa sin ningún usuario que
+    // pueda administrar usuarios (encontrado en la ronda de QA pre-lanzamiento).
+    // Segunda key fija (1) para no compartir keyspace con otros advisory locks por-empresa del
+    // proyecto (ver clientes.service.js#asegurarClienteGeneral, key fija 2).
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(1, hashtext(${empresaId}))`;
+
+    if (await quedariaSinAdministradorDeUsuarios({ empresaId, usuarioId, relacion, datos }, tx)) {
+      throw new AppError(
+        409,
+        'No puedes hacer este cambio: dejaría a la empresa sin ningún usuario activo que pueda administrar usuarios.',
+      );
+    }
+
     const antes = { estado: relacion.usuario.estado, rolId: relacion.rolId };
 
     if (datos.rolId) {

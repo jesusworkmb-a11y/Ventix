@@ -554,8 +554,16 @@ async function reporteCaja({
   if (desde) where.cerradaEn.gte = new Date(desde);
   if (hasta) where.cerradaEn.lte = new Date(hasta);
 
-  const sesiones = await prisma.sesionCaja.findMany({ where, orderBy: { cerradaEn: 'desc' }, take: 200 });
-  const totalDiferencias = sesiones.reduce((acc, s) => acc + Number(s.diferencia || 0), 0);
+  // El listado de sesiones se limita a 200 (mismo criterio documentado que reporteKardex), pero
+  // totalDiferencias es un total de conciliación -- calcularlo sobre las mismas 200 sesiones
+  // truncadas lo hacía verse completo sin serlo en una empresa con más de 200 cierres en el
+  // rango (encontrado en la ronda de QA pre-lanzamiento). Se agrega aparte, sobre TODO el `where`
+  // sin el take, para que el total sea exacto aunque el listado se muestre truncado.
+  const [sesiones, agregadoDiferencias] = await Promise.all([
+    prisma.sesionCaja.findMany({ where, orderBy: { cerradaEn: 'desc' }, take: 200 }),
+    prisma.sesionCaja.aggregate({ where, _sum: { diferencia: true } }),
+  ]);
+  const totalDiferencias = Number(agregadoDiferencias._sum.diferencia || 0);
 
   const sesionIds = sesiones.map((s) => s.id);
   const usuarioIds = [...new Set(sesiones.map((s) => s.usuarioResponsableId))];
