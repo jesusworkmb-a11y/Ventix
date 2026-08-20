@@ -1,5 +1,6 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { Prisma } = require('@prisma/client');
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
@@ -8,6 +9,12 @@ const { registrarAuditoria } = require('../../../shared/services/auditoria.servi
 const { buildSecuenciasIniciales } = require('../../../shared/services/secuencia.service');
 const { resolverPermisosDeUsuario } = require('../../../shared/services/permisos.service');
 const { formatearFechaCorta } = require('../../../shared/formatearFecha');
+const { parsearNumeroEmpresa } = require('../../../shared/numeroEmpresa');
+const { enviarCorreo } = require('../../../shared/services/correo.service');
+
+const RECUPERACION_VIGENCIA_MS = 60 * 60 * 1000; // 1 hora
+const MENSAJE_RECUPERACION_GENERICO = 'Si los datos coinciden con una cuenta, te enviamos un '
+  + 'correo con instrucciones para recuperar el acceso.';
 
 const ROLES_BASE = ['Administrador', 'Supervisor', 'Cajero', 'Almacenista'];
 const MAX_INTENTOS_FALLIDOS = 5;
@@ -204,4 +211,88 @@ async function obtenerMe({ usuarioId, empresaId, rolId, esSuperAdmin }) {
   return { usuario, empresa, rol, permisos, esSuperAdmin: false };
 }
 
-module.exports = { registrarEmpresa, login, obtenerMe };
+async function emitirTokenRecuperacionYEnviar(usuario) {
+  const tokenCrudo = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(tokenCrudo).digest('hex');
+  const expiraEn = new Date(Date.now() + RECUPERACION_VIGENCIA_MS);
+
+  await prisma.passwordResetToken.create({
+    data: { usuarioId: usuario.id, tokenHash, expiraEn },
+  });
+
+  const link = `${process.env.FRONTEND_URL}/restablecer-password?token=${tokenCrudo}`;
+  await enviarCorreo({
+    destinatario: usuario.correo,
+    asunto: 'Recuperar acceso a BOX POS',
+    mensaje: `Hola ${usuario.nombre},\n\nRecibimos una solicitud para restablecer tu contraseña `
+      + `de BOX POS. Este enlace es válido por 1 hora:\n\n${link}\n\nSi no fuiste vos, ignorá `
+      + 'este correo.',
+    html: `<p>Hola ${usuario.nombre},</p><p>Recibimos una solicitud para restablecer tu `
+      + `contraseña de BOX POS. Este enlace es válido por 1 hora:</p><p><a href="${link}">${link}`
+      + '</a></p><p>Si no fuiste vos, ignorá este correo.</p>',
+  });
+}
+
+// Identifica la cuenta por correo + número de empresa (ligados, a pedido explícito del usuario
+// del proyecto -- el número de empresa es el mismo identificador corto que usa el superadmin en
+// /superadmin) y manda un link de un solo uso por correo. Superadmin de plataforma no pasa por
+// acá (no tiene empresa) -- si algún día hace falta, es un caso aparte, no self-service.
+// Mismo mensaje genérico coincida o no la identificación, para no dar un oráculo de qué correos
+// y números de empresa son válidos (mismo criterio que el portal público de autofacturación).
+async function solicitarRecuperacion({ correo, numeroEmpresa }) {
+  try {
+    const numero = parsearNumeroEmpresa(numeroEmpresa);
+    const usuario = await prisma.usuario.findUnique({ where: { correo } });
+
+    if (usuario && !usuario.esSuperAdmin && numero !== null) {
+      const vinculo = await prisma.usuarioEmpresa.findFirst({
+        where: { usuarioId: usuario.id, empresa: { numero } },
+      });
+      if (vinculo) {
+        await emitirTokenRecuperacionYEnviar(usuario);
+      }
+    }
+  } catch (error) {
+    // No se propaga: un 502 de Resend solo en el caso "sí coincidía" sería el mismo oráculo que
+    // se evita arriba con el mensaje genérico. Se loguea para poder diagnosticar desde soporte.
+    console.error('Error en solicitarRecuperacion:', error); // eslint-disable-line no-console
+  }
+  return { mensaje: MENSAJE_RECUPERACION_GENERICO };
+}
+
+async function restablecerPassword({ token, passwordNueva }) {
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const MENSAJE_INVALIDO = 'El enlace no es válido o ya expiró. Solicitá uno nuevo.';
+
+  const registro = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+  if (!registro || registro.usadoEn || registro.expiraEn < new Date()) {
+    throw new AppError(400, MENSAJE_INVALIDO);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Reclamo atómico (mismo patrón `UPDATE...WHERE <condición>` que el resto del proyecto usa
+    // para condiciones de carrera): si dos requests con el mismo token llegan casi juntos, el
+    // check de arriba puede pasar en ambos -- solo uno gana el claim acá.
+    const claim = await tx.passwordResetToken.updateMany({
+      where: { id: registro.id, usadoEn: null },
+      data: { usadoEn: new Date() },
+    });
+    if (claim.count === 0) throw new AppError(400, MENSAJE_INVALIDO);
+
+    const passwordHash = await bcrypt.hash(passwordNueva, 10);
+    await tx.usuario.update({
+      where: { id: registro.usuarioId },
+      data: { passwordHash, intentosFallidos: 0, bloqueadoHasta: null },
+    });
+    // Defensa en profundidad: si el usuario pidió varios links, uno viejo filtrado no debe
+    // seguir sirviendo después de que ya se usó cualquiera de ellos.
+    await tx.passwordResetToken.updateMany({
+      where: { usuarioId: registro.usuarioId, usadoEn: null },
+      data: { usadoEn: new Date() },
+    });
+  });
+}
+
+module.exports = {
+  registrarEmpresa, login, obtenerMe, solicitarRecuperacion, restablecerPassword,
+};

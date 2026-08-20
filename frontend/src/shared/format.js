@@ -9,6 +9,12 @@ export function formatoFecha(fecha) {
   return formateadorFecha.format(new Date(fecha));
 }
 
+// Mismo formato que backend/src/shared/numeroEmpresa.js#formatearNumeroEmpresa -- duplicado a
+// propósito (frontend/backend no comparten código), mantenerlos en sync si cambia el prefijo.
+export function formatoNumeroEmpresa(numero) {
+  return `BOX-${String(numero).padStart(4, '0')}`;
+}
+
 export function tiempoRelativo(fecha) {
   const diffMs = Date.now() - new Date(fecha).getTime();
   const min = Math.round(diffMs / 60000);

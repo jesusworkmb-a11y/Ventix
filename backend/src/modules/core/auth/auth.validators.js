@@ -23,4 +23,16 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-module.exports = { registroSchema, loginSchema };
+const recuperarSchema = z.object({
+  correo: z.string().email(),
+  numeroEmpresa: z.string().min(1),
+});
+
+const restablecerSchema = z.object({
+  token: z.string().min(1),
+  passwordNueva: z.string().min(8),
+});
+
+module.exports = {
+  registroSchema, loginSchema, recuperarSchema, restablecerSchema,
+};

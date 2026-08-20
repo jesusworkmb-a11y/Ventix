@@ -12,6 +12,14 @@ export function me() {
   return api.get('/core/me').then((res) => res.data);
 }
 
+export function recuperarAcceso(datos) {
+  return api.post('/core/recuperar', datos).then((res) => res.data);
+}
+
+export function restablecerPassword(datos) {
+  return api.post('/core/restablecer', datos).then((res) => res.data);
+}
+
 export function actualizarEmpresa(datos) {
   return api.patch('/core/empresa', datos).then((res) => res.data);
 }

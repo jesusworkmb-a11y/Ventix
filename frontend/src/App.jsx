@@ -4,6 +4,8 @@ import ProtectedRoute from './shared/components/ProtectedRoute';
 import SuperAdminRoute from './shared/components/SuperAdminRoute';
 import RegistroPage from './modules/core/pages/RegistroPage';
 import LoginPage from './modules/core/pages/LoginPage';
+import OlvidePasswordPage from './modules/core/pages/OlvidePasswordPage';
+import RestablecerPasswordPage from './modules/core/pages/RestablecerPasswordPage';
 import SuperAdminPage from './modules/core/pages/SuperAdminPage';
 import EmpresaPage from './modules/core/pages/EmpresaPage';
 import ConfiguracionFiscalPage from './modules/core/pages/ConfiguracionFiscalPage';
@@ -46,6 +48,8 @@ function App() {
       <Routes>
         <Route path="/registro" element={<RegistroPage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/olvide-password" element={<OlvidePasswordPage />} />
+        <Route path="/restablecer-password" element={<RestablecerPasswordPage />} />
         <Route path="/facturar/:slug" element={<PortalAutofacturacionPage />} />
         <Route
           path="/superadmin"

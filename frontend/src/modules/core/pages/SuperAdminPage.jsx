@@ -4,6 +4,7 @@ import Card from '../../../shared/ui/Card';
 import Badge from '../../../shared/ui/Badge';
 import Button from '../../../shared/ui/Button';
 import Table, { Fila, Celda, TablaVacia } from '../../../shared/ui/Table';
+import { formatoNumeroEmpresa } from '../../../shared/format';
 import {
   listarEmpresasSuperadmin,
   cambiarEstadoEmpresaSuperadmin,
@@ -96,12 +97,13 @@ function SuperAdminPage() {
         {error && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
 
         <Card>
-          <Table columnas={['Empresa', 'Correo', 'Usuarios', 'Sucursales', 'Plan', 'Alta', 'Vigencia', 'Estado', '']}>
-            {!cargando && empresas.length === 0 && <TablaVacia colSpan={9} />}
+          <Table columnas={['Número', 'Empresa', 'Correo', 'Usuarios', 'Sucursales', 'Plan', 'Alta', 'Vigencia', 'Estado', '']}>
+            {!cargando && empresas.length === 0 && <TablaVacia colSpan={10} />}
             {empresas.map((e) => {
               const vencida = e.vigenciaHasta && new Date(e.vigenciaHasta) < new Date();
               return (
                 <Fila key={e.id}>
+                  <Celda className="font-mono text-xs text-gray-500">{formatoNumeroEmpresa(e.numero)}</Celda>
                   <Celda className="font-medium text-gray-800">{e.nombreComercial}</Celda>
                   <Celda>{e.correo || '—'}</Celda>
                   <Celda>{e._count.usuariosEmpresa}</Celda>

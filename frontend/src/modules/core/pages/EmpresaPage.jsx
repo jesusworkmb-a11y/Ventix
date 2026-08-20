@@ -3,6 +3,7 @@ import { Building2, Upload, X, Eye } from 'lucide-react';
 import { actualizarEmpresa as actualizarEmpresaApi } from '../api/core.api';
 import { useAuth } from '../../../shared/context/AuthContext';
 import { redimensionarImagen } from '../../../shared/imagen';
+import { formatoNumeroEmpresa } from '../../../shared/format';
 import { urlVistaPrevia } from '../../../shared/pdf/motor';
 import { construirDatosEjemplo } from '../../../shared/pdf/datosEjemplo';
 import Card from '../../../shared/ui/Card';
@@ -110,6 +111,12 @@ function EmpresaPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Empresa</h1>
         <p className="text-sm text-gray-500">Nombre, logo y plantillas de documentos que se muestran en la app y en los PDF.</p>
+        {empresa?.numero != null && (
+          <p className="mt-1 text-xs text-gray-400">
+            Número de empresa: <span className="font-mono font-medium text-gray-500">{formatoNumeroEmpresa(empresa.numero)}</span>
+            {' '}— guardalo, lo vas a necesitar para recuperar el acceso si olvidás tu contraseña.
+          </p>
+        )}
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}

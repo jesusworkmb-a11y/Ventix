@@ -21,6 +21,8 @@ const limitarAuth = rateLimit({
 
 router.post('/registro', limitarAuth, asyncHandler(controller.registro));
 router.post('/login', limitarAuth, asyncHandler(controller.login));
+router.post('/recuperar', limitarAuth, asyncHandler(controller.recuperar));
+router.post('/restablecer', limitarAuth, asyncHandler(controller.restablecer));
 router.get('/me', auth, asyncHandler(controller.me));
 
 module.exports = router;

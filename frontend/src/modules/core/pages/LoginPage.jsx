@@ -64,6 +64,12 @@ function LoginPage() {
               {cargando ? 'Entrando...' : 'Entrar'}
             </Button>
           </form>
+
+          <p className="mt-4 text-center text-sm">
+            <Link to="/olvide-password" className="font-medium text-primary-600 hover:text-primary-700">
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </p>
         </Card>
 
         <p className="mt-5 text-center text-sm text-gray-500">

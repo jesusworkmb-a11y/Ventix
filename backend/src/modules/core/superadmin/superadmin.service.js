@@ -6,6 +6,7 @@ async function listarEmpresas() {
   return prisma.empresa.findMany({
     select: {
       id: true,
+      numero: true,
       nombreComercial: true,
       razonSocial: true,
       correo: true,
