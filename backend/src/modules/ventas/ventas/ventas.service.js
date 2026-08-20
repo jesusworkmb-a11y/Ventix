@@ -412,27 +412,41 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
   if (venta.facturaId) {
     throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de cancelar la venta.');
   }
+  // Encontrado en vivo en la ronda de QA pre-lanzamiento, verificando el fix de la carrera
+  // devolución-vs-cancelar de más abajo: cancelar() nunca chequeaba si la venta ya tenía una
+  // devolución. La reversión de stock de abajo usa la cantidad ORIGINAL de cada línea, sin
+  // descontar cantidadDevuelta -- así que cancelar una venta con una devolución ya procesada
+  // acredita el stock devuelto DOS VECES (una por la devolución, otra por la cancelación).
+  // Reproducido en vivo: venta de 1 unidad, se procesa una devolución (stock +1, reembolso
+  // $23.20) y después se cancela la misma venta -- la cancelación igual tuvo éxito y acreditó
+  // otra unidad de más. Mismo criterio que facturaId: si ya hay una devolución, cancelar queda
+  // bloqueado por completo (no se intenta prorratear la reversión).
+  const tieneDevolucion = await prisma.devolucion.findFirst({ where: { ventaId }, select: { id: true } });
+  if (tieneDevolucion) {
+    throw new AppError(400, 'Esta venta ya tiene una devolución registrada; no se puede cancelar completa.');
+  }
 
   return prisma.$transaction(async (tx) => {
-    // El check de arriba no es atómico con el resto: dos cancelar() casi simultáneos sobre la
-    // misma venta pasaban ambos el check y aplicaban la reversión de stock más de una vez —
+    // Los checks de arriba no son atómicos con el resto: dos cancelar() casi simultáneos sobre
+    // la misma venta pasaban ambos el check y aplicaban la reversión de stock más de una vez —
     // verificado en vivo: 5 cancelaciones concurrentes sobre una venta de 5 unidades, 4/5 con
     // éxito y el stock volvió a 115 en vez de 100 (la reversión se aplicó 4 veces). Mismo patrón
-    // ya usado en compras.cancelar/transferencias.recibir/conteos.cambiarEstado: se reclama la
-    // venta con un UPDATE...WHERE estado='CONFIRMADA' antes de aplicar los movimientos.
-    // También exige facturaId: null en el mismo WHERE -- el check de arriba (líneas 396-402) no
-    // es atómico con esta transacción, así que sin esto un crearDesdeVenta() concurrente podía
-    // reclamar facturaId (su propio candado ya exige estado='CONFIRMADA' AND facturaId IS NULL,
-    // ver facturas.service.js) mientras esta transacción seguía en curso, y como este UPDATE no
-    // tocaba/verificaba facturaId, igual cancelaba la venta -- ambas operaciones "ganaban" a la
-    // vez. Verificado en vivo disparando facturar+cancelar en paralelo antes de este fix.
-    const reclamada = await tx.venta.updateMany({
-      where: { id: ventaId, estado: 'CONFIRMADA', facturaId: null },
-      data: { estado: 'CANCELADA' },
-    });
-    if (reclamada.count === 0) {
+    // ya usado en compras.cancelar/transferencias.recibir/conteos.cambiarEstado: se bloquea la
+    // fila con FOR UPDATE y se releen estado/facturaId/devolución antes de aplicar los
+    // movimientos -- también cierra la carrera con crearDesdeVenta (que reclama facturaId
+    // atómicamente, ver facturas.service.js) y con devoluciones.crear (que ahora también releé
+    // estado bajo su propio FOR UPDATE sobre esta misma fila, ver devoluciones.service.js):
+    // cualquiera de las dos transacciones que tome el lock primero gana, la otra ve el estado ya
+    // actualizado al re-chequear y se rechaza.
+    const [ventaLock] = await tx.$queryRaw`SELECT estado, factura_id AS "facturaId" FROM ventas WHERE id = ${ventaId} FOR UPDATE`;
+    if (ventaLock.estado !== 'CONFIRMADA' || ventaLock.facturaId) {
       throw new AppError(400, 'Solo se pueden cancelar ventas confirmadas y no facturadas.');
     }
+    const devolucionBajoLock = await tx.devolucion.findFirst({ where: { ventaId }, select: { id: true } });
+    if (devolucionBajoLock) {
+      throw new AppError(400, 'Esta venta ya tiene una devolución registrada; no se puede cancelar completa.');
+    }
+    await tx.venta.update({ where: { id: ventaId }, data: { estado: 'CANCELADA' } });
 
     for (const detalle of venta.detalles) {
       await aplicarMovimiento(tx, {
