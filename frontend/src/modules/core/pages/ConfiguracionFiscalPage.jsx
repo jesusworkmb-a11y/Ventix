@@ -315,7 +315,7 @@ function ConfiguracionFiscalPage() {
       <Card title="Certificado de Sello Digital (CSD)">
         <p className="mb-3 text-sm text-gray-500">
           Necesario para timbrar CFDI ante el SAT. El certificado y la llave privada viajan
-          directo al proveedor de timbrado (PAC) — Ventix no los guarda, solo registra el RFC y
+          directo al proveedor de timbrado (PAC) — BOX POS no los guarda, solo registra el RFC y
           su vigencia.
         </p>
 

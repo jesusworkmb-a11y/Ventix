@@ -74,7 +74,7 @@ function SuperAdminPage() {
     <div className="min-h-screen bg-gray-50">
       <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
         <div>
-          <p className="text-sm text-gray-500">Ventix — Panel de plataforma</p>
+          <p className="text-sm text-gray-500">BOX POS — Panel de plataforma</p>
           <h1 className="text-lg font-semibold text-gray-900">{usuario?.nombre}</h1>
         </div>
         <button type="button" onClick={logout} className="text-sm text-gray-500 hover:text-gray-800">
@@ -86,7 +86,7 @@ function SuperAdminPage() {
         <div>
           <h2 className="text-xl font-bold text-gray-900">Empresas</h2>
           <p className="text-sm text-gray-500">
-            Todas las empresas dadas de alta en Ventix. Suspender una corta el acceso de sus
+            Todas las empresas dadas de alta en BOX POS. Suspender una corta el acceso de sus
             usuarios de inmediato, incluidas sesiones ya abiertas. Una vigencia vencida bloquea
             el acceso igual, pero con su propio mensaje para el cliente — dejá el campo vacío
             para que la empresa no tenga vencimiento.

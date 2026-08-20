@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronLeft, ChevronRight, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { NAVEGACION } from './navigation';
+import iconoBoxPos from '../../assets/brand/icono-boxpos-oscuro.png';
 
 const CLAVE_COLAPSADO = 'ventix_sidebar_colapsado';
 
@@ -59,9 +60,7 @@ function Sidebar({ abierto, onCerrar }) {
           ${abierto ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className={`flex h-16 shrink-0 items-center gap-2 px-5 ${mostrarColapsado ? 'lg:justify-center lg:px-2' : ''}`}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-400 to-primary-600 text-lg font-bold text-white">
-            B
-          </div>
+          <img src={iconoBoxPos} alt="BOX POS" className="h-8 w-8 shrink-0 object-contain" />
           <span className={`text-lg font-bold text-white ${mostrarColapsado ? 'lg:hidden' : ''}`}>BOX POS</span>
           <button
             type="button"

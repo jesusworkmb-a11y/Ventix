@@ -4,6 +4,7 @@ import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Input from '../../../shared/ui/Input';
 import Button from '../../../shared/ui/Button';
+import iconoBoxPos from '../../../assets/brand/icono-boxpos.png';
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -31,9 +32,7 @@ function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 text-xl font-bold text-white">
-            B
-          </div>
+          <img src={iconoBoxPos} alt="BOX POS" className="h-11 w-11 object-contain" />
           <span className="text-xl font-bold text-gray-900">BOX POS</span>
         </div>
 
