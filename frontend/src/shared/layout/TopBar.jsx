@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Menu, Search, ChevronDown, LogOut, Package, Users, Truck, Receipt, Loader2,
-  Bell, ArrowDownCircle, ArrowUpCircle,
+  Bell, ArrowDownCircle, ArrowUpCircle, CalendarClock,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { buscarGlobal } from '../../modules/busqueda/api/busqueda.api';
 import { alertasExistencias } from '../../modules/inventario/api/inventario.api';
 import { formatoMoneda } from '../format';
+import { diasParaVencerVigencia, vigenciaProximaAVencer } from '../vigencia';
 
 // Refresco periódico, no realtime — alcanza para un ícono de campana en la barra superior sin
 // sumar websockets ni polling agresivo.
@@ -63,7 +64,7 @@ const CATEGORIAS = [
 ];
 
 function TopBar({ onAbrirMenu }) {
-  const { usuario, rol, permisos, logout } = useAuth();
+  const { usuario, rol, permisos, empresa, logout } = useAuth();
   const navigate = useNavigate();
   const [menuAbierto, setMenuAbierto] = useState(false);
 
@@ -77,6 +78,14 @@ function TopBar({ onAbrirMenu }) {
   const [alertas, setAlertas] = useState([]);
   const [alertasAbierto, setAlertasAbierto] = useState(false);
   const alertasRef = useRef(null);
+
+  // Aviso de vigencia (§Notificaciones): solo a quien administra la empresa
+  // (administracion.empresa.editar, mismo permiso que gatea /administracion/empresa) -- es
+  // quien realmente puede hacer algo con esto. Cálculo en vivo, sin persistir nada (ver
+  // shared/vigencia.js), a diferencia de Alertas de stock que sí pega al backend.
+  const puedeVerVigencia = permisos?.includes('administracion.empresa.editar');
+  const diasVigencia = diasParaVencerVigencia(empresa?.vigenciaHasta);
+  const avisoVigencia = puedeVerVigencia && vigenciaProximaAVencer(empresa?.vigenciaHasta);
 
   useEffect(() => {
     if (!puedeVerInventario) return undefined;
@@ -200,28 +209,61 @@ function TopBar({ onAbrirMenu }) {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
-        {puedeVerInventario && (
+        {(puedeVerInventario || avisoVigencia) && (
           <div ref={alertasRef} className="relative">
             <button
               type="button"
               onClick={() => setAlertasAbierto((v) => !v)}
               className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100"
-              aria-label="Alertas de stock"
+              aria-label="Notificaciones"
             >
               <Bell size={20} />
-              {alertas.length > 0 && (
+              {(alertas.length > 0 || avisoVigencia) && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-danger-600 px-1 text-[10px] font-semibold leading-none text-white">
-                  {alertas.length > 9 ? '9+' : alertas.length}
+                  {(() => {
+                    const total = alertas.length + (avisoVigencia ? 1 : 0);
+                    return total > 9 ? '9+' : total;
+                  })()}
                 </span>
               )}
             </button>
 
             {alertasAbierto && (
               <div className="absolute right-0 z-20 mt-1 w-80 max-h-96 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-card">
+                {avisoVigencia && (
+                  <div className="border-b border-gray-100 pb-1">
+                    <p className="px-4 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      Tu plan
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => { setAlertasAbierto(false); navigate('/administracion/empresa'); }}
+                      className="flex w-full items-start gap-3 px-4 py-2 text-left hover:bg-gray-50"
+                    >
+                      <CalendarClock size={18} className="mt-0.5 shrink-0 text-danger-600" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm text-gray-900">
+                          {diasVigencia < 0
+                            ? 'Tu suscripción venció'
+                            : diasVigencia === 0
+                              ? 'Tu suscripción vence hoy'
+                              : `Tu suscripción vence en ${diasVigencia} día${diasVigencia === 1 ? '' : 's'}`}
+                        </span>
+                        <span className="block text-xs text-gray-500">
+                          Contactá al administrador de la plataforma para renovar tu plan y evitar
+                          que se suspenda el acceso.
+                        </span>
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {puedeVerInventario && (
                 <p className="px-4 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                   Alertas de stock
                 </p>
-                {alertas.length === 0 && (
+                )}
+                {puedeVerInventario && alertas.length === 0 && (
                   <p className="px-4 pb-3 text-sm text-gray-400">Sin alertas de stock por ahora.</p>
                 )}
                 {alertas.slice(0, 8).map((a, i) => {
@@ -246,13 +288,15 @@ function TopBar({ onAbrirMenu }) {
                     </button>
                   );
                 })}
-                <button
-                  type="button"
-                  onClick={() => { setAlertasAbierto(false); navigate('/inventario/existencias'); }}
-                  className="mt-1 block w-full border-t border-gray-100 px-4 py-2 text-left text-sm font-medium text-primary-600 hover:bg-gray-50"
-                >
-                  Ver existencias
-                </button>
+                {puedeVerInventario && (
+                  <button
+                    type="button"
+                    onClick={() => { setAlertasAbierto(false); navigate('/inventario/existencias'); }}
+                    className="mt-1 block w-full border-t border-gray-100 px-4 py-2 text-left text-sm font-medium text-primary-600 hover:bg-gray-50"
+                  >
+                    Ver existencias
+                  </button>
+                )}
               </div>
             )}
           </div>
