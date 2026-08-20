@@ -80,7 +80,8 @@ Notas del despliegue:
    plantilla nombrada, agregar conceptos clicando el catálogo), portal público de autofacturación
    (Fase E, `/facturar/:slug`) y timbrado real ante el SAT vía un PAC (Fase F, Facturama) — este
    último corre contra una cuenta **sandbox** (facturas apócrifas, sin valor fiscal); pasar a
-   producción real necesita una cuenta de Facturama de producción y el CSD real de la empresa, ver
+   producción real necesita contratar una cuenta de Facturama de producción (el CSD real de la
+   empresa ya lo tiene el usuario) — pausado hasta fin de agosto de 2026 por flujo de caja, ver
    el detalle en "Facturación Electrónica — Fase F" más abajo. Ver el resto del detalle en
    "Facturación Electrónica (CFDI)" y las secciones que le siguen.
 
@@ -2486,9 +2487,10 @@ vivo) y, sobre dos hallazgos que quedaron fuera de su alcance, se agregó rate l
 `/login`/`/registro` y se cerró la segunda ronda del blindaje Decimal en catálogo (costo/precio de
 Artículo, tasa de Impuesto, valor de Descuento) — ver "Rate limiting por IP en /login y /registro,
 y segunda ronda del blindaje Decimal" arriba. Ideas para retomar después:
-- **Pasar Facturación a producción real**: contratar una cuenta de Facturama de producción,
-  tramitar/cargar el CSD real de la empresa (necesita e.firma vigente del SAT) y cargarlo desde
-  `/administracion/fiscal` — con eso el timbrado deja de ser sandbox.
+- **Pasar Facturación a producción real**: contratar una cuenta de Facturama de producción y
+  cargar el CSD real de la empresa (ya lo tiene el usuario) desde `/administracion/fiscal` — con
+  eso el timbrado deja de ser sandbox. Pausado por decisión del usuario hasta fin de agosto de
+  2026 por flujo de caja, ver "Verificación de C.P. de Matriz y claves SAT pendientes" más abajo.
 - Una cuarta ronda de QA, o profundizar en algún módulo específico.
 - Otros campos de empresa editables (correo, teléfono, sitio web ya existen en el modelo
   `Empresa` pero no en la UI).
@@ -2725,11 +2727,15 @@ repo/código, no se renombró nada a nivel técnico). El usuario entregó un kit
   branding; no se tocó código para arreglarlo.
 
 **Pendiente para timbrar CFDI en producción real** (Fase F de Facturación, ver más arriba): el
-usuario bajó un CSD de producción (`CSD_MABJ9312256J8_...`) pero el ZIP solo trae `.key` + `.sdg`
-(acuse de Certifica, no el certificado) y una `Contraseña.txt` vacía — falta el archivo `.cer`
-(certificado público) y su contraseña real. Sin eso no se puede registrar el CSD en Facturama.
-Antes de retomar esto, confirmar si el `.cer` y la contraseña ya están disponibles en vez de
-asumir que siguen faltando.
+usuario bajó un CSD de producción (`CSD_MABJ9312256J8_...`) pero el ZIP solo traía `.key` + `.sdg`
+(acuse de Certifica, no el certificado) y una `Contraseña.txt` vacía — faltaba el archivo `.cer`
+(certificado público) y su contraseña real. **Esto ya se resolvió el mismo día**: el usuario
+consiguió el `.cer`/`.key`/contraseña completos. El bloqueo real que quedó al investigar qué hacía
+falta activar es otro: además del CSD hace falta contratar una **cuenta de producción de
+Facturama** (separada del sandbox ya usado para Fase F), con costo (~$1,650 MXN/año del módulo API
++ $0.50 MXN por timbre) — el usuario decidió no contratarla por ahora por temas de flujo de caja y
+retomarlo a fin de agosto de 2026. No retomar la activación de producción por iniciativa propia
+antes de esa fecha salvo que el usuario lo pida explícitamente.
 
 ## Número de empresa y recuperación de contraseña por correo (2026-08-20, sesión posterior)
 
@@ -2982,11 +2988,17 @@ ningún cambio de código:
   de Coca Cola del 17 de agosto — al ser la misma unidad, ese fix ya los había desbloqueado a los
   cuatro de paso.
 
-No quedó claro cuándo se cargaron estos valores (no hay una sesión de Claude Code documentada que
-lo haya hecho), probablemente el usuario los completó directo desde la UI. Verificado en vivo
-contra producción en Factura Directa: los cinco productos (Coca Cola incluida) aparecen
+En realidad **sí quedaron documentados en una sesión anterior** ("Cierre de los dos pendientes
+menores de la depuración de timbrado", 2026-08-18) — la sesión que revisó el README esta vez
+simplemente no había leído esa sección y asumió, por el texto de "Depuración de timbrado en
+producción" (2026-08-17) sin actualizar, que seguían pendientes. Verificado de nuevo en vivo contra
+producción en Factura Directa para confirmarlo: los cinco productos (Coca Cola incluida) aparecen
 seleccionables sin ningún aviso de "Sin clave SAT", y se agregó 7Up 600ml como concepto real
 (`SEVENUP600 · H87 · $20.00`, IVA $3.20, total $23.20) sin llegar a presionar "Crear factura" para
-no generar un timbrado real sin autorización — carrito limpiado después. Con esto, del roadmap de
-lanzamiento solo queda pendiente conseguir el `.cer` y la contraseña real del CSD de producción
-(ver "Rebrand a BOX POS" arriba) para dejar de timbrar en modo sandbox.
+no generar un timbrado real sin autorización — carrito limpiado después.
+
+Con esto, del roadmap de lanzamiento el único pendiente real es contratar la cuenta de producción
+de Facturama (ver "Rebrand a BOX POS" arriba) — pausado por decisión del usuario hasta fin de
+agosto de 2026 por temas de flujo de caja, no por nada técnico. El CSD de producción (`.cer`/
+`.key`/contraseña) ya lo tiene el usuario, listo para cargar en `/administracion/fiscal` en cuanto
+se contrate la cuenta.
