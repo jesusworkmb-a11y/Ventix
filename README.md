@@ -2672,3 +2672,32 @@ el usuario pidió explícitamente el patrón de botón + ventana modal en su lug
 que el resto de los diálogos de alta/edición del proyecto. Al crear, la caja nueva queda
 seleccionada de una vez y el modal se cierra solo. Verificado en vivo en local y producción.
 Pusheado a `main` (`4f1ae66`, `2b46064`).
+
+## Dos hallazgos colaterales en logs de Render (2026-08-20)
+
+Encontrados revisando los logs de Render durante una sesión de soporte no relacionada (backend
+caído, resuelto reiniciando el servicio manualmente) — ninguno de los dos fue reportado
+directamente por el usuario.
+
+- **500 en rutas con permiso cuando el request es de un superadmin.** Los logs mostraban
+  `PrismaClientValidationError` repetido en `usuarioTienePermiso`
+  (`backend/src/shared/services/permisos.service.js`) por `rolId` null. Causa: el superadmin de
+  plataforma (`Usuario.esSuperAdmin`, ver "Panel de superadmin" más arriba) nunca tiene `rolId`
+  — `UsuarioEmpresa.rolId` es no-nulo en el schema, así que ese es el único caso posible. Las
+  rutas `/superadmin` y `GET /me` ya estaban bien aisladas del sistema de permisos, pero
+  `requierePermiso` en sí no tenía resguardo: cualquier request de superadmin contra una ruta
+  gateada por permiso (manual, futura, bookmark viejo) tronaba 500 en vez de devolver un 403
+  limpio. Corregido en
+  [`permisos.middleware.js`](backend/src/middlewares/permisos.middleware.js): corta temprano con
+  403 si `req.auth.esSuperAdmin`, sin tocar Prisma — no se le da bypass total, porque el
+  superadmin no tiene permisos de empresa por diseño, solo gestiona la plataforma vía
+  `/superadmin`. Pusheado a `main` (`d9686d0`), verificado en logs tras el deploy: sin
+  recurrencia.
+- **`trust proxy` no configurado, rate limiting sin identificar IPs reales.** Cada boot mostraba
+  `ValidationError: ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` de `express-rate-limit` — Render corre la
+  app detrás de un proxy inverso que fija `X-Forwarded-For`, pero Express no confiaba en ese
+  header por defecto, así que `limitarAuth`/`limitarPortalPublico` (ver "Rate limiting por IP"
+  más arriba) no podían aislar por IP real. Corregido con `app.set('trust proxy', 1)` en
+  [`app.js`](backend/src/app.js) — solo 1 hop, no `true`, para que un cliente no pueda spoofear
+  su propio `X-Forwarded-For` y evadir el límite. Pusheado a `main` (`7d35d1d`), verificado en
+  logs tras el deploy: el warning ya no aparece en el boot.
