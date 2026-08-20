@@ -2786,3 +2786,138 @@ se contacte a pagar. Cálculo 100% en el frontend (`frontend/src/shared/vigencia
   `vigenciaHasta` en **cada** request (no solo al loguear), así que el caso "ya vencida con sesión
   abierta" casi no se llega a ver en la práctica — el aviso de "5 días o menos" es el que
   realmente importa. Pusheado a `main` (`6ad8ec3`, `a07a2c0`).
+
+## Cuarta ronda de QA pre-lanzamiento (2026-08-20, sesión posterior)
+
+Con el proyecto próximo a lanzarse, el usuario pidió una ronda de QA "bien detallada" que cubriera
+otra vez los 10 módulos originales completos (no solo lo nuevo desde la tercera ronda) más
+Facturación/CFDI, en vivo contra producción. A diferencia de rondas anteriores (un módulo a la
+vez), esta arrancó con **5 agentes de revisión de código en paralelo**, cada uno buscando los
+mismos patrones de bug ya encontrados y corregidos en rondas previas (condición de carrera
+check-then-act sin candado atómico, flags `activo`/`estado` no validados al usarse, fugas
+multi-tenant, duplicados sin capturar `P2002`, precisión Decimal, permisos faltantes) más
+verificaciones específicas de seguridad para Facturación/CFDI y el flujo nuevo de recuperación de
+contraseña. Cada hallazgo confirmado se corrigió, se desplegó, y los de mayor riesgo se
+reverificaron en vivo con requests concurrentes (mismo método que las rondas anteriores).
+
+**Condiciones de carrera corregidas:**
+- **Devolución sobre venta cancelada.** El candado de
+  [devoluciones.service.js](backend/src/modules/ventas/devoluciones/devoluciones.service.js)
+  (`crear`) solo releía `facturaId` bajo el `FOR UPDATE`, no `estado` — una devolución concurrente
+  con una cancelación pasaba igual porque `facturaId` seguía `null`. Corregido releyendo también
+  `estado` bajo el lock.
+- **Cancelar una venta que ya tiene una devolución — el hallazgo más importante de esta ronda,
+  y solo salió a la luz verificando el fix anterior en vivo, no por revisión de código.**
+  [ventas.service.js](backend/src/modules/ventas/ventas/ventas.service.js) (`cancelar`) nunca
+  chequeaba si la venta ya tenía una devolución registrada; como la reversión de stock de cancelar
+  usa la cantidad *original* de cada línea (sin descontar `cantidadDevuelta`), cancelar una venta
+  con una devolución ya procesada acreditaba el stock devuelto **dos veces**. Reproducido en vivo
+  disparando cancelar+devolver en paralelo sobre la misma venta: ambas "ganaron", el stock quedó 1
+  unidad de más (corregido con un ajuste compensatorio). Corregido con el mismo criterio que
+  `facturaId`: si ya hay una devolución, cancelar queda bloqueado por completo, releyendo
+  estado/facturaId/devolución bajo un `SELECT...FOR UPDATE` sobre la misma fila que ya bloquea
+  `devoluciones.crear`. Reverificado en vivo dos veces más tras el fix: devolver+cancelar en
+  paralelo (devolver ganó, cancelar rechazado limpio) y 5 cancelaciones+1 devolución en paralelo
+  (solo 1 cancelación ganó, el resto y la devolución rechazados) — ambas veces exactamente una
+  operación tuvo éxito, sin doble crédito de stock.
+- **Recepción de compra contra una orden podía "reabrir" una orden cerrada manualmente.**
+  [compras.service.js](backend/src/modules/compras/compras.service.js) (`crear`) bloqueaba la fila
+  de la orden con `FOR UPDATE` antes de aplicar las cantidades recibidas, pero nunca releía su
+  `estado` bajo el lock ni comparaba contra el valor fresco — un `cerrar()`/`cancelar()` concurrente
+  de la orden podía cerrarla mientras la recepción seguía en curso, y la recepción terminaba
+  "reabriendo" la orden a `RECIBIDA`/`PARCIAL`, pisando el cierre manual. Corregido releyendo el
+  estado bajo el lock y rechazando si ya no admite recepciones.
+- **Editar las líneas de un conteo físico ya en revisión.**
+  [conteos.service.js](backend/src/modules/inventario/conteos/conteos.service.js)
+  (`reemplazarDetalles`) chequeaba `estado === 'CAPTURA'` sin candado atómico, a diferencia de su
+  hermana `cambiarEstado`. Corregido con el mismo patrón `FOR UPDATE`.
+- **Dos administradores degradándose mutuamente.** En
+  [usuarios.service.js](backend/src/modules/core/usuarios/usuarios.service.js) (`actualizar`), la
+  invariante "no dejar la empresa sin nadie que administre usuarios" leía el estado de *todos* los
+  admins de la empresa sin ningún candado — un `SELECT...FOR UPDATE` de una sola fila no alcanza a
+  proteger una invariante sobre un conjunto de filas. Corregido con un
+  `pg_advisory_xact_lock` por empresa (primera vez que se usa este patrón en el proyecto, en vez
+  del `UPDATE...WHERE`/`FOR UPDATE` de una fila ya usado en todos lados).
+- **Cliente General duplicado en el primer alta de una empresa nueva.** Investigado y dejado como
+  riesgo autolimitado en la ronda de QA de Catálogo (2026-08-03); cerrado ahora en
+  [clientes.service.js](backend/src/modules/clientes/clientes.service.js)
+  (`asegurarClienteGeneral`) con el mismo `pg_advisory_xact_lock` por empresa (key distinta a la de
+  usuarios, mismo mecanismo).
+
+**Riesgo legal/financiero (CFDI):**
+- **Doble timbrado/cancelación real ante el SAT si falla el guardado local justo después de un PAC
+  exitoso.** `intentarTimbrar`/`cancelar` en
+  [facturas.service.js](backend/src/modules/facturacion/facturas/facturas.service.js) no tenían
+  ningún manejo de error en el `UPDATE` final que persiste el resultado del PAC — un blip
+  transitorio de conexión ahí dejaba la Factura sin `pacId`/`uuid` guardados, y un reintento volvía
+  a llamar `facturama.timbrar()`/`cancelar()`, generando un CFDI/cancelación duplicada real.
+  Corregido con reintentos cortos (nuevo
+  [reintentarEscritura.js](backend/src/shared/reintentarEscritura.js)) sobre esa escritura
+  puntual, y un log crítico + error explícito ("NO reintentes, contactá soporte") si se agotan.
+- **Facturar con cantidades pre-devolución.** `crearDesdeVenta`/`crearAgrupada` en el mismo archivo
+  armaban los conceptos del CFDI a partir de `venta.detalles` leído *antes* de reclamar
+  `facturaId` — una devolución que ganara la carrera en esa ventana quedaba sin reflejarse en el
+  CFDI. Corregido releyendo los detalles (con `cantidadDevuelta` fresco) recién después del
+  candado.
+- **RFC del emisor como tercer factor en el portal público de autofacturación**, a pedido
+  explícito del usuario, sumado a folio+monto ya existentes — decisión de negocio de mantener el
+  portal sin OTP/confirmación por correo (diseño original), pero endurecer la verificación con un
+  dato más difícil de adivinar a ciegas que el nombre comercial (visible en la misma pantalla).
+  Nuevo campo en
+  [portalPublico.service.js](backend/src/modules/facturacion/portalPublico/portalPublico.service.js)
+  (compara contra el RFC real resuelto de la sucursal/empresa emisora, mismo mensaje genérico que
+  folio/monto para no abrir un oráculo) y
+  [PortalAutofacturacionPage.jsx](frontend/src/modules/facturacionPublica/pages/PortalAutofacturacionPage.jsx).
+  Bug relacionado encontrado de paso: el ticket (impreso en
+  [TicketVenta.jsx](frontend/src/modules/ventas/components/TicketVenta.jsx) y el PDF adjuntable en
+  [ticketPdf.js](frontend/src/modules/ventas/pdf/ticketPdf.js)) siempre mostraba el RFC de la
+  *empresa*, nunca el de la *sucursal* aunque tuviera uno propio — un cliente de esa sucursal nunca
+  hubiera podido completar el nuevo campo con lo que ve impreso. Corregido en ambos.
+
+**Seguridad:**
+- **Canal de timing en recuperación de contraseña.** `solicitarRecuperacion` en
+  [auth.service.js](backend/src/modules/core/auth/auth.service.js) devolvía el mismo mensaje
+  genérico exista o no la cuenta, pero solo esperaba (`await`) el envío real del correo (llamada de
+  red a Resend, cientos de ms) en la rama "sí coincidía" — la duración de la respuesta delataba
+  cuentas reales pese al mensaje genérico. Corregido sin esperar esa promesa.
+- **5 rutas GET de Catálogo sin permiso**: categorías/marcas/unidades/impuestos/atributos solo
+  tenían `auth` (JWT válido), sin `requierePermiso` — cualquier usuario autenticado, sin importar
+  su rol, podía listarlas. Corregido con `catalogo.articulos.ver`, mismo criterio ya usado en
+  descuentos/promociones. Verificado en vivo con un usuario de prueba sin ese permiso: los 5
+  endpoints pasaron de `200` a `403`.
+- **Caja desactivada seguía aceptando movimientos** si ya tenía una sesión abierta —
+  `registrarMovimientoCaja` en
+  [caja.service.js](backend/src/shared/services/caja.service.js) nunca chequeaba `caja.activa`,
+  solo `sesiones.service.js#abrir`. Corregido.
+
+**Integridad de datos** (todo verificado en vivo salvo donde se indica lo contrario):
+- CSV de artículos aceptaba costo/precio/stock negativos (la ruta JSON ya lo rechazaba) —
+  corregido en [herramientas.service.js](backend/src/modules/herramientas/herramientas.service.js).
+- `cantidad` (Decimal) escrita cruda en `ventaDetalle`/`cotizacionDetalle`/`devolucionDetalle` —
+  mismo riesgo de ruido de punto flotante ya corregido para montos, ahora también acá.
+- RFC sin validar formato en clientes/proveedores (ruta JSON y CSV) — regex consolidado en un solo
+  lugar nuevo, [shared/rfc.js](backend/src/shared/rfc.js) (antes duplicado en Facturación y
+  Empresa).
+- Descuentos/promociones no validaban que `articuloId`/`categoriaId` pertenecieran a la empresa del
+  caller (sin impacto real hoy, ventas ya filtra por empresa al aplicar, pero cerrado por
+  consistencia).
+- `clienteId`/`sucursalId` sin validar tenencia en Facturación directa/agrupada/plantillas (mismo
+  motivo: latente, no explotado hoy).
+- Caja sin bloqueo de nombre duplicado dentro de una sucursal (chequeo previo, no atómico — no hay
+  constraint único en la DB para esto).
+- Reporte de caja truncaba `totalDiferencias` a las 200 sesiones más recientes sin avisar,
+  subestimando la conciliación en empresas con más de 200 cierres en el rango — ahora se calcula
+  aparte con un `aggregate` sobre todo el filtro, sin el `take`.
+- Parámetros numéricos de Reportes (`dias`, `limite`) sin validar — un query mal formado colaba
+  `NaN` hasta el cálculo en vez de un `400` claro.
+- Registro de CSD ahora queda en Auditoría (dato fiscal sensible sin traza hasta ahora).
+
+**Dejado como está, por decisión explícita del usuario:** el portal público de autofacturación
+sigue sin OTP/confirmación por correo — folio+monto+RFC como único gate, diseño original.
+**Dejado sin corregir, cosmético:** la validación de "artículo repetido" en las líneas de
+ajustes/transferencias/compras/órdenes es un no-op lógico (compara conjuntos ya deduplicados en
+ambos lados), pero no causa ningún bug real — el stock termina correcto igual, solo se crean dos
+líneas de kardex en vez de una.
+
+Pusheado a `main` en dos commits (`1f0f182` la ronda completa, `2f932ab` el fix de cancelar-vs-
+devolución encontrado verificando el primero en vivo).
