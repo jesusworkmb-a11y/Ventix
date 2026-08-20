@@ -17,6 +17,88 @@ const COLUMNAS = [
   { label: 'Detalle', clave: null },
 ];
 
+const ETIQUETAS_CAMPO = {
+  nombre: 'Nombre',
+  correo: 'Correo',
+  telefono: 'Teléfono',
+  rolId: 'Rol',
+  estado: 'Estado',
+  plan: 'Plan',
+  activo: 'Activo',
+  vigenciaHasta: 'Vigencia',
+  direccion: 'Dirección',
+  codigoPostal: 'Código postal',
+  razonSocial: 'Razón social',
+  rfc: 'RFC',
+};
+
+function etiquetaCampo(clave) {
+  return ETIQUETAS_CAMPO[clave]
+    || clave.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
+}
+
+function esObjetoPlano(v) {
+  return v !== null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function formatearValor(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'boolean') return v ? 'Sí' : 'No';
+  if (Array.isArray(v)) {
+    if (!v.length) return '—';
+    return v.map((item) => (esObjetoPlano(item) ? JSON.stringify(item) : String(item))).join(', ');
+  }
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) {
+    const fecha = new Date(v);
+    return Number.isNaN(fecha.getTime()) ? v : fecha.toLocaleString();
+  }
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+// Reemplaza el volcado crudo de JSON por una lista legible campo: antes → después.
+// Cubre el caso más común (diff de pares campo-valor); para valores que no son un objeto plano
+// (ej. el arreglo de claves de permiso en RolPermiso) cae a mostrar antes/después como listas.
+function DetalleAuditoria({ valoresAntes, valoresDespues }) {
+  if (!esObjetoPlano(valoresAntes) && !esObjetoPlano(valoresDespues)) {
+    return (
+      <div className="space-y-1">
+        {valoresAntes !== null && valoresAntes !== undefined && (
+          <div><span className="font-medium text-gray-700">Antes:</span> {formatearValor(valoresAntes)}</div>
+        )}
+        {valoresDespues !== null && valoresDespues !== undefined && (
+          <div><span className="font-medium text-gray-700">Después:</span> {formatearValor(valoresDespues)}</div>
+        )}
+      </div>
+    );
+  }
+
+  const claves = [...new Set([
+    ...(esObjetoPlano(valoresAntes) ? Object.keys(valoresAntes) : []),
+    ...(esObjetoPlano(valoresDespues) ? Object.keys(valoresDespues) : []),
+  ])];
+
+  return (
+    <ul className="space-y-1">
+      {claves.map((clave) => {
+        const tieneAntes = esObjetoPlano(valoresAntes) && Object.prototype.hasOwnProperty.call(valoresAntes, clave);
+        const tieneDespues = esObjetoPlano(valoresDespues) && Object.prototype.hasOwnProperty.call(valoresDespues, clave);
+        const antes = tieneAntes ? valoresAntes[clave] : undefined;
+        const despues = tieneDespues ? valoresDespues[clave] : undefined;
+        const cambio = tieneAntes && tieneDespues && JSON.stringify(antes) !== JSON.stringify(despues);
+        return (
+          <li key={clave}>
+            <span className="font-medium text-gray-700">{etiquetaCampo(clave)}:</span>{' '}
+            {cambio
+              ? `${formatearValor(antes)} → ${formatearValor(despues)}`
+              : formatearValor(tieneDespues ? despues : antes)}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function AuditoriaPage() {
   const [registros, setRegistros] = useState([]);
   const [usuariosPorId, setUsuariosPorId] = useState({});
@@ -143,17 +225,8 @@ function AuditoriaPage() {
                 {(r.valoresAntes || r.valoresDespues) ? (
                   <details>
                     <summary className="cursor-pointer text-sm text-primary-600 hover:underline">ver</summary>
-                    <div className="mt-2 space-y-2">
-                      {r.valoresAntes && (
-                        <pre className="max-w-md overflow-x-auto rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
-                          Antes: {JSON.stringify(r.valoresAntes, null, 2)}
-                        </pre>
-                      )}
-                      {r.valoresDespues && (
-                        <pre className="max-w-md overflow-x-auto rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
-                          Después: {JSON.stringify(r.valoresDespues, null, 2)}
-                        </pre>
-                      )}
+                    <div className="mt-2 max-w-md rounded-lg bg-gray-50 p-2 text-xs text-gray-600">
+                      <DetalleAuditoria valoresAntes={r.valoresAntes} valoresDespues={r.valoresDespues} />
                     </div>
                   </details>
                 ) : '—'}

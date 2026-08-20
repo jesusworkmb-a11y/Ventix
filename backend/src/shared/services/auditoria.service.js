@@ -16,6 +16,7 @@ async function registrarAuditoria(tx, {
   motivo = null,
   valoresAntes = null,
   valoresDespues = null,
+  esAccionPlataforma = false,
 }) {
   const client = tx || prisma;
   return client.auditoria.create({
@@ -31,6 +32,7 @@ async function registrarAuditoria(tx, {
       motivo,
       valoresAntes,
       valoresDespues,
+      esAccionPlataforma,
     },
   });
 }

@@ -316,6 +316,7 @@ model Auditoria {
   motivo               String?
   valoresAntes         Json?    @map("valores_antes")
   valoresDespues       Json?    @map("valores_despues")
+  esAccionPlataforma   Boolean  @default(false) @map("es_accion_plataforma")
   creadoEn             DateTime @default(now()) @map("creado_en")
 
   empresa Empresa @relation(fields: [empresaId], references: [id])

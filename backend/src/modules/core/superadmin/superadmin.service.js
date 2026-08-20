@@ -35,6 +35,7 @@ async function cambiarEstado({ id, estado, usuarioEjecutorId }) {
       motivo: 'Cambio de estado por el superadmin de la plataforma.',
       valoresAntes: { estado: empresa.estado },
       valoresDespues: { estado: actualizada.estado },
+      esAccionPlataforma: true,
     });
     return actualizada;
   });
@@ -55,6 +56,7 @@ async function actualizarVigencia({ id, vigenciaHasta, usuarioEjecutorId }) {
       motivo: 'Cambio de vigencia por el superadmin de la plataforma.',
       valoresAntes: { vigenciaHasta: empresa.vigenciaHasta ? empresa.vigenciaHasta.toISOString() : null },
       valoresDespues: { vigenciaHasta: actualizada.vigenciaHasta ? actualizada.vigenciaHasta.toISOString() : null },
+      esAccionPlataforma: true,
     });
     return actualizada;
   });
@@ -75,6 +77,7 @@ async function actualizarPlan({ id, plan, usuarioEjecutorId }) {
       motivo: 'Cambio de plan por el superadmin de la plataforma.',
       valoresAntes: { plan: empresa.plan },
       valoresDespues: { plan: actualizada.plan },
+      esAccionPlataforma: true,
     });
     return actualizada;
   });
