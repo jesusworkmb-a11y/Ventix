@@ -3002,3 +3002,46 @@ de Facturama (ver "Rebrand a BOX POS" arriba) — pausado por decisión del usua
 agosto de 2026 por temas de flujo de caja, no por nada técnico. El CSD de producción (`.cer`/
 `.key`/contraseña) ya lo tiene el usuario, listo para cargar en `/administracion/fiscal` en cuanto
 se contrate la cuenta.
+
+## Impresión automática del ticket de venta (2026-08-21, sesión posterior)
+
+El usuario pidió que el ticket se imprima solo al confirmar una venta, sin el paso manual de
+abrir el modal y darle clic a "Imprimir". Implementado en
+[VentasPage.jsx](frontend/src/modules/ventas/pages/VentasPage.jsx): en cuanto llega el
+`ticketVenta` de la venta recién creada (tanto en `cobrar()` como en `confirmarPagoMixto()`), un
+efecto abre el modal del ticket y otro dispara `window.print()`.
+
+Se hizo en dos efectos encadenados **a propósito, tras un bug real encontrado en la primera
+prueba en vivo**: el primer intento llamaba `window.print()` en el mismo efecto que abría el
+modal (`setTicketAbierto(true)` seguido de `window.print()` en la misma pasada) y el ticket salía
+**en blanco** — React todavía no había commiteado el render que monta `#ticket-imprimible` en el
+DOM cuando corría el print. Fix: un `useEffect` sobre `ticketVenta` marca
+`imprimirAutoPendienteRef.current = true` y abre el modal; un segundo `useEffect` sobre
+`ticketAbierto` es el que efectivamente imprime, y solo si ese flag sigue pendiente (así
+reabrir el ticket manualmente después, vía el link "Imprimir ticket", no dispara un segundo
+print automático). Commits `97981e2` (feature) y `ef522fd` (fix del ticket en blanco).
+
+El navegador sigue mostrando su propio diálogo de impresión — eso no lo controla el código de la
+app. Para impresión silenciosa de verdad hace falta configurar cada caja en **modo kiosco**:
+
+- Instalar la impresora térmica, ponerla como predeterminada en Windows, y fijar el tamaño de
+  papel del rollo (58mm/80mm) en sus propiedades — el modo kiosco imprime con lo que esté
+  configurado ahí, no deja elegir por impresión.
+- Abrir el POS siempre con un acceso directo que lance Chrome/Edge con la bandera
+  `--kiosk-printing`, por ejemplo:
+  ```
+  "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing --app=https://ventix-frontend.onrender.com
+  ```
+- **Gotcha verificado en vivo por el usuario**: si ya hay *cualquier otra ventana de Chrome
+  abierta* (de cualquier sitio), el acceso directo no abre un proceso nuevo — Chrome reutiliza
+  el que ya está corriendo y abre ahí una ventana normal, ignorando la bandera, así que vuelve a
+  pedir el diálogo. Hay que cerrar **todas** las ventanas de Chrome (y revisar el Administrador
+  de tareas por procesos `Google Chrome` colgados en segundo plano) antes de abrir con el acceso
+  directo. Recomendación derivada: esa caja debería usar Chrome solo para el POS; para navegar a
+  otra cosa en el mismo equipo, mejor otro navegador (Edge/Firefox).
+
+Verificado en vivo por el usuario tras el segundo deploy: venta real impresa automáticamente, con
+el contenido correcto (no en blanco), respetando el gotcha de cerrar Chrome primero. Pendiente:
+esta configuración de modo kiosco (impresora predeterminada + acceso directo + el gotcha de
+cerrar Chrome) todavía no está en ningún manual — documentarla cuando se escriba el manual de
+usuario (ver "Qué sigue" / roadmap de lanzamiento general, fuera de este repo).
