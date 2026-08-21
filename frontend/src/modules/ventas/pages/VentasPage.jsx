@@ -127,6 +127,7 @@ function VentasPage() {
   const [autorizarSeleccion, setAutorizarSeleccion] = useState('');
   const [autorizarError, setAutorizarError] = useState('');
   const accionPendienteRef = useRef(null);
+  const imprimirAutoPendienteRef = useRef(false);
 
   // Mini-formulario inline para cargar un descuento manual en una línea del carrito (ver
   // abrirDescuentoManual). manualEditIndex === null significa que no hay ninguno abierto.
@@ -161,12 +162,23 @@ function VentasPage() {
   // navegador sigue mostrando su propio diálogo de impresión (eso no lo controla el código de
   // la app); para que salga sin diálogo hay que configurar el navegador de la caja en modo
   // kiosco con impresora predeterminada fija.
+  // Separado en dos efectos a propósito: abrir el modal (que monta #ticket-imprimible en el
+  // DOM) es un render de React que todavía no ocurrió cuando corre este efecto -- llamar
+  // window.print() acá mismo imprimía el ticket en blanco. El segundo efecto solo dispara una
+  // vez que ticketAbierto ya se volvió true y React terminó de commitear ese render.
   useEffect(() => {
     if (ticketVenta) {
+      imprimirAutoPendienteRef.current = true;
       setTicketAbierto(true);
-      window.print();
     }
   }, [ticketVenta]);
+
+  useEffect(() => {
+    if (ticketAbierto && imprimirAutoPendienteRef.current) {
+      imprimirAutoPendienteRef.current = false;
+      window.print();
+    }
+  }, [ticketAbierto]);
 
   useEffect(() => {
     listarCajas()
