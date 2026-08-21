@@ -156,6 +156,18 @@ function VentasPage() {
   const [efectivoRecibido, setEfectivoRecibido] = useState('');
   const [efectivoError, setEfectivoError] = useState('');
 
+  // Apenas se confirma una venta y llega su ticketVenta (ver cobrar/confirmarPagoMixto), se
+  // imprime solo -- sin que el cajero tenga que abrir el modal y darle clic a "Imprimir". El
+  // navegador sigue mostrando su propio diálogo de impresión (eso no lo controla el código de
+  // la app); para que salga sin diálogo hay que configurar el navegador de la caja en modo
+  // kiosco con impresora predeterminada fija.
+  useEffect(() => {
+    if (ticketVenta) {
+      setTicketAbierto(true);
+      window.print();
+    }
+  }, [ticketVenta]);
+
   useEffect(() => {
     listarCajas()
       .then((data) => {
