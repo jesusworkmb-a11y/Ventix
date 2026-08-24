@@ -3045,3 +3045,68 @@ el contenido correcto (no en blanco), respetando el gotcha de cerrar Chrome prim
 esta configuración de modo kiosco (impresora predeterminada + acceso directo + el gotcha de
 cerrar Chrome) todavía no está en ningún manual — documentarla cuando se escriba el manual de
 usuario (ver "Qué sigue" / roadmap de lanzamiento general, fuera de este repo).
+
+## Listas de precio: importar/exportar CSV, editar y desactivar (2026-08-24)
+
+Tres pedidos del usuario sobre Listas de precio (MOD-010 Herramientas + Configuración de
+catálogo), implementados y pusheados en la misma sesión.
+
+**1. Importar/exportar precios por lista vía CSV**
+([listasPrecio.service.js](backend/src/modules/catalogo/listasPrecio/listasPrecio.service.js) no
+se tocó; el import/export vive en
+[herramientas.service.js](backend/src/modules/herramientas/herramientas.service.js), mismo
+módulo que ya hacía CSV de Artículos/Clientes/Proveedores). A diferencia de esos tres
+(create-only), este es **upsert** — cada fila referencia un artículo que ya existe, nunca crea
+uno nuevo: identifica el artículo por `sku`, si no hay por `codigoBarras`, si no por `nombre`
+exacto (rechaza la fila si el nombre es ambiguo), y fija/actualiza su `PrecioArticulo` en la
+lista elegida. Nuevas rutas `GET/POST /herramientas/listas-precio/:id/exportar|importar`,
+mismos permisos `herramientas.exportar`/`herramientas.importar` que ya existían — sin tocar el
+catálogo de permisos. En [HerramientasPage.jsx](frontend/src/modules/herramientas/pages/HerramientasPage.jsx):
+un botón "Exportar" por cada lista, y "Lista de precio" como opción nueva del selector de
+importar (con un segundo selector para elegir a cuál).
+
+**2. Editar y desactivar listas de precio** (`activo` nuevo en `ListaPrecio`, migración
+`20260824181545_agregar_activo_lista_precio`, aplicada directo contra Supabase). Se decidió
+**no** agregar borrado real: `ListaPrecio` está referenciada por `PrecioArticulo` y por
+`Cliente.listaPrecioId`, así que un delete de verdad rompería esas relaciones o dejaría clientes
+con una lista "fantasma". Desactivar la oculta de nuevas asignaciones/importaciones sin perder
+precios ni clientes ya asignados — mismo patrón que `activo` en Artículo/Cliente/Proveedor. Los
+selectores de "elegir una lista" (Cliente, precios por artículo, importar CSV) ahora solo
+muestran listas activas, salvo que el registro ya tenga asignada una que se desactivó después
+(esa se sigue mostrando, marcada "inactiva", para no perder la asignación existente
+silenciosamente). Importar CSV a una lista inactiva también se bloquea en el backend, no solo en
+la UI. Edición inline (nombre/es base/activa) agregada a la sección "Listas de precio" de
+`ConfiguracionCatalogoPage.jsx`, que antes solo permitía crear.
+
+**3. Bitácora de auditoría más legible**
+([auditoriaResolver.service.js](backend/src/shared/services/auditoriaResolver.service.js),
+nuevo): el usuario reportó que el detalle de la bitácora mostraba uuids crudos de artículo/
+proveedor/etc. en vez de nombres. La sesión de "detalle legible" del 20 de agosto (ver arriba)
+había resuelto el diff campo→campo, pero nunca tradujo **valores** que son IDs — ni el
+`entidadId` de cada fila, ni los `clienteId`/`proveedorId`/`articuloId`/`rolId`/etc. dentro de
+`valoresAntes`/`valoresDespues` (incluidas las líneas `detalles` de venta/compra/transferencia,
+que caían a `JSON.stringify` crudo por renglón). El resolver nuevo junta en una sola pasada todo
+ID referenciado en una página de resultados y lo resuelve en lote (una consulta por tabla
+involucrada) contra un mapa `entidad → {modelo, campo}` que cubre ~30 tablas; el frontend usa ese
+mapa `id → nombre` tanto en la columna "Entidad" como dentro del diff, sin tener que saber a qué
+tabla pertenece cada campo. De paso, el filtro "Entidad" de `AuditoriaPage.jsx` pasó de 5 opciones
+desactualizadas (solo administración/core) a las ~30 entidades reales, con nombres en español.
+
+Verificación (sin login disponible en este repo — no hay seed con usuario de prueba): sintaxis
+backend, rutas nuevas responden 401 (protegidas, no 404/500) tanto local como contra
+`ventix-backend-yjgv.onrender.com`, y en el bundle de `ventix-frontend.onrender.com` ya
+desplegado se confirmó el texto de las etiquetas nuevas. El flujo de editar/desactivar y el de
+importar precios por CSV no se probaron manualmente en pantalla — recomendable que el usuario los
+pruebe con datos reales. Commits `fa06634` (import/export CSV), `6eba722` (editar/desactivar),
+`762d1ad` (bitácora legible).
+
+## Ojito para mostrar/ocultar contraseña en el login (2026-08-24, sesión posterior)
+
+Pedido simple del usuario: poder ver la contraseña al iniciar sesión para confirmar que la
+escribió bien. Agregado solo en
+[LoginPage.jsx](frontend/src/modules/core/pages/LoginPage.jsx) (no en el `Input` compartido, para
+no afectar otros campos de contraseña del sistema como Usuarios o Restablecer contraseña sin que
+se haya pedido) — botón con ícono `Eye`/`EyeOff` de `lucide-react` que alterna el `type` del
+input entre `password`/`text` sin perder el valor escrito. Verificado en vivo en el navegador:
+alterna correctamente y el `aria-label` cambia entre "Mostrar contraseña"/"Ocultar contraseña".
+Commit `1361946`, pusheado a `main` — pendiente de que Render lo despliegue.
