@@ -1,5 +1,6 @@
 const prisma = require('../../../config/db');
 const { parsePaginacion, parseOrden, respuestaPaginada } = require('../../../shared/paginacion');
+const { resolverEtiquetas } = require('../../../shared/services/auditoriaResolver.service');
 
 const COLUMNAS_ORDENABLES = {
   creadoEn: 'creadoEn',
@@ -46,7 +47,12 @@ async function listar({ empresaId, filtros, paginacion, ordenamiento }) {
     prisma.auditoria.count({ where }),
   ]);
 
-  return respuestaPaginada(datos, total, paginado);
+  // Mapa plano id -> nombre legible para todo lo referenciado en esta página (entidadId de cada
+  // fila + cualquier *Id dentro de valoresAntes/valoresDespues) -- el frontend lo usa para no
+  // mostrar uuids crudos de artículo/cliente/proveedor/etc. en el detalle.
+  const etiquetas = await resolverEtiquetas(datos);
+
+  return { ...respuestaPaginada(datos, total, paginado), etiquetas };
 }
 
 module.exports = { listar };
