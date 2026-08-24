@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import {
   exportarArticulos,
   exportarClientes,
   exportarProveedores,
+  exportarListaPrecio,
   importarArticulos,
   importarClientes,
   importarProveedores,
+  importarListaPrecio,
 } from '../api/herramientas.api';
+import { listarListasPrecio } from '../../catalogo/api/catalogo.api';
 import Card from '../../../shared/ui/Card';
 import Button from '../../../shared/ui/Button';
 import Select from '../../../shared/ui/Select';
@@ -16,6 +19,7 @@ import Table, { Fila, Celda } from '../../../shared/ui/Table';
 const TIPOS_IMPORTAR = {
   articulos: {
     etiqueta: 'Artículos',
+    etiquetaResultado: 'Creados',
     fn: importarArticulos,
     columnas:
       'tipo, sku, codigoBarras, clave, nombre, descripcion, categoria, marca, unidadBase, ' +
@@ -25,6 +29,7 @@ const TIPOS_IMPORTAR = {
   },
   clientes: {
     etiqueta: 'Clientes',
+    etiquetaResultado: 'Creados',
     fn: importarClientes,
     columnas:
       'nombre, telefono, correo, rfc, direccion, listaPrecio, domicilioFiscalCp, ' +
@@ -33,17 +38,34 @@ const TIPOS_IMPORTAR = {
   },
   proveedores: {
     etiqueta: 'Proveedores',
+    etiquetaResultado: 'Creados',
     fn: importarProveedores,
     columnas: 'nombre, telefono, correo, rfc, direccion, activo.',
+  },
+  listaPrecio: {
+    etiqueta: 'Lista de precio',
+    etiquetaResultado: 'Precios actualizados',
+    requiereLista: true,
+    fn: (csv, listaPrecioId) => importarListaPrecio(listaPrecioId, csv),
+    columnas:
+      'sku, codigoBarras, nombre, precio. Identifica cada artículo por sku (si lo trae), si no ' +
+      'por código de barras, si no por nombre exacto — no crea artículos nuevos, solo fija su ' +
+      'precio en la lista elegida abajo. Los artículos deben existir ya en Catálogo.',
   },
 };
 
 function HerramientasPage() {
+  const [listas, setListas] = useState([]);
   const [tipoImportar, setTipoImportar] = useState('articulos');
+  const [listaPrecioId, setListaPrecioId] = useState('');
   const [archivo, setArchivo] = useState(null);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
+
+  useEffect(() => {
+    listarListasPrecio().then(setListas).catch(() => {});
+  }, []);
 
   async function manejarExportar(fn) {
     setError('');
@@ -62,10 +84,15 @@ function HerramientasPage() {
       setError('Selecciona un archivo CSV.');
       return;
     }
+    const tipo = TIPOS_IMPORTAR[tipoImportar];
+    if (tipo.requiereLista && !listaPrecioId) {
+      setError('Selecciona a qué lista de precio importar.');
+      return;
+    }
     setCargando(true);
     try {
       const texto = await archivo.text();
-      const data = await TIPOS_IMPORTAR[tipoImportar].fn(texto);
+      const data = await tipo.fn(texto, listaPrecioId);
       setResultado(data);
     } catch (err) {
       setError(err.response?.data?.error || 'No se pudo importar el archivo.');
@@ -92,26 +119,52 @@ function HerramientasPage() {
           <Button variant="secondary" onClick={() => manejarExportar(exportarProveedores)}>
             <Download size={16} /> Proveedores
           </Button>
+          {listas.map((l) => (
+            <Button
+              key={l.id}
+              variant="secondary"
+              onClick={() => manejarExportar(() => exportarListaPrecio(l.id, `lista-precio-${l.nombre}.csv`))}
+            >
+              <Download size={16} /> Lista de precio: {l.nombre}
+            </Button>
+          ))}
         </div>
       </Card>
 
       <Card title="Importar">
-        <div className="mb-4 max-w-xs">
-          <Select
-            label="Qué importar"
-            value={tipoImportar}
-            onChange={(e) => {
-              setTipoImportar(e.target.value);
-              setResultado(null);
-              setError('');
-            }}
-          >
-            {Object.entries(TIPOS_IMPORTAR).map(([clave, { etiqueta }]) => (
-              <option key={clave} value={clave}>
-                {etiqueta}
-              </option>
-            ))}
-          </Select>
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="max-w-xs">
+            <Select
+              label="Qué importar"
+              value={tipoImportar}
+              onChange={(e) => {
+                setTipoImportar(e.target.value);
+                setListaPrecioId('');
+                setResultado(null);
+                setError('');
+              }}
+            >
+              {Object.entries(TIPOS_IMPORTAR).map(([clave, { etiqueta }]) => (
+                <option key={clave} value={clave}>
+                  {etiqueta}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {TIPOS_IMPORTAR[tipoImportar].requiereLista && (
+            <div className="max-w-xs">
+              <Select
+                label="A qué lista de precio"
+                value={listaPrecioId}
+                onChange={(e) => setListaPrecioId(e.target.value)}
+              >
+                <option value="">Selecciona una lista</option>
+                {listas.map((l) => (
+                  <option key={l.id} value={l.id}>{l.nombre}</option>
+                ))}
+              </Select>
+            </div>
+          )}
         </div>
         <p className="mb-4 text-sm text-gray-500">
           CSV con columnas: {TIPOS_IMPORTAR[tipoImportar].columnas}
@@ -134,7 +187,10 @@ function HerramientasPage() {
       {resultado && (
         <Card title="Resultado de la importación">
           <p className="mb-4 text-sm text-gray-700">
-            Creados: <span className="font-semibold text-success-700">{resultado.creados}</span>
+            {TIPOS_IMPORTAR[tipoImportar].etiquetaResultado}:{' '}
+            <span className="font-semibold text-success-700">
+              {resultado.creados ?? resultado.actualizados}
+            </span>
           </p>
           {resultado.errores.length > 0 && (
             <div className="mb-4">

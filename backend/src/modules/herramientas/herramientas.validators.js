@@ -10,4 +10,5 @@ module.exports = {
   importarArticulosSchema: csvSchema,
   importarClientesSchema: csvSchema,
   importarProveedoresSchema: csvSchema,
+  importarListaPrecioSchema: csvSchema,
 };

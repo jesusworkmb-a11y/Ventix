@@ -408,11 +408,124 @@ async function importarProveedores({ empresaId, usuarioId, csv }) {
   return { creados, errores, advertencias };
 }
 
+const COLUMNAS_LISTA_PRECIO = ['sku', 'codigoBarras', 'nombre', 'precio'];
+
+async function exportarListaPrecio({ empresaId, listaPrecioId }) {
+  const lista = await prisma.listaPrecio.findFirst({ where: { id: listaPrecioId, empresaId } });
+  if (!lista) throw new AppError(404, 'Lista de precio no encontrada.');
+
+  const articulos = await prisma.articulo.findMany({
+    where: { empresaId },
+    include: { precios: { where: { listaPrecioId } } },
+    orderBy: { nombre: 'asc' },
+  });
+
+  // precio vacío = el artículo todavía no tiene un precio propio en esta lista (usa el precio
+  // base del catálogo al vender) -- no se exporta el precio base para no confundirlo con un
+  // valor ya definido específicamente para esta lista.
+  const filas = articulos.map((a) => ({
+    sku: a.sku || '',
+    codigoBarras: a.codigoBarras || '',
+    nombre: a.nombre,
+    precio: a.precios[0] ? a.precios[0].precio : '',
+  }));
+
+  return { nombreLista: lista.nombre, csv: aCsv(filas, COLUMNAS_LISTA_PRECIO) };
+}
+
+// Update-only (upsert) por (artículo, lista), a diferencia de importarArticulos/Clientes/
+// Proveedores (create-only): cada fila referencia un artículo que YA existe -- no crea artículos
+// nuevos, solo fija o actualiza su precio en esta lista. El artículo se identifica por sku, si no
+// hay por codigoBarras, si no hay por nombre exacto (sin ambigüedad -- con nombres repetidos pide
+// usar sku o código de barras).
+async function importarListaPrecio({ empresaId, usuarioId, listaPrecioId, csv }) {
+  const lista = await prisma.listaPrecio.findFirst({ where: { id: listaPrecioId, empresaId } });
+  if (!lista) throw new AppError(404, 'Lista de precio no encontrada.');
+
+  const filas = parsearCsv(csv);
+
+  const [articulos, preciosExistentes] = await Promise.all([
+    prisma.articulo.findMany({ where: { empresaId }, select: { id: true, sku: true, codigoBarras: true, nombre: true } }),
+    prisma.precioArticulo.findMany({ where: { listaPrecioId } }),
+  ]);
+
+  const porSku = new Map(articulos.filter((a) => a.sku).map((a) => [a.sku, a]));
+  const porCodigo = new Map(articulos.filter((a) => a.codigoBarras).map((a) => [a.codigoBarras, a]));
+  const porNombre = new Map();
+  for (const a of articulos) {
+    const clave = a.nombre.toLowerCase();
+    if (!porNombre.has(clave)) porNombre.set(clave, []);
+    porNombre.get(clave).push(a);
+  }
+  const precioPorArticuloId = new Map(preciosExistentes.map((p) => [p.articuloId, p.precio]));
+
+  const errores = [];
+  const advertencias = [];
+  let actualizados = 0;
+
+  for (let i = 0; i < filas.length; i += 1) {
+    const numeroFila = i + 2;
+    const fila = filas[i];
+
+    try {
+      let articulo;
+      if (fila.sku) {
+        articulo = porSku.get(fila.sku);
+        if (!articulo) throw new AppError(400, `No existe ningún artículo con el SKU "${fila.sku}".`);
+      } else if (fila.codigoBarras) {
+        articulo = porCodigo.get(fila.codigoBarras);
+        if (!articulo) throw new AppError(400, `No existe ningún artículo con el código de barras "${fila.codigoBarras}".`);
+      } else if (fila.nombre) {
+        const candidatos = porNombre.get(fila.nombre.toLowerCase()) || [];
+        if (candidatos.length > 1) {
+          throw new AppError(400, `Hay más de un artículo llamado "${fila.nombre}"; identifícalo por sku o código de barras.`);
+        }
+        if (candidatos.length === 0) throw new AppError(400, `No existe ningún artículo llamado "${fila.nombre}".`);
+        [articulo] = candidatos;
+      } else {
+        throw new AppError(400, 'La fila no trae sku, código de barras ni nombre para identificar el artículo.');
+      }
+
+      const precio = numeroDeColumna(fila.precio, 'precio', undefined);
+      if (precio === undefined) throw new AppError(400, 'Falta el precio.');
+
+      const precioAnterior = precioPorArticuloId.get(articulo.id) ?? null;
+
+      await prisma.$transaction(async (tx) => {
+        const actualizado = await tx.precioArticulo.upsert({
+          where: { articuloId_listaPrecioId: { articuloId: articulo.id, listaPrecioId } },
+          update: { precio: aDecimalString(precio) },
+          create: { articuloId: articulo.id, listaPrecioId, precio: aDecimalString(precio) },
+        });
+        await registrarAuditoria(tx, {
+          empresaId,
+          usuarioEjecutorId: usuarioId,
+          accion: 'ACTUALIZAR',
+          entidad: 'PrecioArticulo',
+          entidadId: articulo.id,
+          motivo: 'Importación CSV',
+          valoresAntes: toJson({ precio: precioAnterior }),
+          valoresDespues: toJson({ precio: actualizado.precio }),
+        });
+      });
+
+      precioPorArticuloId.set(articulo.id, precio);
+      actualizados += 1;
+    } catch (err) {
+      errores.push({ fila: numeroFila, mensaje: err.publicMessage || err.message || 'Error desconocido.' });
+    }
+  }
+
+  return { actualizados, errores, advertencias };
+}
+
 module.exports = {
   exportarArticulos,
   exportarClientes,
   exportarProveedores,
+  exportarListaPrecio,
   importarArticulos,
   importarClientes,
   importarProveedores,
+  importarListaPrecio,
 };

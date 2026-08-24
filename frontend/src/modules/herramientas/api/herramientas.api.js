@@ -22,6 +22,10 @@ export function exportarProveedores() {
   return descargarCsv('/herramientas/proveedores/exportar', 'proveedores.csv');
 }
 
+export function exportarListaPrecio(listaPrecioId, nombreArchivo) {
+  return descargarCsv(`/herramientas/listas-precio/${listaPrecioId}/exportar`, nombreArchivo);
+}
+
 export function importarArticulos(csv) {
   return api.post('/herramientas/articulos/importar', { csv }).then((res) => res.data);
 }
@@ -30,4 +34,7 @@ export function importarClientes(csv) {
 }
 export function importarProveedores(csv) {
   return api.post('/herramientas/proveedores/importar', { csv }).then((res) => res.data);
+}
+export function importarListaPrecio(listaPrecioId, csv) {
+  return api.post(`/herramientas/listas-precio/${listaPrecioId}/importar`, { csv }).then((res) => res.data);
 }

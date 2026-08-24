@@ -16,5 +16,7 @@ router.get('/clientes/exportar', requierePermiso('herramientas.exportar'), async
 router.post('/clientes/importar', requierePermiso('herramientas.importar'), asyncHandler(controller.importarClientes));
 router.get('/proveedores/exportar', requierePermiso('herramientas.exportar'), asyncHandler(controller.exportarProveedores));
 router.post('/proveedores/importar', requierePermiso('herramientas.importar'), asyncHandler(controller.importarProveedores));
+router.get('/listas-precio/:id/exportar', requierePermiso('herramientas.exportar'), asyncHandler(controller.exportarListaPrecio));
+router.post('/listas-precio/:id/importar', requierePermiso('herramientas.importar'), asyncHandler(controller.importarListaPrecio));
 
 module.exports = router;
