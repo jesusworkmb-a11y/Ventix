@@ -59,6 +59,9 @@ export function listarListasPrecio() {
 export function crearListaPrecio(datos) {
   return api.post('/catalogo/listas-precio', datos).then((res) => res.data);
 }
+export function actualizarListaPrecio(id, datos) {
+  return api.patch(`/catalogo/listas-precio/${id}`, datos).then((res) => res.data);
+}
 
 export function actualizarPreciosArticulo(articuloId, precios) {
   return api.put(`/catalogo/articulos/${articuloId}/precios`, { precios }).then((res) => res.data);

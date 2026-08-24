@@ -14,6 +14,7 @@ import {
   actualizarImpuesto,
   listarListasPrecio,
   crearListaPrecio,
+  actualizarListaPrecio,
   listarArticulos,
   listarDescuentos,
   crearDescuento,
@@ -297,12 +298,20 @@ function SeccionSimple({ titulo, cargar, crear, actualizar, campos, renderItem }
   );
 }
 
-// Listas de precio tiene su propio checkbox (esBase), por eso no usa SeccionSimple.
+// Listas de precio tiene su propio checkbox (esBase/activo), por eso no usa SeccionSimple. No
+// tiene "Eliminar" a propósito: una lista puede estar referenciada por PrecioArticulo y por
+// Cliente.listaPrecioId, así que borrarla de verdad rompería esas referencias o dejaría clientes
+// con una lista "fantasma" -- desactivarla la oculta de nuevas asignaciones/importaciones sin
+// perder el historial de precios ni los clientes ya asignados a ella.
 function SeccionListasPrecio() {
   const [listas, setListas] = useState([]);
   const [nombre, setNombre] = useState('');
   const [esBase, setEsBase] = useState(false);
   const [error, setError] = useState('');
+
+  const [editandoId, setEditandoId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [errorEdit, setErrorEdit] = useState('');
 
   function cargar() {
     listarListasPrecio().then(setListas).catch(() => {});
@@ -325,17 +334,84 @@ function SeccionListasPrecio() {
     }
   }
 
+  function iniciarEdicion(lista) {
+    setErrorEdit('');
+    setEditandoId(lista.id);
+    setEditForm({ nombre: lista.nombre, esBase: lista.esBase, activo: lista.activo });
+  }
+
+  function cancelarEdicion() {
+    setEditandoId(null);
+    setErrorEdit('');
+  }
+
+  async function guardarEdicion(e) {
+    e.preventDefault();
+    setErrorEdit('');
+    try {
+      await actualizarListaPrecio(editandoId, editForm);
+      setEditandoId(null);
+      cargar();
+    } catch (err) {
+      setErrorEdit(err.response?.data?.error || 'No se pudo actualizar la lista de precio.');
+    }
+  }
+
   return (
     <Card title="Listas de precio">
       <p className="mb-4 text-sm text-gray-500">
         Asigná precios por artículo a cada lista en <em>Artículos</em>, y una lista a cada cliente en{' '}
         <em>Clientes</em> — al vender, se cobra el precio de la lista del cliente si existe uno definido
-        ahí para ese artículo; si no, el precio base del catálogo.
+        ahí para ese artículo; si no, el precio base del catálogo. Una lista inactiva deja de ofrecerse
+        para asignar a clientes o importar precios, pero conserva los precios y clientes que ya tenía.
       </p>
       <ul className="divide-y divide-gray-100">
         {listas.map((l) => (
-          <li key={l.id} className="py-2 text-sm text-gray-700">
-            {l.nombre}{l.esBase ? <Badge tono="primary">base</Badge> : ''}
+          <li key={l.id} className="py-2.5">
+            {editandoId === l.id ? (
+              <form onSubmit={guardarEdicion} className="flex flex-wrap items-end gap-3">
+                <Input
+                  id={`listaPrecioEditNombre-${l.id}`}
+                  label="Nombre"
+                  value={editForm.nombre}
+                  onChange={(e) => setEditForm((f) => ({ ...f, nombre: e.target.value }))}
+                  required
+                  className="w-48"
+                />
+                <label className="flex items-center gap-2 pb-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={editForm.esBase}
+                    onChange={(e) => setEditForm((f) => ({ ...f, esBase: e.target.checked }))}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  Es base
+                </label>
+                <label className="flex items-center gap-2 pb-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={editForm.activo}
+                    onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  Activa
+                </label>
+                <Button type="submit" variant="secondary">Guardar</Button>
+                <Button type="button" variant="ghost" onClick={cancelarEdicion}>Cancelar</Button>
+                {errorEdit && <p className="w-full rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
+              </form>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-700">
+                  {l.nombre}
+                  {l.esBase ? <Badge tono="primary">base</Badge> : ''}
+                  {!l.activo && <Badge tono="gray">inactiva</Badge>}
+                </span>
+                <button type="button" onClick={() => iniciarEdicion(l)} className="text-sm text-primary-600 hover:underline">
+                  Editar
+                </button>
+              </div>
+            )}
           </li>
         ))}
       </ul>

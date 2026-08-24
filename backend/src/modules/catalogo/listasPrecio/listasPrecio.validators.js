@@ -8,6 +8,7 @@ const crearListaPrecioSchema = z.object({
 const actualizarListaPrecioSchema = z.object({
   nombre: z.string().min(1).optional(),
   esBase: z.boolean().optional(),
+  activo: z.boolean().optional(),
 });
 
 module.exports = { crearListaPrecioSchema, actualizarListaPrecioSchema };

@@ -125,7 +125,7 @@ function HerramientasPage() {
               variant="secondary"
               onClick={() => manejarExportar(() => exportarListaPrecio(l.id, `lista-precio-${l.nombre}.csv`))}
             >
-              <Download size={16} /> Lista de precio: {l.nombre}
+              <Download size={16} /> Lista de precio: {l.nombre}{!l.activo ? ' (inactiva)' : ''}
             </Button>
           ))}
         </div>
@@ -159,7 +159,7 @@ function HerramientasPage() {
                 onChange={(e) => setListaPrecioId(e.target.value)}
               >
                 <option value="">Selecciona una lista</option>
-                {listas.map((l) => (
+                {listas.filter((l) => l.activo).map((l) => (
                   <option key={l.id} value={l.id}>{l.nombre}</option>
                 ))}
               </Select>

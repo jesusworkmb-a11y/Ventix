@@ -213,8 +213,8 @@ function ClientesPage() {
                     className="py-1.5"
                   >
                     <option value="">Precio base</option>
-                    {listasPrecio.map((l) => (
-                      <option key={l.id} value={l.id}>{l.nombre}</option>
+                    {listasPrecio.filter((l) => l.activo || l.id === c.listaPrecioId).map((l) => (
+                      <option key={l.id} value={l.id}>{l.nombre}{!l.activo ? ' (inactiva)' : ''}</option>
                     ))}
                   </Select>
                 ) : '—'}
@@ -260,8 +260,8 @@ function ClientesPage() {
           />
           <Select id="listaPrecioEditCliente" label="Lista de precio" value={editForm.listaPrecioId} onChange={(e) => setEditForm((f) => ({ ...f, listaPrecioId: e.target.value }))}>
             <option value="">Precio base</option>
-            {listasPrecio.map((l) => (
-              <option key={l.id} value={l.id}>{l.nombre}</option>
+            {listasPrecio.filter((l) => l.activo || l.id === editForm.listaPrecioId).map((l) => (
+              <option key={l.id} value={l.id}>{l.nombre}{!l.activo ? ' (inactiva)' : ''}</option>
             ))}
           </Select>
           {clienteEnEdicion && !clienteEnEdicion.esGeneral && (

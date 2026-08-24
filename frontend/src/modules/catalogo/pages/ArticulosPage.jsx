@@ -582,7 +582,7 @@ function ArticulosPage() {
 
       <Modal abierto={preciosArticuloId !== null} onCerrar={cerrarPrecios} titulo="Precios por lista">
         <form onSubmit={guardarPrecios} className="flex flex-col gap-3">
-          {listasPrecio.map((l) => (
+          {listasPrecio.filter((l) => l.activo).map((l) => (
             <div key={l.id} className="flex items-center justify-between gap-3">
               <span className="text-sm text-gray-700">{l.nombre}</span>
               <Input

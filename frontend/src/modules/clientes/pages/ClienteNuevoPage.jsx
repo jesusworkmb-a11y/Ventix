@@ -95,7 +95,7 @@ function ClienteNuevoPage() {
           />
           <Select id="listaPrecioCliente" label="Lista de precio" value={form.listaPrecioId} onChange={(e) => actualizarCampo('listaPrecioId', e.target.value)}>
             <option value="">Precio base</option>
-            {listasPrecio.map((l) => (
+            {listasPrecio.filter((l) => l.activo).map((l) => (
               <option key={l.id} value={l.id}>{l.nombre}</option>
             ))}
           </Select>

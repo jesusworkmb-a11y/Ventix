@@ -542,6 +542,7 @@ model ListaPrecio {
   empresaId String  @map("empresa_id")
   nombre    String // ej. Menudeo (base), Mayoreo
   esBase    Boolean @default(false) @map("es_base")
+  activo    Boolean @default(true) // desactivar oculta la lista de nuevas asignaciones/importaciones sin borrar precios ni clientes ya asignados
 
   empresa  Empresa          @relation(fields: [empresaId], references: [id])
   precios  PrecioArticulo[]

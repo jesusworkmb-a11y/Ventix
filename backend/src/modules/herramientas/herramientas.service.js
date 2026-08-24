@@ -441,6 +441,10 @@ async function exportarListaPrecio({ empresaId, listaPrecioId }) {
 async function importarListaPrecio({ empresaId, usuarioId, listaPrecioId, csv }) {
   const lista = await prisma.listaPrecio.findFirst({ where: { id: listaPrecioId, empresaId } });
   if (!lista) throw new AppError(404, 'Lista de precio no encontrada.');
+  // Cada importación es una acción puntual y deliberada (a diferencia de asignarle esta lista a
+  // un cliente, un campo que se reenvía en cada edición del cliente aunque no cambie) -- bloquear
+  // acá no rompe nada existente, solo evita cargar precios nuevos en una lista ya retirada.
+  if (!lista.activo) throw new AppError(400, 'Esta lista de precio está inactiva; actívala antes de importar.');
 
   const filas = parsearCsv(csv);
 
