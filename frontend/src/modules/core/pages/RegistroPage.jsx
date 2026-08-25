@@ -16,6 +16,7 @@ function RegistroPage() {
   const { setSesion } = useAuth();
   const [form, setForm] = useState({
     nombreComercial: '',
+    telefono: '',
     pais: 'MX',
     moneda: 'MXN',
     zonaHoraria: 'America/Mexico_City',
@@ -38,6 +39,7 @@ function RegistroPage() {
       const data = await registro({
         empresa: {
           nombreComercial: form.nombreComercial,
+          telefono: form.telefono,
           pais: form.pais,
           moneda: form.moneda,
           zonaHoraria: form.zonaHoraria,
@@ -71,6 +73,14 @@ function RegistroPage() {
               label="Nombre comercial"
               value={form.nombreComercial}
               onChange={(e) => actualizar('nombreComercial', e.target.value)}
+              required
+            />
+            <Input
+              id="telefonoEmpresa"
+              label="Teléfono"
+              value={form.telefono}
+              onChange={(e) => actualizar('telefono', e.target.value)}
+              minLength={10}
               required
             />
             <div className="grid grid-cols-2 gap-3">

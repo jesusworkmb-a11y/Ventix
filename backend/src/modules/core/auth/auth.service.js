@@ -13,6 +13,7 @@ const { parsearNumeroEmpresa } = require('../../../shared/numeroEmpresa');
 const { enviarCorreo } = require('../../../shared/services/correo.service');
 
 const RECUPERACION_VIGENCIA_MS = 60 * 60 * 1000; // 1 hora
+const PRUEBA_DIAS = 7; // periodo de prueba gratis al registrarse (§registrarEmpresa)
 const MENSAJE_RECUPERACION_GENERICO = 'Si los datos coinciden con una cuenta, te enviamos un '
   + 'correo con instrucciones para recuperar el acceso.';
 
@@ -39,7 +40,8 @@ async function registrarEmpresa({ empresa, admin }) {
 
   try {
     return await prisma.$transaction(async (tx) => {
-      const nuevaEmpresa = await tx.empresa.create({ data: empresa });
+      const vigenciaHasta = new Date(Date.now() + PRUEBA_DIAS * 24 * 60 * 60 * 1000);
+      const nuevaEmpresa = await tx.empresa.create({ data: { ...empresa, vigenciaHasta } });
       const sucursal = await tx.sucursal.create({
         data: { empresaId: nuevaEmpresa.id, nombre: 'Matriz', clave: 'MAT' },
       });

@@ -9,7 +9,7 @@ const registroSchema = z.object({
     moneda: z.string().min(1),
     zonaHoraria: z.string().min(1),
     correo: z.string().email().optional(),
-    telefono: z.string().optional(),
+    telefono: z.string().min(10, 'Ingresa un teléfono válido'),
   }),
   admin: z.object({
     nombre: z.string().min(1),
