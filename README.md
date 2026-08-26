@@ -31,7 +31,7 @@ Base de datos: Supabase (Postgres gestionado). Repo: GitHub, un commit detallado
 
 | Servicio | URL |
 |---|---|
-| Frontend (Static Site) | https://ventix-frontend.onrender.com |
+| Frontend (Static Site) | **https://app.boxpos.com.mx** (dominio propio, conectado 2026-08-25 — ver "Dominio propio para la app" más abajo). La URL de Render, https://ventix-frontend.onrender.com, sigue sirviendo el mismo sitio pero **ya no es el origen permitido por CORS** (ver nota de `FRONTEND_URL` abajo) — no usarla para probar cambios de frontend en vivo, usar siempre `app.boxpos.com.mx`. |
 | Backend (Web Service) | https://ventix-backend-yjgv.onrender.com |
 | Health check | https://ventix-backend-yjgv.onrender.com/api/health |
 
@@ -50,7 +50,10 @@ Notas del despliegue:
   variable requiere un **Manual Deploy** en `ventix-frontend` para tomar efecto (guardar la variable sola
   no alcanza).
 - `FRONTEND_URL` (backend) y `VITE_API_URL` (frontend) deben apuntar el uno al otro para que CORS y las
-  llamadas a la API funcionen — ver `render.yaml` para el resto de variables.
+  llamadas a la API funcionen — ver `render.yaml` para el resto de variables. **`FRONTEND_URL` hoy vale
+  `https://app.boxpos.com.mx`** (cambiado el 2026-08-25, antes era `https://ventix-frontend.onrender.com`)
+  — `app.js` arma el CORS con un solo origen (`cors({ origin: process.env.FRONTEND_URL })`), así que
+  cualquier otro dominio (incluida la URL vieja de Render) queda bloqueado por el navegador.
 - Plan free: cold start tras inactividad (~30–50s la primera petición después de estar dormido).
 
 **Para retomar el proyecto** (incluida una conversación nueva de Claude Code):
@@ -70,7 +73,9 @@ Notas del despliegue:
    Caja y el cierre de pendientes de Ventas. Para probar el frontend contra producción localmente
    hace falta más que cambiar `VITE_API_URL`: el backend de Render solo permite CORS desde
    `FRONTEND_URL` (el frontend ya desplegado), no desde `localhost:5173` — para verificar cambios
-   de frontend en vivo, pusheá y probá contra `https://ventix-frontend.onrender.com` directamente.
+   de frontend en vivo, pusheá y probá contra `https://app.boxpos.com.mx` directamente (no contra
+   `https://ventix-frontend.onrender.com`, que ya no es el origen permitido — ver "Producción
+   (Render)" arriba).
 4. Login de prueba: `jesus.rodriguez@ventixdemo.test` / `SuperSegura123`.
 5. Dile qué sigue: los 10 módulos originales no tienen pendientes abiertos. Además ya se
    construyó el módulo de **Facturación Electrónica CFDI** (fuera del plan original) y su roadmap
@@ -3110,3 +3115,89 @@ se haya pedido) — botón con ícono `Eye`/`EyeOff` de `lucide-react` que alter
 input entre `password`/`text` sin perder el valor escrito. Verificado en vivo en el navegador:
 alterna correctamente y el `aria-label` cambia entre "Mostrar contraseña"/"Ocultar contraseña".
 Commit `1361946`, pusheado a `main` — pendiente de que Render lo despliegue.
+
+## Dominio propio para la app: app.boxpos.com.mx (2026-08-25)
+
+El usuario preguntó si desde el sitio de marketing (`boxpos-web`, repo hermano, ver su propio
+README) se podía entrar a la app — no estaba conectado todavía, el frontend solo vivía en la URL
+genérica de Render. Resuelto en tres partes:
+
+1. **Render** → servicio `ventix-frontend` → Custom Domain `app.boxpos.com.mx` agregado.
+2. **Netlify** (donde vive el DNS de `boxpos.com.mx`, ver el README de `boxpos-web`) → CNAME
+   `app` → el hostname de Render.
+3. **`FRONTEND_URL`** (env var de `ventix-backend` en Render) cambiada de
+   `https://ventix-frontend.onrender.com` a `https://app.boxpos.com.mx` — necesario porque
+   `app.js` arma el CORS con un solo origen y `auth.service.js` arma el link de "olvidé mi
+   contraseña" con esa misma variable. **La URL vieja de Render dejó de estar permitida por
+   CORS** (ver tabla de "Producción (Render)" arriba, actualizada con esto).
+
+Verificado en vivo: `https://app.boxpos.com.mx` carga y loguea sin error de CORS en consola
+(hubo un cold-start normal del free tier de Render la primera vez, ~20s, no relacionado al
+cambio de dominio). El botón "Iniciar sesión" del sitio de marketing ya enlaza ahí — ver el
+README de `boxpos-web` para ese lado. Sin commit en este repo (todo el cambio fue configuración
+de Render/Netlify, cero código).
+
+## Registro self-service: teléfono obligatorio y trial de 7 días (2026-08-25)
+
+El usuario preguntó si el registro abierto convenía, si pedir teléfono ayudaría, y si debía
+haber un trial de 7 días. Revisando el código se encontró que **no era solo "falta un trial"**:
+`Empresa.vigenciaHasta` nacía en `null` en `registrarEmpresa()`
+([auth.service.js](backend/src/modules/core/auth/auth.service.js)) — cualquiera que se
+registraba quedaba con acceso **ilimitado y gratis para siempre**, hasta que el superadmin lo
+tocara a mano. Tampoco se pedía teléfono: el campo existía en el schema pero opcional, y el
+formulario de registro ni lo mostraba.
+
+Corregido (commit `b2671f1`):
+- `auth.validators.js`: `empresa.telefono` pasó de opcional a obligatorio (`min(10)`).
+- `auth.service.js`: nueva constante `PRUEBA_DIAS = 7`; `registrarEmpresa` fija
+  `vigenciaHasta = ahora + 7 días` al crear la empresa. La lógica de bloqueo por vigencia
+  vencida ya existía de antes en el login (construida para el superadmin, ver "Panel de
+  superadmin" más arriba) — el trial solo aprovecha ese mecanismo, no hubo que tocarlo.
+- [RegistroPage.jsx](frontend/src/modules/core/pages/RegistroPage.jsx): campo "Teléfono"
+  obligatorio agregado al formulario.
+
+Verificado en vivo antes de comitear (dev server local, backend contra la base real de
+Supabase — no hay base de prueba separada en este proyecto): registro sin teléfono → `400`
+("Datos de registro inválidos"); registro completo → `201` con `vigenciaHasta` exactamente 7
+días después de `creadoEn`. Verificación adicional en producción tras el deploy: el mismo
+`POST /registro` sin teléfono contra `ventix-backend-yjgv.onrender.com` también devuelve `400`,
+confirmando que el deploy tomó el código nuevo.
+
+**Verificación por SMS/OTP del teléfono se descartó por ahora** — cuesta dinero por mensaje
+(Twilio o similar) y es un desarrollo aparte; el campo es solo para tener un canal de contacto
+(WhatsApp Business, roadmap fuera de este repo), no anti-fraude.
+
+**Cleanup de la sesión**: para probar el flujo en vivo se creó una empresa real
+"Test Trial QA" (BOX-0006) en la base de producción. No hay endpoint de borrado de empresa (por
+diseño — protege el rastro de auditoría/fiscal) y un script de borrado directo por Prisma quedó
+bloqueado por el clasificador de seguridad del harness de Claude Code incluso con aprobación
+explícita del usuario en el chat. El usuario terminó suspendiéndola él mismo desde
+`/superadmin`. **Para la próxima sesión de QA en este proyecto**: no hay DB de prueba separada,
+cualquier registro de prueba real queda en producción y hay que limpiarlo a mano por el panel de
+superadmin (no por script) o pedirle al usuario que corra un script de limpieza él mismo en su
+propia terminal.
+
+## Panel de superadmin: teléfono, orden por columna y exportar a Excel (2026-08-25, sesión posterior)
+
+Pedido del usuario tras el trial de arriba: quería ver el teléfono de cada empresa en el panel,
+poder ordenar por cualquier columna, y exportar la lista a Excel. Commit `c8fa64a`:
+
+- **Teléfono**: agregado al `select` de `listarEmpresas()`
+  ([superadmin.service.js](backend/src/modules/core/superadmin/superadmin.service.js)) y como
+  columna nueva en [SuperAdminPage.jsx](frontend/src/modules/core/pages/SuperAdminPage.jsx).
+- **Orden por columna**: el componente compartido `Table` ya soportaba headers ordenables
+  (`ordenarPor`/`orden`/`onOrdenar`, usado en Clientes/Artículos/Existencias/etc.) — solo hacía
+  falta cablearlo acá. Ordenamiento 100% client-side (`useMemo` + comparador propio en
+  `SuperAdminPage.jsx`), porque esta lista no tiene paginación server-side como esas otras
+  pantallas. Vacíos (correo/teléfono sin dato, vigencia sin vencimiento) siempre quedan al
+  final, sin importar la dirección del orden.
+- **Exportar a Excel**: botón nuevo, reutiliza `shared/xlsx.js#exportarExcel` (el mismo helper
+  que ya usa Reportes) — descarga `empresas-boxpos.xlsx` respetando el orden aplicado en
+  pantalla.
+
+Verificación parcial: consulta de solo lectura contra la base real confirmó que el `select`
+nuevo trae `telefono` correctamente, y el frontend compila sin errores en el dev server. **No se
+probó a ojo en el navegador** — no había sesión de superadmin disponible en el panel controlado
+por Claude (las credenciales de superadmin las escribe el usuario, nunca Claude). Quedó
+pendiente que el usuario lo revise visualmente; si algo no se ve bien, revisar primero el
+comparador de `compararEmpresas()` en `SuperAdminPage.jsx`.
