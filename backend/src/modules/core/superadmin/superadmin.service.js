@@ -10,6 +10,7 @@ async function listarEmpresas() {
       nombreComercial: true,
       razonSocial: true,
       correo: true,
+      telefono: true,
       estado: true,
       vigenciaHasta: true,
       plan: true,

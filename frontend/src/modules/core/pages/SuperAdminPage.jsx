@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { FileSpreadsheet } from 'lucide-react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Badge from '../../../shared/ui/Badge';
@@ -14,12 +15,87 @@ import {
 
 const ESTADO_TONO = { ACTIVA: 'success', SUSPENDIDA: 'warning', ARCHIVADA: 'gray' };
 
+const COLUMNAS = [
+  { label: 'Número', clave: 'numero', ordenable: true },
+  { label: 'Empresa', clave: 'nombreComercial', ordenable: true },
+  { label: 'Teléfono', clave: 'telefono', ordenable: true },
+  { label: 'Correo', clave: 'correo', ordenable: true },
+  { label: 'Usuarios', clave: 'usuarios', ordenable: true },
+  { label: 'Sucursales', clave: 'sucursales', ordenable: true },
+  { label: 'Plan', clave: 'plan', ordenable: true },
+  { label: 'Alta', clave: 'creadoEn', ordenable: true },
+  { label: 'Vigencia', clave: 'vigenciaHasta', ordenable: true },
+  { label: 'Estado', clave: 'estado', ordenable: true },
+  '',
+];
+
+// Claves derivadas (usuarios/sucursales vienen de _count, no de una columna real de Empresa) --
+// se resuelven acá para que el comparador de abajo no necesite saber de dónde sale cada valor.
+function valorOrdenable(empresa, clave) {
+  if (clave === 'usuarios') return empresa._count.usuariosEmpresa;
+  if (clave === 'sucursales') return empresa._count.sucursales;
+  if (clave === 'creadoEn') return new Date(empresa.creadoEn).getTime();
+  if (clave === 'vigenciaHasta') return empresa.vigenciaHasta ? new Date(empresa.vigenciaHasta).getTime() : null;
+  return empresa[clave];
+}
+
+// Vacíos (correo/teléfono sin dato, vigencia sin vencimiento) siempre al final, sin importar la
+// dirección -- alternar asc/desc no debería hacer que "sin dato" salte de abajo a arriba.
+function compararEmpresas(a, b, clave, orden) {
+  const va = valorOrdenable(a, clave);
+  const vb = valorOrdenable(b, clave);
+  const vacioA = va === null || va === undefined || va === '';
+  const vacioB = vb === null || vb === undefined || vb === '';
+  if (vacioA || vacioB) {
+    if (vacioA && vacioB) return 0;
+    return vacioA ? 1 : -1;
+  }
+  if (typeof va === 'string') {
+    return orden === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+  }
+  return orden === 'asc' ? va - vb : vb - va;
+}
+
 function SuperAdminPage() {
   const { usuario, logout } = useAuth();
   const [empresas, setEmpresas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [actualizandoId, setActualizandoId] = useState(null);
+  const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
+
+  function handleOrdenar(clave) {
+    setOrden((o) => (o.ordenarPor === clave
+      ? { ordenarPor: clave, orden: o.orden === 'asc' ? 'desc' : 'asc' }
+      : { ordenarPor: clave, orden: 'asc' }));
+  }
+
+  const empresasOrdenadas = useMemo(() => {
+    const copia = [...empresas];
+    copia.sort((a, b) => compararEmpresas(a, b, orden.ordenarPor, orden.orden));
+    return copia;
+  }, [empresas, orden]);
+
+  async function exportarExcelAccion() {
+    const { exportarExcel } = await import('../../../shared/xlsx');
+    const columnasExport = COLUMNAS
+      .filter((c) => typeof c === 'object' && c.clave !== 'usuarios' && c.clave !== 'sucursales')
+      .map((c) => ({ label: c.label, clave: c.clave }))
+      .concat([{ label: 'Usuarios', clave: 'usuarios' }, { label: 'Sucursales', clave: 'sucursales' }]);
+    const filas = empresasOrdenadas.map((e) => ({
+      numero: formatoNumeroEmpresa(e.numero),
+      nombreComercial: e.nombreComercial,
+      telefono: e.telefono || '',
+      correo: e.correo || '',
+      plan: e.plan,
+      creadoEn: new Date(e.creadoEn).toLocaleDateString('es-MX'),
+      vigenciaHasta: e.vigenciaHasta ? new Date(e.vigenciaHasta).toLocaleDateString('es-MX') : 'Sin vencimiento',
+      estado: e.estado,
+      usuarios: e._count.usuariosEmpresa,
+      sucursales: e._count.sucursales,
+    }));
+    exportarExcel('empresas-boxpos.xlsx', filas, columnasExport);
+  }
 
   function cargar() {
     setCargando(true);
@@ -84,27 +160,34 @@ function SuperAdminPage() {
       </header>
 
       <main className="mx-auto max-w-7xl space-y-6 p-6 lg:p-8">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Empresas</h2>
-          <p className="text-sm text-gray-500">
-            Todas las empresas dadas de alta en BOX POS. Suspender una corta el acceso de sus
-            usuarios de inmediato, incluidas sesiones ya abiertas. Una vigencia vencida bloquea
-            el acceso igual, pero con su propio mensaje para el cliente — dejá el campo vacío
-            para que la empresa no tenga vencimiento.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Empresas</h2>
+            <p className="text-sm text-gray-500">
+              Todas las empresas dadas de alta en BOX POS. Suspender una corta el acceso de sus
+              usuarios de inmediato, incluidas sesiones ya abiertas. Una vigencia vencida bloquea
+              el acceso igual, pero con su propio mensaje para el cliente — dejá el campo vacío
+              para que la empresa no tenga vencimiento. Hacé clic en un encabezado para ordenar
+              por esa columna.
+            </p>
+          </div>
+          <Button type="button" variant="secondary" size="sm" onClick={exportarExcelAccion} disabled={empresas.length === 0}>
+            <FileSpreadsheet size={16} /> Exportar a Excel
+          </Button>
         </div>
 
         {error && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
 
         <Card>
-          <Table columnas={['Número', 'Empresa', 'Correo', 'Usuarios', 'Sucursales', 'Plan', 'Alta', 'Vigencia', 'Estado', '']}>
-            {!cargando && empresas.length === 0 && <TablaVacia colSpan={10} />}
-            {empresas.map((e) => {
+          <Table columnas={COLUMNAS} ordenarPor={orden.ordenarPor} orden={orden.orden} onOrdenar={handleOrdenar}>
+            {!cargando && empresas.length === 0 && <TablaVacia colSpan={11} />}
+            {empresasOrdenadas.map((e) => {
               const vencida = e.vigenciaHasta && new Date(e.vigenciaHasta) < new Date();
               return (
                 <Fila key={e.id}>
                   <Celda className="font-mono text-xs text-gray-500">{formatoNumeroEmpresa(e.numero)}</Celda>
                   <Celda className="font-medium text-gray-800">{e.nombreComercial}</Celda>
+                  <Celda>{e.telefono || '—'}</Celda>
                   <Celda>{e.correo || '—'}</Celda>
                   <Celda>{e._count.usuariosEmpresa}</Celda>
                   <Celda>{e._count.sucursales}</Celda>
