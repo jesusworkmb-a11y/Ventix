@@ -15,13 +15,14 @@ import {
 
 const ESTADO_TONO = { ACTIVA: 'success', SUSPENDIDA: 'warning', ARCHIVADA: 'gray' };
 
+// Teléfono/Correo y Usuarios/Sucursales van combinados en una sola columna cada uno (ver Celda
+// más abajo) -- con las 11 columnas separadas la tabla no cabía sin scroll horizontal en un
+// laptop normal (1268px de tabla contra ~1170px disponibles a 1366px de pantalla).
 const COLUMNAS = [
   { label: 'Número', clave: 'numero', ordenable: true },
   { label: 'Empresa', clave: 'nombreComercial', ordenable: true },
-  { label: 'Teléfono', clave: 'telefono', ordenable: true },
-  { label: 'Correo', clave: 'correo', ordenable: true },
-  { label: 'Usuarios', clave: 'usuarios', ordenable: true },
-  { label: 'Sucursales', clave: 'sucursales', ordenable: true },
+  { label: 'Contacto', clave: 'telefono', ordenable: true },
+  { label: 'Usuarios / Sucursales', clave: 'usuarios', ordenable: true },
   { label: 'Plan', clave: 'plan', ordenable: true },
   { label: 'Alta', clave: 'creadoEn', ordenable: true },
   { label: 'Vigencia', clave: 'vigenciaHasta', ordenable: true },
@@ -76,12 +77,22 @@ function SuperAdminPage() {
     return copia;
   }, [empresas, orden]);
 
+  // El Excel lleva Teléfono/Correo y Usuarios/Sucursales por separado aunque en pantalla vayan
+  // combinados (ver COLUMNAS) -- acá no hay límite de ancho, mejor dejar el dato completo.
   async function exportarExcelAccion() {
     const { exportarExcel } = await import('../../../shared/xlsx');
-    const columnasExport = COLUMNAS
-      .filter((c) => typeof c === 'object' && c.clave !== 'usuarios' && c.clave !== 'sucursales')
-      .map((c) => ({ label: c.label, clave: c.clave }))
-      .concat([{ label: 'Usuarios', clave: 'usuarios' }, { label: 'Sucursales', clave: 'sucursales' }]);
+    const columnasExport = [
+      { label: 'Número', clave: 'numero' },
+      { label: 'Empresa', clave: 'nombreComercial' },
+      { label: 'Teléfono', clave: 'telefono' },
+      { label: 'Correo', clave: 'correo' },
+      { label: 'Usuarios', clave: 'usuarios' },
+      { label: 'Sucursales', clave: 'sucursales' },
+      { label: 'Plan', clave: 'plan' },
+      { label: 'Alta', clave: 'creadoEn' },
+      { label: 'Vigencia', clave: 'vigenciaHasta' },
+      { label: 'Estado', clave: 'estado' },
+    ];
     const filas = empresasOrdenadas.map((e) => ({
       numero: formatoNumeroEmpresa(e.numero),
       nombreComercial: e.nombreComercial,
@@ -164,11 +175,8 @@ function SuperAdminPage() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Empresas</h2>
             <p className="text-sm text-gray-500">
-              Todas las empresas dadas de alta en BOX POS. Suspender una corta el acceso de sus
-              usuarios de inmediato, incluidas sesiones ya abiertas. Una vigencia vencida bloquea
-              el acceso igual, pero con su propio mensaje para el cliente — dejá el campo vacío
-              para que la empresa no tenga vencimiento. Hacé clic en un encabezado para ordenar
-              por esa columna.
+              Suspender corta el acceso de inmediato, incluidas sesiones abiertas — dejá la
+              vigencia vacía para que no tenga vencimiento. Clic en un encabezado para ordenar.
             </p>
           </div>
           <Button type="button" variant="secondary" size="sm" onClick={exportarExcelAccion} disabled={empresas.length === 0}>
@@ -180,17 +188,18 @@ function SuperAdminPage() {
 
         <Card>
           <Table columnas={COLUMNAS} ordenarPor={orden.ordenarPor} orden={orden.orden} onOrdenar={handleOrdenar}>
-            {!cargando && empresas.length === 0 && <TablaVacia colSpan={11} />}
+            {!cargando && empresas.length === 0 && <TablaVacia colSpan={9} />}
             {empresasOrdenadas.map((e) => {
               const vencida = e.vigenciaHasta && new Date(e.vigenciaHasta) < new Date();
               return (
                 <Fila key={e.id}>
                   <Celda className="font-mono text-xs text-gray-500">{formatoNumeroEmpresa(e.numero)}</Celda>
                   <Celda className="font-medium text-gray-800">{e.nombreComercial}</Celda>
-                  <Celda>{e.telefono || '—'}</Celda>
-                  <Celda>{e.correo || '—'}</Celda>
-                  <Celda>{e._count.usuariosEmpresa}</Celda>
-                  <Celda>{e._count.sucursales}</Celda>
+                  <Celda>
+                    <div>{e.telefono || '—'}</div>
+                    {e.correo && <div className="text-xs text-gray-400">{e.correo}</div>}
+                  </Celda>
+                  <Celda>{e._count.usuariosEmpresa} / {e._count.sucursales}</Celda>
                   <Celda>
                     <input
                       type="text"
