@@ -9,13 +9,17 @@ export function diasParaVencerVigencia(vigenciaHasta) {
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
 }
 
-// true cuando faltan DIAS_AVISO_VIGENCIA días o menos. El caso "ya vencida" (días negativos) es
-// en la práctica casi inalcanzable con sesión abierta: auth.middleware.js revalida vigenciaHasta
-// en CADA request (no solo al loguear), así que apenas vence, la siguiente llamada a /me ya
-// devuelve 403 y corta la sesión -- se deja el texto igual por las dudas (defensivo, no dañino).
+// true cuando faltan DIAS_AVISO_VIGENCIA días o menos (incluye ya vencida: días negativos).
 export function vigenciaProximaAVencer(vigenciaHasta) {
   const dias = diasParaVencerVigencia(vigenciaHasta);
   return dias !== null && dias <= DIAS_AVISO_VIGENCIA;
 }
 
 export { DIAS_AVISO_VIGENCIA };
+
+// true cuando la vigencia ya pasó. Con la vigencia vencida, el backend solo deja entrar a quien
+// administra la empresa y limita su sesión a /me + /suscripcion (ver auth.middleware.js) — el
+// frontend lo refleja mandando todo a la pantalla de pago (ProtectedRoute).
+export function vigenciaVencida(vigenciaHasta) {
+  return !!vigenciaHasta && new Date(vigenciaHasta).getTime() < Date.now();
+}

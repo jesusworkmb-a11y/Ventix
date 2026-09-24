@@ -8,6 +8,7 @@ import OlvidePasswordPage from './modules/core/pages/OlvidePasswordPage';
 import RestablecerPasswordPage from './modules/core/pages/RestablecerPasswordPage';
 import SuperAdminPage from './modules/core/pages/SuperAdminPage';
 import EmpresaPage from './modules/core/pages/EmpresaPage';
+import SuscripcionPage from './modules/core/pages/SuscripcionPage';
 import ConfiguracionFiscalPage from './modules/core/pages/ConfiguracionFiscalPage';
 import SucursalesPage from './modules/core/pages/SucursalesPage';
 import UsuariosPage from './modules/core/pages/UsuariosPage';
@@ -64,6 +65,14 @@ function App() {
           element={(
             <ProtectedRoute>
               <DashboardPage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/suscripcion"
+          element={(
+            <ProtectedRoute permitirVencida>
+              <SuscripcionPage />
             </ProtectedRoute>
           )}
         />

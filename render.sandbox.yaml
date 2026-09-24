@@ -42,6 +42,13 @@ services:
         sync: false
       - key: RESEND_FROM_EMAIL
         sync: false
+      # Mercado Pago (pago de suscripción, ver "Pago de suscripción con Mercado Pago" en el README):
+      # credenciales de PRUEBA (TEST-...) en el sandbox. Sin MP_ACCESS_TOKEN el botón de pagar
+      # se muestra deshabilitado; MP_WEBHOOK_SECRET es opcional (valida la firma de notificaciones).
+      - key: MP_ACCESS_TOKEN
+        sync: false
+      - key: MP_WEBHOOK_SECRET
+        sync: false
 
   - type: web
     name: ventix-frontend-sandbox

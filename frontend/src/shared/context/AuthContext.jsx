@@ -60,8 +60,16 @@ export function AuthProvider({ children }) {
     setContexto((c) => ({ ...c, empresa }));
   }
 
+  // Vuelve a pedir /me — tras un pago de suscripción aprobado, la vigencia nueva la fija el
+  // backend y hay que traerla para que ProtectedRoute deje de mandar a la pantalla de pago.
+  async function refrescar() {
+    const data = await meRequest();
+    setContexto(data);
+    return data;
+  }
+
   return (
-    <AuthContext.Provider value={{ status, ...contexto, login, setSesion, logout, actualizarEmpresa }}>
+    <AuthContext.Provider value={{ status, ...contexto, login, setSesion, logout, actualizarEmpresa, refrescar }}>
       {children}
     </AuthContext.Provider>
   );

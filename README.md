@@ -3297,3 +3297,77 @@ Render. Si producción no responde con la base conectada, el job falla y **GitHu
 así que de paso sirve como alerta de caída gratis. Se puede correr a mano desde la pestaña Actions
 (`workflow_dispatch`). Limitación: GitHub desactiva los workflows programados si el repo pasa 60
 días sin commits (avisa por correo antes).
+
+## Pago de suscripción con Mercado Pago (2026-09-24) — Fase 3 de la hoja de ruta de lanzamiento
+
+Hasta ahora la vigencia solo la movía el superadmin a mano tras un pago por transferencia. Ahora
+la propia empresa paga en línea con **Mercado Pago Checkout Pro** y la vigencia se extiende sola.
+Alcance acotado a propósito, decidido con el usuario: **solo 1 mes por pago ($499 MXN), sin
+suscripción recurrente automática** (cada mes es un pago manual).
+
+**Flujo:** `/suscripcion` (Configuración → Suscripción, solo con `administracion.empresa.editar`)
+→ "Pagar 1 mes con Mercado Pago" → `POST /core/suscripcion/checkout` crea una fila
+`PagoSuscripcion` PENDIENTE y una preferencia de MP con `external_reference` = id de esa fila →
+el cliente paga en la página de MP → vuelve a `/suscripcion?pago=<id>&payment_id=<id MP>`.
+El pago se aplica por **dos caminos**, ambos terminando en `aplicarPagoMercadoPago`
+([suscripcion.service.js](backend/src/modules/core/suscripcion/suscripcion.service.js)):
+- **Webhook** `POST /api/core/suscripcion/webhook` (público; `notification_url` de la preferencia,
+  solo se manda si el backend es HTTPS — en local no hay webhook).
+- **Conciliación al volver**: la pantalla consulta `GET /core/suscripcion/pagos/:id?paymentId=`
+  varias veces; si sigue PENDIENTE, el backend consulta el pago a MP en ese momento.
+
+**Seguridad y consistencia:**
+- La fuente de verdad es siempre `GET /v1/payments/:id` a la API de MP con nuestro access token —
+  nunca el cuerpo del webhook ni el `status` de la URL de retorno. La conciliación exige además que
+  el `external_reference` del pago de MP sea esta misma fila (no se puede usar un pago ajeno).
+- Firma `x-signature` validada con `MP_WEBHOOK_SECRET` si está configurado y el header viene;
+  header presente y mal firmado → 401. Sin header se acepta (no está garantizado que MP lo mande
+  por `notification_url`), total igual se re-consulta a la API.
+- Idempotente y a prueba de concurrencia: la fila se reclama con `UPDATE...WHERE estado IN
+  (PENDIENTE, RECHAZADO)` y la empresa se bloquea con `SELECT...FOR UPDATE` antes de sumar.
+  Se reclama también desde RECHAZADO porque en Checkout Pro el cliente puede reintentar con otra
+  tarjeta en la misma preferencia (segundo pago de MP, misma referencia).
+- Valida moneda MXN y monto ≥ $499; si no coincide, no extiende nada y deja `mpEstado =
+  monto_no_coincide:...`.
+- **Regla de extensión:** si paga antes de vencer, el mes se suma sobre la vigencia actual; si ya
+  venció, cuenta desde hoy. Mes de calendario (31/ene → 28/feb). Empresas con vigencia `null`
+  (sin vencimiento) no pueden pagar. Cada pago aplicado deja una entrada en la bitácora de
+  auditoría.
+- **Fuera de alcance:** reembolsos/contracargos posteriores a un pago aprobado no revierten la
+  vigencia — los revisa el superadmin a mano.
+
+**Vigencia vencida — login limitado a pagar** (decisión del usuario): antes, con la vigencia
+vencida nadie podía entrar, ni siquiera para pagar. Ahora:
+- `login`: quien tiene `administracion.empresa.editar` sí entra; el resto recibe 403 "pide al
+  administrador de tu empresa que la renueve".
+- `auth.middleware`: con la vigencia vencida solo deja pasar `/api/core/me` y
+  `/api/core/suscripcion/*`; todo lo demás responde 403 con `codigo: 'VIGENCIA_VENCIDA'`
+  (`AppError` ganó un tercer parámetro opcional `codigo`, que el manejador de errores de `app.js`
+  incluye en la respuesta).
+- Frontend: `ProtectedRoute` manda todo a `/suscripcion`, que se muestra con un layout mínimo
+  ([SinVigenciaLayout.jsx](frontend/src/shared/layout/SinVigenciaLayout.jsx), sin Sidebar/TopBar,
+  que pegan a endpoints bloqueados). Si vence con la sesión abierta, el interceptor de `api.js`
+  detecta `VIGENCIA_VENCIDA` y redirige. Tras un pago aprobado, `AuthContext.refrescar()` trae la
+  vigencia nueva y la app vuelve a la normalidad sin cerrar sesión.
+- Los avisos de vigencia (franja y campanita) ahora llevan a `/suscripcion` en vez de "contactá al
+  administrador de la plataforma".
+
+**Variables de entorno nuevas (backend):** `MP_ACCESS_TOKEN` (sin ella el botón de pagar aparece
+deshabilitado con "los pagos en línea todavía no están disponibles") y `MP_WEBHOOK_SECRET`
+(opcional). Sandbox → credenciales de **prueba**; producción → credenciales de producción. Ya
+declaradas en `render.yaml` y `render.sandbox.yaml`.
+
+**Desarrollo local contra el sandbox** (nuevo, no solo para esto): `npm run dev:sandbox` en
+`backend/` lee `backend/.env.sandbox` (ignorado por git) en vez de `.env` — así el desarrollo local
+deja de pegarle a la base de producción. En `ventix-fase0/.claude/launch.json` quedó la entrada
+`ventix-backend-sandbox`.
+
+**Verificado (local contra la base del sandbox):** 5 escenarios simulando respuestas de la API de
+MP (5 notificaciones concurrentes del mismo pago → una sola extensión y una sola auditoría; pago
+antes de vencer suma sobre la vigencia; rechazo + reintento aprobado; monto menor no extiende;
+notificaciones irrelevantes ignoradas), reglas de acceso con vigencia vencida por curl (cajero
+bloqueado en login; admin solo `/me` y `/suscripcion`, el resto 403 `VIGENCIA_VENCIDA`) y en el
+navegador (admin vencido cae en `/suscripcion` sin menú; vigente con aviso y enlace en el menú;
+vencimiento con sesión abierta redirige; sin overflow a 375px). **Pendiente:** un pago real de
+prueba contra Mercado Pago — falta que el usuario cree la aplicación en
+developers.mercadopago.com y cargue las credenciales de prueba en el sandbox.

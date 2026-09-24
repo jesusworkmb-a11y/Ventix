@@ -237,7 +237,7 @@ function TopBar({ onAbrirMenu }) {
                     </p>
                     <button
                       type="button"
-                      onClick={() => { setAlertasAbierto(false); navigate('/administracion/empresa'); }}
+                      onClick={() => { setAlertasAbierto(false); navigate('/suscripcion'); }}
                       className="flex w-full items-start gap-3 px-4 py-2 text-left hover:bg-gray-50"
                     >
                       <CalendarClock size={18} className="mt-0.5 shrink-0 text-danger-600" />
@@ -250,8 +250,7 @@ function TopBar({ onAbrirMenu }) {
                               : `Tu suscripción vence en ${diasVigencia} día${diasVigencia === 1 ? '' : 's'}`}
                         </span>
                         <span className="block text-xs text-gray-500">
-                          Contactá al administrador de la plataforma para renovar tu plan y evitar
-                          que se suspenda el acceso.
+                          Renuévala con Mercado Pago para evitar que se suspenda el acceso.
                         </span>
                       </span>
                     </button>

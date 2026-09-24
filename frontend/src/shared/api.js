@@ -21,6 +21,15 @@ api.interceptors.response.use(
       localStorage.removeItem(TOKEN_KEY);
       if (window.location.pathname !== '/login') window.location.href = '/login';
     }
+    // La vigencia venció con la sesión abierta: el backend ya bloquea todo menos la renovación,
+    // así que se manda a la pantalla de pago. En /login no (ahí el 403 es el mensaje a mostrar,
+    // para quien no administra la empresa).
+    if (
+      error.response?.data?.codigo === 'VIGENCIA_VENCIDA'
+      && !['/login', '/suscripcion'].includes(window.location.pathname)
+    ) {
+      window.location.href = '/suscripcion';
+    }
     return Promise.reject(error);
   },
 );

@@ -18,6 +18,11 @@ services:
         value: 8h
       - key: FRONTEND_URL
         sync: false
+      # Mercado Pago (pago de suscripción): credenciales de PRODUCCIÓN (APP_USR-...). Ver README.
+      - key: MP_ACCESS_TOKEN
+        sync: false
+      - key: MP_WEBHOOK_SECRET
+        sync: false
 
   - type: web
     name: ventix-frontend

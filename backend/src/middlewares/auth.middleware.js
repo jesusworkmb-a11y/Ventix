@@ -3,6 +3,16 @@ const prisma = require('../config/db');
 const AppError = require('../shared/errors/AppError');
 const { formatearFechaCorta } = require('../shared/formatearFecha');
 
+// Con la vigencia vencida, la sesión solo sirve para renovarla: /me (para que el frontend sepa
+// quién es y lo mande a la pantalla de pago) y las rutas de suscripción, que además exigen el
+// permiso de administrar la empresa (ver suscripcion.routes.js). Todo lo demás sigue bloqueado.
+const RUTAS_CON_VIGENCIA_VENCIDA = ['/api/core/me', '/api/core/suscripcion'];
+
+function rutaPermitidaConVigenciaVencida(req) {
+  const ruta = req.originalUrl.split('?')[0];
+  return RUTAS_CON_VIGENCIA_VENCIDA.some((r) => ruta === r || ruta.startsWith(`${r}/`));
+}
+
 // Verifica el Bearer token y deja identidad en req.auth. Todo endpoint de módulos futuros
 // debe filtrar sus queries con req.auth.empresaId — nunca confiar en un empresaId del body/params.
 async function auth(req, res, next) {
@@ -52,10 +62,11 @@ async function auth(req, res, next) {
       return next(new AppError(403, 'Esta empresa está suspendida. Contacta al administrador de la plataforma.'));
     }
     const { vigenciaHasta } = usuarioEmpresa.empresa;
-    if (vigenciaHasta && vigenciaHasta < new Date()) {
+    if (vigenciaHasta && vigenciaHasta < new Date() && !rutaPermitidaConVigenciaVencida(req)) {
       return next(new AppError(
         403,
-        `La vigencia de tu suscripción venció el ${formatearFechaCorta(vigenciaHasta)}. Contacta al administrador de la plataforma para renovarla.`,
+        `La vigencia de tu suscripción venció el ${formatearFechaCorta(vigenciaHasta)}. Renuévala para seguir usando BOX POS.`,
+        'VIGENCIA_VENCIDA',
       ));
     }
 

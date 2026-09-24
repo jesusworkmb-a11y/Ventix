@@ -83,3 +83,16 @@ export function actualizarVigenciaEmpresaSuperadmin(id, vigenciaHasta) {
 export function actualizarPlanEmpresaSuperadmin(id, plan) {
   return api.patch(`/core/superadmin/empresas/${id}/plan`, { plan }).then((res) => res.data);
 }
+
+// Suscripción a BOX POS con Mercado Pago (ver backend core/suscripcion).
+export function obtenerSuscripcion() {
+  return api.get('/core/suscripcion').then((res) => res.data);
+}
+export function iniciarPagoSuscripcion() {
+  return api.post('/core/suscripcion/checkout').then((res) => res.data);
+}
+export function obtenerPagoSuscripcion(id, paymentId) {
+  return api
+    .get(`/core/suscripcion/pagos/${id}`, { params: paymentId ? { paymentId } : {} })
+    .then((res) => res.data);
+}

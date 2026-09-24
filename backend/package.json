@@ -6,6 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
+    "dev:sandbox": "nodemon --watch src --exec \"node -r dotenv/config src/server.js dotenv_config_path=.env.sandbox\"",
     "start": "node src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

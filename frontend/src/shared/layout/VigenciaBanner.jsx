@@ -67,11 +67,11 @@ function VigenciaBanner() {
     <div className="flex w-full shrink-0 items-center gap-2 bg-danger-600 px-4 py-2 text-sm font-medium text-white">
       <button
         type="button"
-        onClick={() => navigate('/administracion/empresa')}
+        onClick={() => navigate('/suscripcion')}
         className="flex flex-1 items-center justify-center gap-2 text-center hover:underline"
       >
         <AlertTriangle size={16} className="shrink-0" />
-        {texto} Contactá al administrador de la plataforma para renovarla.
+        {texto} Renuévala aquí con Mercado Pago.
       </button>
       <button
         type="button"

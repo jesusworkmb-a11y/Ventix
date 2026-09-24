@@ -54,6 +54,7 @@ app.use((err, req, res, next) => {
   console.error(err); // eslint-disable-line no-console
   res.status(err.status || 500).json({
     error: err.publicMessage || 'Ocurrió un problema al procesar tu solicitud. Intenta de nuevo.',
+    ...(err.codigo ? { codigo: err.codigo } : {}),
   });
 });
 

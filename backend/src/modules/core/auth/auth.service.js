@@ -7,7 +7,7 @@ const AppError = require('../../../shared/errors/AppError');
 const { ROL_PERMISOS_DEFAULT } = require('../../../shared/permisos.catalog');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const { buildSecuenciasIniciales } = require('../../../shared/services/secuencia.service');
-const { resolverPermisosDeUsuario } = require('../../../shared/services/permisos.service');
+const { resolverPermisosDeUsuario, usuarioTienePermiso } = require('../../../shared/services/permisos.service');
 const { formatearFechaCorta } = require('../../../shared/formatearFecha');
 const { parsearNumeroEmpresa } = require('../../../shared/numeroEmpresa');
 const { enviarCorreo } = require('../../../shared/services/correo.service');
@@ -170,12 +170,21 @@ async function login({ correo, password }) {
   }
   // Vigencia separada de `estado` a propósito: "venció la suscripción" y "lo suspendió el
   // superadmin a mano" son motivos distintos, cada uno con su propio mensaje para el cliente.
+  // Con la vigencia vencida, quien administra la empresa sí puede entrar, pero solo para pagar la
+  // renovación (auth.middleware limita la sesión a /me y /suscripcion); el resto de los usuarios
+  // sigue bloqueado desde el login.
   const { vigenciaHasta } = usuarioEmpresa.empresa;
   if (vigenciaHasta && vigenciaHasta < new Date()) {
-    throw new AppError(
-      403,
-      `La vigencia de tu suscripción venció el ${formatearFechaCorta(vigenciaHasta)}. Contacta al administrador de la plataforma para renovarla.`,
-    );
+    const puedeRenovar = await usuarioTienePermiso({
+      usuarioId: usuario.id, rolId: usuarioEmpresa.rolId, clave: 'administracion.empresa.editar',
+    });
+    if (!puedeRenovar) {
+      throw new AppError(
+        403,
+        `La vigencia de tu suscripción venció el ${formatearFechaCorta(vigenciaHasta)}. Pide al administrador de tu empresa que la renueve.`,
+        'VIGENCIA_VENCIDA',
+      );
+    }
   }
 
   const token = generarToken({

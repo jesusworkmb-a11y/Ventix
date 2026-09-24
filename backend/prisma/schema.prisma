@@ -117,6 +117,7 @@ model Empresa {
   facturas           Factura[]
   facturasPlantillas FacturaPlantilla[]
   facturasCsd        FacturaCsd[]
+  pagosSuscripcion   PagoSuscripcion[]
 
   @@map("empresas")
 }
@@ -1370,4 +1371,39 @@ model FacturaPlantillaConcepto {
   facturaPlantilla FacturaPlantilla @relation(fields: [facturaPlantillaId], references: [id])
 
   @@map("facturas_plantillas_detalle")
+}
+
+// Suscripción a BOX POS pagada por la propia empresa vía Mercado Pago Checkout Pro (Fase 3 de
+// la hoja de ruta de lanzamiento, ver "Pago de suscripción con Mercado Pago" en el README).
+// Una fila por intento de checkout: nace PENDIENTE al crear la preferencia y pasa a APROBADO
+// (una sola vez, reclamado con UPDATE...WHERE estado='PENDIENTE') cuando Mercado Pago confirma
+// el cobro, momento en que extiende Empresa.vigenciaHasta. Sin suscripción recurrente a
+// propósito: cada mes es un pago manual.
+enum EstadoPagoSuscripcion {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+}
+
+model PagoSuscripcion {
+  id               String                @id @default(uuid())
+  empresaId        String                @map("empresa_id")
+  usuarioId        String                @map("usuario_id") // quién inició el checkout
+  meses            Int                   @default(1)
+  monto            Decimal               @db.Decimal(12, 2)
+  moneda           String                @default("MXN")
+  estado           EstadoPagoSuscripcion @default(PENDIENTE)
+  mpPreferenciaId  String?               @map("mp_preferencia_id")
+  // Id del pago en Mercado Pago. Único: el mismo pago nunca puede aplicarse a dos filas.
+  mpPagoId         String?               @unique @map("mp_pago_id")
+  mpEstado         String?               @map("mp_estado") // status/status_detail crudo de MP
+  vigenciaAnterior DateTime?             @map("vigencia_anterior")
+  vigenciaNueva    DateTime?             @map("vigencia_nueva")
+  creadoEn         DateTime              @default(now()) @map("creado_en")
+  aplicadoEn       DateTime?             @map("aplicado_en")
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+
+  @@index([empresaId, creadoEn])
+  @@map("pagos_suscripcion")
 }

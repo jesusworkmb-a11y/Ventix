@@ -99,6 +99,7 @@ export const NAVEGACION = [
     icon: Settings,
     hijos: [
       { label: 'Empresa', to: '/administracion/empresa', permiso: 'administracion.empresa.editar' },
+      { label: 'Suscripción', to: '/suscripcion', permiso: 'administracion.empresa.editar' },
       { label: 'Datos fiscales', to: '/administracion/fiscal', permiso: 'administracion.fiscal.editar' },
       { label: 'Sucursales', to: '/administracion/sucursales', permiso: 'administracion.sucursales.ver' },
       { label: 'Usuarios', to: '/administracion/usuarios', permiso: 'administracion.usuarios.ver' },
