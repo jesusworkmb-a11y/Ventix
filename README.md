@@ -3266,7 +3266,17 @@ tiene las 23 migraciones aplicadas, los datos demo sembrados (verificado por con
 BOX-0001, 2 sucursales, 5 usuarios, 12 artículos, 50 unidades de stock por artículo y sucursal) y
 los catálogos SAT grandes importados (52,514 ClaveProdServ + 2,418 ClaveUnidad). Se hizo desde
 la máquina local con la conexión directa. **Para Render hace falta la URL del pooler en modo
-Session**, no la directa (IPv6). Pendiente: rama `sandbox`, Blueprint en Render y DNS.
+Session**, no la directa (IPv6).
+
+**En vivo (2026-09-24):** `https://sandbox.boxpos.com.mx` (frontend, CNAME en Netlify →
+`ventix-frontend-j33p.onrender.com`) + backend `https://ventix-backend-j33p.onrender.com`, ambos desde
+la rama `sandbox`. Verificado: login demo en el navegador hasta el Dashboard con los datos sembrados,
+pastilla "Sandbox" visible, CORS solo acepta `sandbox.boxpos.com.mx`, y un token del sandbox da
+`401` en producción. **Gotcha:** el Blueprint creó los servicios pero **no** cargó las variables con
+`value`/`generateValue` (`ENTORNO`, `JWT_SECRET`, `FRONTEND_URL`) — el login daba 500
+(`secretOrPrivateKey must have a value`) y CORS respondía `*`. Se agregaron a mano en Render. Si se
+recrea el sandbox, revisar Environment de ambos servicios contra `render.sandbox.yaml` antes de
+probar. Los servicios quedaron con el sufijo `-j33p` (no `-sandbox`) en su URL.
 
 ## Caída de producción por pausa de Supabase + ping automático (2026-09-24)
 
