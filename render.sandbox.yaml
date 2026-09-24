@@ -1,0 +1,63 @@
+# Entorno SANDBOX (ver "Entorno sandbox" en el README). Blueprint separado a propósito de
+# render.yaml (producción): se crea en Render como un Blueprint distinto (New + → Blueprint →
+# "Blueprint Path" = render.sandbox.yaml), así sincronizar este archivo nunca toca los
+# servicios de producción. Despliega desde la rama `sandbox`, no desde `main`.
+services:
+  - type: web
+    name: ventix-backend-sandbox
+    runtime: node
+    rootDir: backend
+    branch: sandbox
+    plan: free
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Lo lee scripts/seedSandbox.js como candado: se niega a correr sin ENTORNO=sandbox.
+      - key: ENTORNO
+        value: sandbox
+      # Base de Supabase PROPIA del sandbox (segundo proyecto), vía pooler en modo Session,
+      # mismo motivo IPv6 que producción (ver README, "Producción (Render)").
+      - key: DATABASE_URL
+        sync: false
+      # Distinto al de producción: un token del sandbox nunca debe valer en producción.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: FRONTEND_URL
+        value: https://sandbox.boxpos.com.mx
+      # Facturama: la misma cuenta sandbox que usa hoy producción (facturas apócrifas).
+      - key: FACTURAMA_BASE_URL
+        value: https://apisandbox.facturama.mx
+      - key: FACTURAMA_USER
+        sync: false
+      - key: FACTURAMA_PASSWORD
+        sync: false
+      # Opcionales: sin RESEND_API_KEY el envío de documentos por correo falla con un error
+      # claro, el resto del sistema funciona igual.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+
+  - type: web
+    name: ventix-frontend-sandbox
+    runtime: static
+    rootDir: frontend
+    branch: sandbox
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      # URL del backend sandbox + /api (ej. https://ventix-backend-sandbox.onrender.com/api).
+      - key: VITE_API_URL
+        sync: false
+      # Muestra el distintivo "Sandbox · datos de prueba" (shared/components/EntornoBadge.jsx).
+      - key: VITE_ENTORNO
+        value: sandbox
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

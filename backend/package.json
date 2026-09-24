@@ -10,7 +10,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "importar:catalogos-sat": "node scripts/importarCatalogosSatGrandes.js"
+    "importar:catalogos-sat": "node scripts/importarCatalogosSatGrandes.js",
+    "seed:sandbox": "node scripts/seedSandbox.js"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",

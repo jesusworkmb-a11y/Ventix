@@ -3201,3 +3201,69 @@ probó a ojo en el navegador** — no había sesión de superadmin disponible en
 por Claude (las credenciales de superadmin las escribe el usuario, nunca Claude). Quedó
 pendiente que el usuario lo revise visualmente; si algo no se ve bien, revisar primero el
 comparador de `compararEmpresas()` en `SuperAdminPage.jsx`.
+
+## Entorno sandbox (2026-09-24) — Fase 2 de la hoja de ruta de lanzamiento
+
+Hasta ahora solo existían local y producción, y local apunta a la **misma** base de Supabase que
+producción, así que cualquier prueba quedaba en datos reales (ej. la empresa "Test Trial QA",
+ver "Registro self-service" arriba). El sandbox es un entorno completo y separado:
+
+| Pieza | Producción | Sandbox |
+|---|---|---|
+| Rama de git | `main` | `sandbox` |
+| Blueprint de Render | [`render.yaml`](render.yaml) | [`render.sandbox.yaml`](render.sandbox.yaml) (Blueprint aparte) |
+| Backend | `ventix-backend` | `ventix-backend-sandbox` |
+| Frontend | `ventix-frontend` → `app.boxpos.com.mx` | `ventix-frontend-sandbox` → `sandbox.boxpos.com.mx` |
+| Base de datos | proyecto Supabase `ncfrvaapybqmrcaqhpyj` | segundo proyecto Supabase, propio |
+| `JWT_SECRET` | propio | generado por Render, distinto (un token de un entorno no vale en el otro) |
+| Facturama | cuenta sandbox (hasta contratar PAC de producción) | la misma cuenta sandbox |
+
+**Flujo de trabajo:** los cambios van primero a la rama `sandbox` (Render la despliega sola), se
+prueban en `sandbox.boxpos.com.mx`, y cuando están bien se hace merge a `main`.
+
+Piezas de código:
+- [`render.sandbox.yaml`](render.sandbox.yaml): blueprint separado de `render.yaml` a propósito,
+  para que sincronizarlo nunca toque los servicios de producción.
+- [`EntornoBadge.jsx`](frontend/src/shared/components/EntornoBadge.jsx): pastilla fija
+  "Sandbox · datos de prueba" + prefijo `[SANDBOX]` en el título de la pestaña, solo si el build
+  se hizo con `VITE_ENTORNO=sandbox` (en producción la variable no existe y no se muestra nada).
+- [`scripts/seedSandbox.js`](backend/scripts/seedSandbox.js) (`npm run seed:sandbox`): siembra
+  datos demo **sintéticos** (no se copia producción — tiene datos personales/fiscales reales de
+  clientes): empresa "Abarrotes Demo" sin vencimiento, emisor fiscal con el contribuyente de
+  pruebas del SAT (`EKU9003173C9` / ESCUELA KEMPER URGATE / régimen 601), sucursales Matriz (C.P. 42501, lista para
+  timbrar en sandbox) y Norte, un usuario por rol, catálogo con 11 productos + 1 servicio con
+  claves SAT, lista "Mayoreo", clientes (uno con el RFC de pruebas `EKU9003173C9` para facturar),
+  proveedores, una caja por sucursal, 50 unidades de stock por artículo vía una compra real (kardex
+  consistente) y un superadmin. Pasa por los services de la API, no inserta filas a mano.
+  **Candado doble**: se niega a correr sin `ENTORNO=sandbox` y si `DATABASE_URL` contiene el ref
+  del proyecto de producción (ambos casos probados contra la base real: abortó sin tocar nada).
+  No es re-ejecutable: si la empresa demo ya existe, se detiene.
+
+Usuarios demo (contraseña `Sandbox1234` para todos): `admin@`, `supervisor@`, `cajero@`,
+`almacen@` y `superadmin@demo.boxpos.test`. Son públicos a propósito — el sandbox nunca debe
+tener datos reales.
+
+**Pasos manuales para crearlo** (fuera del repo, los hace el usuario):
+1. Supabase → New project (ej. `boxpos-sandbox`), contraseña alfanumérica. Copiar la URL del
+   **pooler en modo Session** (mismo motivo IPv6 que producción).
+2. Git: crear y pushear la rama `sandbox` desde `main`.
+3. Render → New + → Blueprint → mismo repo, Blueprint Path `render.sandbox.yaml`. Llenar
+   `DATABASE_URL` (paso 1), `FACTURAMA_USER`/`FACTURAMA_PASSWORD` (los mismos de producción) y
+   `VITE_API_URL` (`https://<backend-sandbox>.onrender.com/api`). Resend es opcional.
+4. Render → `ventix-frontend-sandbox` → Custom Domain `sandbox.boxpos.com.mx`; Netlify DNS →
+   CNAME `sandbox` → el hostname de Render.
+5. Sembrar desde la máquina local, apuntando a la base del sandbox:
+   `$env:ENTORNO='sandbox'; $env:DATABASE_URL='<url del sandbox>'; npm --prefix backend run seed:sandbox`
+6. Opcional: `npm --prefix backend run importar:catalogos-sat` con la misma `DATABASE_URL` del
+   sandbox, para tener los catálogos SAT grandes (búsqueda de claves al facturar).
+
+Ojo con el free tier de Render: las 750 h/mes de instancia se comparten entre todos los
+servicios web del workspace. El backend sandbox duerme cuando no se usa, así que debería
+alcanzar, pero si producción empieza a quedarse sin horas, el sandbox es lo primero a suspender.
+
+**Estado (2026-09-24):** proyecto Supabase del sandbox creado (ref `odztkkpjoawrxtdoashk`); ya
+tiene las 23 migraciones aplicadas, los datos demo sembrados (verificado por consulta: 1 empresa
+BOX-0001, 2 sucursales, 5 usuarios, 12 artículos, 50 unidades de stock por artículo y sucursal) y
+los catálogos SAT grandes importados (52,514 ClaveProdServ + 2,418 ClaveUnidad). Se hizo desde
+la máquina local con la conexión directa. **Para Render hace falta la URL del pooler en modo
+Session**, no la directa (IPv6). Pendiente: rama `sandbox`, Blueprint en Render y DNS.
