@@ -3267,3 +3267,23 @@ BOX-0001, 2 sucursales, 5 usuarios, 12 artículos, 50 unidades de stock por art�
 los catálogos SAT grandes importados (52,514 ClaveProdServ + 2,418 ClaveUnidad). Se hizo desde
 la máquina local con la conexión directa. **Para Render hace falta la URL del pooler en modo
 Session**, no la directa (IPv6). Pendiente: rama `sandbox`, Blueprint en Render y DNS.
+
+## Caída de producción por pausa de Supabase + ping automático (2026-09-24)
+
+Mientras se armaba el sandbox (arriba), producción dejó de responder: `/api/health` hacía timeout
+y el deploy de `b4ae298` falló con `P1001: Can't reach database server` contra el pooler. Causa:
+**Supabase (plan free) pausó el proyecto de producción por inactividad.** El aviso "Payment
+method required" que mostraba Render en ese momento **no tenía relación**, era una pista falsa.
+El usuario restauró el proyecto desde Supabase y producción volvió (health y login verificados).
+
+**Síntoma para reconocerlo la próxima vez:** el backend no da error, simplemente no responde (el
+health check se cuelga), y cualquier build falla en `prisma migrate deploy` con `P1001`.
+
+Prevención elegida por el usuario (sobre Supabase Pro, US$25/mes):
+[`.github/workflows/ping-produccion.yml`](.github/workflows/ping-produccion.yml), un workflow de
+GitHub Actions que corre diario (14:00 UTC) contra `/api/health`, que hace un `SELECT 1` real y
+por eso cuenta como actividad de la base. Hace 5 intentos para tolerar el arranque en frío de
+Render. Si producción no responde con la base conectada, el job falla y **GitHub manda un correo**,
+así que de paso sirve como alerta de caída gratis. Se puede correr a mano desde la pestaña Actions
+(`workflow_dispatch`). Limitación: GitHub desactiva los workflows programados si el repo pasa 60
+días sin commits (avisa por correo antes).
