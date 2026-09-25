@@ -78,8 +78,10 @@ BOX POS"), ambas documentadas al final de este README:
    captura de pantalla compartida el 2026-09-24; son las mismas en producción y sandbox).
 3. Opcional: suspender desde `/superadmin` la empresa de prueba **BOX-0006 "Test Trial QA"** — en
    la base figura ACTIVA (vencida), no suspendida como decía la sección de registro self-service.
-4. Siguiente fase del roadmap: **Fase 4 — backup** (descarga solo-superadmin; restauración con
-   las herramientas de Supabase, no desde la app) o **Fase 1 — alcances y manuales**.
+4. **Fase 4 — respaldo:** hecha en la rama `sandbox` el 2026-09-25 (ver "Respaldo y restauración"
+   al final). Falta: probarla en `sandbox.boxpos.com.mx`, merge a `main` y, ya en producción,
+   **descargar el primer respaldo real** y guardarlo fuera de la computadora (Drive/USB).
+5. Siguiente fase del roadmap: **Fase 1 — alcances y manuales**.
 
 **Flujo de trabajo desde ahora:** cambios nuevos → rama `sandbox` → probar en
 `sandbox.boxpos.com.mx` → merge a `main`. Commit y push siempre con confirmación explícita del
@@ -3413,3 +3415,57 @@ webhook con un id de pago inexistente responde 502 (MP reintentaría) sin tocar 
 (`APP_USR-...`, requiere activar las credenciales de producción de la aplicación en MP) en
 `ventix-backend-yjgv` **antes** del merge — si no, el login limitado a pagar entra en vigor pero
 el botón de pago aparece deshabilitado, y un cliente vencido quedaría sin forma de pagar en línea.
+
+## Respaldo y restauración (2026-09-25) — Fase 4 de la hoja de ruta de lanzamiento
+
+**Por qué dentro de la app:** Supabase **free no da respaldos descargables ni point-in-time
+recovery** (eso es de Pro para arriba). El plan original era "restaurar con las herramientas de
+Supabase", pero en free no hay nada que restaurar: sin esto, un borrado o una base corrupta no
+tenía vuelta atrás.
+
+**Qué hay:**
+- **`/superadmin` → "Respaldo completo"**: toda la base (todas las empresas, usuarios con su hash
+  de contraseña, catálogos SAT), `boxpos-respaldo-completo-<fecha>.ndjson.gz`. Es el que sirve
+  para restaurar. Contiene datos sensibles: guardarlo en un lugar privado.
+- **Ícono de descarga en cada fila**: los datos de **una** empresa
+  (`boxpos-respaldo-BOX-0001-<fecha>.ndjson.gz`), **sin** hashes de contraseña, tokens de
+  recuperación, catálogos SAT ni las acciones de plataforma de la bitácora. Es una **exportación**
+  (un cliente pide sus datos o se da de baja), **no se puede restaurar**. Queda en la auditoría
+  como acción de plataforma (`EXPORTAR`, invisible para la empresa).
+- **`backend/scripts/restaurarRespaldo.js`**: carga un respaldo completo en una base **vacía**
+  (recuperación ante desastre: base nueva → migraciones → datos). Instrucciones de uso en el
+  encabezado del script.
+
+**Cómo funciona** (`backend/src/shared/respaldo.js`):
+- Formato: NDJSON + gzip. Encabezado (tipo, entorno, **migración** de la base), lotes de 1000
+  filas por tabla, y una línea final con los conteos que prueba que el archivo llegó completo.
+- Las tablas salen del **DMMF de Prisma**, no de una lista a mano: una tabla nueva entra sola al
+  respaldo completo. Para el respaldo por empresa, el filtro se deduce subiendo por relaciones
+  obligatorias hasta `empresaId` (`FacturaDetalleImpuesto → detalle → factura → empresaId`); si
+  una tabla nueva no tiene cómo ligarse, el respaldo por empresa **falla con un mensaje** pidiendo
+  clasificarla en `POR_EMPRESA_ESPECIAL`, en vez de omitirla sin avisar.
+- Se lee en **una transacción REPEATABLE READ** (foto fija): una venta registrada a media descarga
+  no deja detalles sin su venta. Se manda en streaming con gzip (no se arma en memoria; Render
+  free tiene 512 MB). Si falla a medias se corta la conexión y el navegador marca error.
+- El restaurador: pasada 1 valida el archivo entero (formato, tipo completo, línea final,
+  conteos); luego exige que la base destino esté en la **misma migración** y **completamente
+  vacía**; sin `--confirmar` solo simula. Inserta todo en **una transacción** (si falla, la base
+  queda vacía como estaba), resuelve autorreferencias (categoría padre, artículo padre) insertando
+  en null y ligando al final, y **reajusta la secuencia de `Empresa.numero`** (si no, la siguiente
+  empresa chocaría con un número existente). Al final vuelve a contar cada tabla. Nunca toma
+  `backend/.env` por defecto: el `--env=` es obligatorio.
+
+**Verificado (local contra la base del sandbox):** respaldo completo 55,440 filas / 62 tablas,
+2.4 MB, ~20 s (casi todo son los 55 mil registros de catálogos SAT). Restaurado en un schema vacío
+`respaldo_prueba` de la base del sandbox (38 s) y **re-exportado desde ahí: idéntico línea por
+línea** al original, incluida una venta con pagos y movimientos de caja y una subcategoría creadas
+para la prueba; secuencia de `numero` reajustada; schema borrado al final. El restaurador rechaza:
+base con datos, archivo truncado, respaldo por empresa y falta de `--env=`. Respaldo por empresa:
+sin `passwordHash`, solo los 4 usuarios de la empresa, auditoría registrada; 404 con un id
+inexistente. En el navegador: ambos botones descargan, "Generando respaldo…" mientras trabaja, y
+la tabla sigue sin scroll horizontal a 1366px con cualquier orden de columnas.
+
+**Rutina recomendada:** descargar el respaldo completo **cada semana** y antes de cualquier
+migración o cambio grande, y guardar varias copias fuera de la computadora. Un respaldo
+automático diario (GitHub Actions + `pg_dump` cifrado) quedó como posible siguiente paso, no se
+hizo.

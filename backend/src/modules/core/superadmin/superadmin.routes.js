@@ -11,5 +11,7 @@ router.get('/empresas', asyncHandler(controller.listarEmpresas));
 router.patch('/empresas/:id/estado', asyncHandler(controller.cambiarEstadoEmpresa));
 router.patch('/empresas/:id/vigencia', asyncHandler(controller.actualizarVigenciaEmpresa));
 router.patch('/empresas/:id/plan', asyncHandler(controller.actualizarPlanEmpresa));
+router.get('/respaldo', asyncHandler(controller.descargarRespaldoCompleto));
+router.get('/empresas/:id/respaldo', asyncHandler(controller.descargarRespaldoEmpresa));
 
 module.exports = router;

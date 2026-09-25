@@ -83,6 +83,20 @@ export function actualizarVigenciaEmpresaSuperadmin(id, vigenciaHasta) {
 export function actualizarPlanEmpresaSuperadmin(id, plan) {
   return api.patch(`/core/superadmin/empresas/${id}/plan`, { plan }).then((res) => res.data);
 }
+// Respaldo en .ndjson.gz generado en streaming por el backend. El nombre se arma aquí porque
+// Content-Disposition no viaja al navegador por CORS sin exponerlo.
+export async function descargarRespaldoSuperadmin({ empresaId = null, nombreArchivo }) {
+  const url = empresaId ? `/core/superadmin/empresas/${empresaId}/respaldo` : '/core/superadmin/respaldo';
+  const res = await api.get(url, { responseType: 'blob', timeout: 10 * 60 * 1000 });
+  const blobUrl = URL.createObjectURL(new Blob([res.data], { type: 'application/gzip' }));
+  const enlace = document.createElement('a');
+  enlace.href = blobUrl;
+  enlace.download = nombreArchivo;
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(blobUrl);
+}
 
 // Suscripción a BOX POS con Mercado Pago (ver backend core/suscripcion).
 export function obtenerSuscripcion() {

@@ -43,4 +43,19 @@ async function actualizarPlanEmpresa(req, res) {
   res.json(empresa);
 }
 
-module.exports = { listarEmpresas, cambiarEstadoEmpresa, actualizarVigenciaEmpresa, actualizarPlanEmpresa };
+async function descargarRespaldoCompleto(req, res) {
+  await service.descargarRespaldo({ res, usuarioEjecutorId: req.auth.usuarioId });
+}
+
+async function descargarRespaldoEmpresa(req, res) {
+  await service.descargarRespaldo({ res, empresaId: req.params.id, usuarioEjecutorId: req.auth.usuarioId });
+}
+
+module.exports = {
+  listarEmpresas,
+  cambiarEstadoEmpresa,
+  actualizarVigenciaEmpresa,
+  actualizarPlanEmpresa,
+  descargarRespaldoCompleto,
+  descargarRespaldoEmpresa,
+};

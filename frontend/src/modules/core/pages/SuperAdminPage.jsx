@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileSpreadsheet } from 'lucide-react';
+import { FileSpreadsheet, DatabaseBackup, Download } from 'lucide-react';
 import { useAuth } from '../../../shared/context/AuthContext';
 import Card from '../../../shared/ui/Card';
 import Badge from '../../../shared/ui/Badge';
@@ -11,6 +11,7 @@ import {
   cambiarEstadoEmpresaSuperadmin,
   actualizarVigenciaEmpresaSuperadmin,
   actualizarPlanEmpresaSuperadmin,
+  descargarRespaldoSuperadmin,
 } from '../api/core.api';
 
 const ESTADO_TONO = { ACTIVA: 'success', SUSPENDIDA: 'warning', ARCHIVADA: 'gray' };
@@ -64,6 +65,8 @@ function SuperAdminPage() {
   const [error, setError] = useState('');
   const [actualizandoId, setActualizandoId] = useState(null);
   const [orden, setOrden] = useState({ ordenarPor: 'creadoEn', orden: 'desc' });
+  // 'completo', el id de la empresa que se está descargando, o null.
+  const [respaldando, setRespaldando] = useState(null);
 
   function handleOrdenar(clave) {
     setOrden((o) => (o.ordenarPor === clave
@@ -106,6 +109,22 @@ function SuperAdminPage() {
       sucursales: e._count.sucursales,
     }));
     exportarExcel('empresas-boxpos.xlsx', filas, columnasExport);
+  }
+
+  async function descargarRespaldo(empresa = null) {
+    const marca = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+    const nombreArchivo = empresa
+      ? `boxpos-respaldo-${formatoNumeroEmpresa(empresa.numero)}-${marca}.ndjson.gz`
+      : `boxpos-respaldo-completo-${marca}.ndjson.gz`;
+    setRespaldando(empresa ? empresa.id : 'completo');
+    setError('');
+    try {
+      await descargarRespaldoSuperadmin({ empresaId: empresa?.id, nombreArchivo });
+    } catch {
+      setError('No se pudo generar el respaldo. Intenta de nuevo; si se repite, revisa los logs de Render ([RESPALDO]).');
+    } finally {
+      setRespaldando(null);
+    }
   }
 
   function cargar() {
@@ -179,9 +198,21 @@ function SuperAdminPage() {
               vigencia vacía para que no tenga vencimiento. Clic en un encabezado para ordenar.
             </p>
           </div>
-          <Button type="button" variant="secondary" size="sm" onClick={exportarExcelAccion} disabled={empresas.length === 0}>
-            <FileSpreadsheet size={16} /> Exportar a Excel
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => descargarRespaldo()}
+              disabled={respaldando !== null}
+              title="Toda la base (todas las empresas, usuarios y catálogos). Se restaura con backend/scripts/restaurarRespaldo.js."
+            >
+              <DatabaseBackup size={16} /> {respaldando === 'completo' ? 'Generando respaldo…' : 'Respaldo completo'}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={exportarExcelAccion} disabled={empresas.length === 0}>
+              <FileSpreadsheet size={16} /> Exportar a Excel
+            </Button>
+          </div>
         </div>
 
         {error && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>}
@@ -229,16 +260,31 @@ function SuperAdminPage() {
                   </Celda>
                   <Celda><Badge tono={ESTADO_TONO[e.estado] || 'gray'}>{e.estado}</Badge></Celda>
                   <Celda className="text-right">
-                    {e.estado !== 'ARCHIVADA' && (
+                    {/* !px-2 y gap-1.5: la tabla va justa a 1366px (ver COLUMNAS), el ícono no
+                        puede ensancharla. */}
+                    <div className="flex items-center justify-end gap-1.5">
                       <Button
-                        variant={e.estado === 'SUSPENDIDA' ? 'primary' : 'danger'}
+                        variant="secondary"
                         size="sm"
-                        disabled={actualizandoId === e.id}
-                        onClick={() => alternarEstado(e)}
+                        className="!px-2"
+                        disabled={respaldando !== null}
+                        onClick={() => descargarRespaldo(e)}
+                        title="Descargar los datos de esta empresa (sin contraseñas)"
+                        aria-label={`Descargar datos de ${e.nombreComercial}`}
                       >
-                        {e.estado === 'SUSPENDIDA' ? 'Reactivar' : 'Suspender'}
+                        <Download size={14} className={respaldando === e.id ? 'animate-pulse' : ''} />
                       </Button>
-                    )}
+                      {e.estado !== 'ARCHIVADA' && (
+                        <Button
+                          variant={e.estado === 'SUSPENDIDA' ? 'primary' : 'danger'}
+                          size="sm"
+                          disabled={actualizandoId === e.id}
+                          onClick={() => alternarEstado(e)}
+                        >
+                          {e.estado === 'SUSPENDIDA' ? 'Reactivar' : 'Suspender'}
+                        </Button>
+                      )}
+                    </div>
                   </Celda>
                 </Fila>
               );
