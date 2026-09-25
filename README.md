@@ -3368,6 +3368,14 @@ antes de vencer suma sobre la vigencia; rechazo + reintento aprobado; monto meno
 notificaciones irrelevantes ignoradas), reglas de acceso con vigencia vencida por curl (cajero
 bloqueado en login; admin solo `/me` y `/suscripcion`, el resto 403 `VIGENCIA_VENCIDA`) y en el
 navegador (admin vencido cae en `/suscripcion` sin menú; vigente con aviso y enlace en el menú;
-vencimiento con sesión abierta redirige; sin overflow a 375px). **Pendiente:** un pago real de
-prueba contra Mercado Pago — falta que el usuario cree la aplicación en
-developers.mercadopago.com y cargue las credenciales de prueba en el sandbox.
+vencimiento con sesión abierta redirige; sin overflow a 375px). **Verificado en vivo en el sandbox con Mercado Pago real (credenciales de prueba, aplicación
+"Boxpos pagos", tarjeta de prueba titular APRO):** (1) empresa vencida → pago con regreso a BOX
+POS → "¡Pago recibido!" y vigencia hoy + 1 mes; (2) empresa vigente → pago **cerrando la pestaña
+sin volver** → aplicado por webhook en ~24 s, sumado sobre la vigencia anterior; (3) re-envío
+manual del webhook de ese mismo pago → 200 sin volver a extender (2 pagos, 2 auditorías). Un
+webhook con un id de pago inexistente responde 502 (MP reintentaría) sin tocar nada.
+
+**Para pasar a producción (merge `sandbox` → `main`):** cargar `MP_ACCESS_TOKEN` de **producción**
+(`APP_USR-...`, requiere activar las credenciales de producción de la aplicación en MP) en
+`ventix-backend-yjgv` **antes** del merge — si no, el login limitado a pagar entra en vigor pero
+el botón de pago aparece deshabilitado, y un cliente vencido quedaría sin forma de pagar en línea.
