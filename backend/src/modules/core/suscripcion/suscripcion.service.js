@@ -81,7 +81,9 @@ async function iniciarCheckout({
 // webhook y la conciliación desde la URL de retorno pueden llegar casi al mismo tiempo, y MP
 // reintenta notificaciones — solo el primero que reclama la fila (UPDATE...WHERE PENDIENTE)
 // extiende la vigencia, mismo patrón que cotizaciones/transferencias/compras.
-async function aplicarPagoMercadoPago(mpPago) {
+// `origen` (webhook | retorno) solo para el log: permite saber por qué camino llegó cada pago al
+// revisar los logs de Render (soporte, y para confirmar que los webhooks sí están llegando).
+async function aplicarPagoMercadoPago(mpPago, origen) {
   const pagoId = mpPago?.external_reference;
   if (!pagoId) return null;
   const pago = await prisma.pagoSuscripcion.findUnique({ where: { id: pagoId } });
@@ -111,7 +113,10 @@ async function aplicarPagoMercadoPago(mpPago) {
           estado: 'APROBADO', mpPagoId: String(mpPago.id), mpEstado, aplicadoEn: new Date(),
         },
       });
-      if (reclamado.count === 0) return; // ya aplicado (o rechazado) por otra llamada
+      if (reclamado.count === 0) {
+        console.log(`[MP] pago ${mpPago.id} (${origen}): ya estaba aplicado, sin cambios`); // eslint-disable-line no-console
+        return;
+      }
 
       // FOR UPDATE: serializa contra el superadmin editando la vigencia a mano o dos pagos
       // distintos de la misma empresa aplicándose a la vez — cada uno suma sobre el anterior.
@@ -137,6 +142,7 @@ async function aplicarPagoMercadoPago(mpPago) {
         valoresAntes: { vigenciaHasta: anterior ? anterior.toISOString() : null },
         valoresDespues: { vigenciaHasta: nueva.toISOString() },
       });
+      console.log(`[MP] pago ${mpPago.id} (${origen}): APLICADO a empresa ${pago.empresaId}, vigencia -> ${nueva.toISOString()}`); // eslint-disable-line no-console
     });
   } else if (['rejected', 'cancelled', 'refunded', 'charged_back'].includes(mpPago.status)) {
     await prisma.pagoSuscripcion.updateMany({
@@ -167,7 +173,7 @@ async function obtenerPago({ empresaId, pagoId, mpPagoId }) {
     // El pago de MP debe ser de ESTE registro: sin esto, cualquiera podría pasar el id de un
     // pago aprobado ajeno (de otra empresa) en la URL.
     if (mpPago.external_reference === pago.id) {
-      return aplicarPagoMercadoPago(mpPago);
+      return aplicarPagoMercadoPago(mpPago, 'retorno');
     }
   }
   return pago;
@@ -178,7 +184,8 @@ async function obtenerPago({ empresaId, pagoId, mpPagoId }) {
 async function procesarNotificacion({ tipo, dataId }) {
   if (tipo !== 'payment' || !dataId) return;
   const mpPago = await mercadopago.obtenerPago(dataId);
-  await aplicarPagoMercadoPago(mpPago);
+  console.log(`[MP] webhook recibido: pago ${dataId}, status ${mpPago?.status}`); // eslint-disable-line no-console
+  await aplicarPagoMercadoPago(mpPago, 'webhook');
 }
 
 module.exports = {
