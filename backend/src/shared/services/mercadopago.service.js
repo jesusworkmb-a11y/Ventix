@@ -46,6 +46,10 @@ async function crearPreferencia({
     back_urls: { success: urlRetorno, pending: urlRetorno, failure: urlRetorno },
     auto_return: 'approved',
     statement_descriptor: 'BOX POS',
+    // Solo de contado (1 pago), decisión del usuario: por $499/mes pagar a meses no aporta, y
+    // así un plan de meses sin intereses activado en la cuenta de MP nunca le cobra comisión
+    // extra por financiamiento a BOX POS en este cobro.
+    payment_methods: { installments: 1 },
   });
   return { id: preferencia.id, initPoint: preferencia.init_point };
 }
