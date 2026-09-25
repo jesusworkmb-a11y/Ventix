@@ -56,14 +56,45 @@ Notas del despliegue:
   cualquier otro dominio (incluida la URL vieja de Render) queda bloqueado por el navegador.
 - Plan free: cold start tras inactividad (~30–50s la primera petición después de estar dormido).
 
+### ▶ Retomar aquí (última sesión: 2026-09-24/25)
+
+Hoy se completaron las **Fases 2 y 3 de la hoja de ruta de lanzamiento** (Artifact "Hoja de Ruta
+BOX POS"), ambas documentadas al final de este README:
+- **Fase 2 — Entorno sandbox:** `https://sandbox.boxpos.com.mx` (backend
+  `ventix-backend-j33p`, rama `sandbox`, base Supabase propia). Ver "Entorno sandbox".
+- **Fase 3 — Pago de suscripción con Mercado Pago:** en producción desde `930cc8b` (credenciales
+  de producción ya cargadas en `ventix-backend-yjgv`). Ver "Pago de suscripción con Mercado Pago".
+- Incidente del día: Supabase pausó la base de producción por inactividad → ping diario con
+  GitHub Actions. Ver "Caída de producción por pausa de Supabase".
+
+**Pendientes para la próxima sesión, en orden:**
+1. **Pago real de $499 en producción** (lo hace el usuario, con su tarjeta, desde
+   `app.boxpos.com.mx` → Configuración → Suscripción con la empresa BOX POS Demo, vigente hasta
+   24/ene/2027 → debería quedar 24/feb/2027). MP no deja pagarse a uno mismo: pagar como invitado
+   con otro correo u otra cuenta. Después, Claude verifica en la base de producción (solo
+   lectura) que el `PagoSuscripcion` quedó APROBADO una vez y buscar `[MP]` en los logs de Render.
+   Si el usuario lo devuelve desde MP, la vigencia **no** se revierte sola (ajustar en `/superadmin`).
+2. Seguridad: **rotar la API key de Resend y la contraseña de Facturama** (quedaron visibles en una
+   captura de pantalla compartida el 2026-09-24; son las mismas en producción y sandbox).
+3. Opcional: suspender desde `/superadmin` la empresa de prueba **BOX-0006 "Test Trial QA"** — en
+   la base figura ACTIVA (vencida), no suspendida como decía la sección de registro self-service.
+4. Siguiente fase del roadmap: **Fase 4 — backup** (descarga solo-superadmin; restauración con
+   las herramientas de Supabase, no desde la app) o **Fase 1 — alcances y manuales**.
+
+**Flujo de trabajo desde ahora:** cambios nuevos → rama `sandbox` → probar en
+`sandbox.boxpos.com.mx` → merge a `main`. Commit y push siempre con confirmación explícita del
+usuario, cada uno por separado.
+
 **Para retomar el proyecto** (incluida una conversación nueva de Claude Code):
 1. Abre Claude Code en `C:\Users\DELL\Documents\Quique\Ventix\ventix-fase0\ventix`.
 2. Pide que lea este README y, si hace falta más detalle, `git log --oneline` (los mensajes de
    commit documentan qué se hizo y por qué en cada fase).
-3. Para desarrollo local, levanta los servidores (no persisten entre sesiones/reinicios de máquina):
+3. Para desarrollo local, levanta los servidores (no persisten entre sesiones/reinicios de máquina).
+   **Preferir `npm run dev:sandbox`** (base del sandbox, vía `backend/.env.sandbox`, ignorado por
+   git) sobre `npm run dev`, que usa `backend/.env` y le pega a la base de **producción**:
    ```bash
-   cd backend && npm run dev   # http://localhost:4000
-   cd frontend && npm run dev  # http://localhost:5173
+   cd backend && npm run dev:sandbox   # http://localhost:4000, base del sandbox
+   cd frontend && npm run dev          # http://localhost:5173
    ```
    Los `.env` de ambos ya están configurados (Supabase + JWT secret) — no hace falta tocarlos.
    `backend/.env` apunta directo a Supabase (no al pooler) con la misma base que producción;
