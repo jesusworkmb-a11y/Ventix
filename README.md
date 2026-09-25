@@ -56,16 +56,20 @@ Notas del despliegue:
   cualquier otro dominio (incluida la URL vieja de Render) queda bloqueado por el navegador.
 - Plan free: cold start tras inactividad (~30–50s la primera petición después de estar dormido).
 
-### ▶ Retomar aquí (última sesión: 2026-09-24/25)
+### ▶ Retomar aquí (última sesión: 2026-09-25)
 
-Hoy se completaron las **Fases 2 y 3 de la hoja de ruta de lanzamiento** (Artifact "Hoja de Ruta
-BOX POS"), ambas documentadas al final de este README:
+Se completaron las **Fases 2, 3 y 4 de la hoja de ruta de lanzamiento** (Artifact "Hoja de Ruta
+BOX POS"), documentadas al final de este README:
 - **Fase 2 — Entorno sandbox:** `https://sandbox.boxpos.com.mx` (backend
   `ventix-backend-j33p`, rama `sandbox`, base Supabase propia). Ver "Entorno sandbox".
 - **Fase 3 — Pago de suscripción con Mercado Pago:** en producción desde `930cc8b` (credenciales
   de producción ya cargadas en `ventix-backend-yjgv`). Ver "Pago de suscripción con Mercado Pago".
 - Incidente del día: Supabase pausó la base de producción por inactividad → ping diario con
   GitHub Actions. Ver "Caída de producción por pausa de Supabase".
+- **Fase 4 — Respaldo y restauración:** en producción desde `97e4188`. Primer respaldo real de
+  producción descargado y validado el 2026-09-25 (58,080 filas, íntegro). Ver "Respaldo y
+  restauración". Tras un deploy del frontend, el navegador puede seguir mostrando la versión
+  vieja: recargar con `Ctrl + Shift + R`.
 
 **Pendientes para la próxima sesión, en orden:**
 1. **Pago real de $499 en producción** (lo hace el usuario, con su tarjeta, desde
@@ -78,10 +82,19 @@ BOX POS"), ambas documentadas al final de este README:
    captura de pantalla compartida el 2026-09-24; son las mismas en producción y sandbox).
 3. Opcional: suspender desde `/superadmin` la empresa de prueba **BOX-0006 "Test Trial QA"** — en
    la base figura ACTIVA (vencida), no suspendida como decía la sección de registro self-service.
-4. **Fase 4 — respaldo:** hecha en la rama `sandbox` el 2026-09-25 (ver "Respaldo y restauración"
-   al final). Falta: probarla en `sandbox.boxpos.com.mx`, merge a `main` y, ya en producción,
-   **descargar el primer respaldo real** y guardarlo fuera de la computadora (Drive/USB).
-5. Siguiente fase del roadmap: **Fase 1 — alcances y manuales**.
+4. Rutina: **descargar el respaldo completo cada semana** y antes de cambios grandes, y guardarlo
+   fuera de la computadora (Drive/USB). Opcional a futuro: respaldo automático diario.
+5. Siguiente fase del roadmap: **Fase 1 — alcances y manuales**. Base ya disponible para el
+   documento de alcances: la lista de alcances/limitaciones del respaldo (sección "Respaldo y
+   restauración").
+
+**Superadmin de producción:** `jesusworkmb@gmail.com` (contraseña no documentada). "¿Olvidaste tu
+contraseña?" **no** le sirve (pide número de empresa y el superadmin no tiene); si se pierde, hay
+que restablecerla con un script contra la base, donde el usuario teclee la contraseña nueva.
+
+**Datos de prueba en el sandbox (2026-09-25):** venta `VTA-NTE-000001`, una subcategoría "Sub
+prueba respaldo…" y una sesión de caja abierta en "Caja Norte", creadas para probar la
+restauración. Se pueden dejar o borrar.
 
 **Flujo de trabajo desde ahora:** cambios nuevos → rama `sandbox` → probar en
 `sandbox.boxpos.com.mx` → merge a `main`. Commit y push siempre con confirmación explícita del
@@ -3464,6 +3477,24 @@ base con datos, archivo truncado, respaldo por empresa y falta de `--env=`. Resp
 sin `passwordHash`, solo los 4 usuarios de la empresa, auditoría registrada; 404 con un id
 inexistente. En el navegador: ambos botones descargan, "Generando respaldo…" mientras trabaja, y
 la tabla sigue sin scroll horizontal a 1366px con cualquier orden de columnas.
+
+**Verificado en vivo:** en el sandbox (`97e4188`): completo 55,441 filas en 8 s, por empresa en
+<1 s, admin de empresa → 403 en ambas rutas. En producción (merge fast-forward a `main`): el
+usuario descargó el primer respaldo real (3.4 MB, 58,080 filas, 62 tablas) y se validó la
+estructura sin abrir datos: línea final presente y conteos cuadrados. El encabezado dice
+`entorno: null` porque `ventix-backend-yjgv` no tiene la variable `ENTORNO` (inofensivo, es solo
+etiqueta).
+
+**Alcances y limitaciones** (explicados al usuario antes del merge, base para la Fase 1):
+- Es **manual**: se pierde lo ocurrido entre el último respaldo descargado y el desastre.
+- Restaurar es **todo o nada** y solo en base vacía: no deshace errores puntuales de un cliente ni
+  restaura una empresa sola (eso sería restaurar en una base aparte y copiar a mano).
+- Restaurar es técnico (línea de comandos, base nueva, migraciones), no desde la app.
+- El archivo **no tiene contraseña** y lleva datos personales/fiscales de todos los clientes.
+- El respaldo por empresa es técnico (`.ndjson.gz`), no un Excel legible por el cliente.
+- Fuera del respaldo: variables de entorno de Render, CSD cargados en Facturama, pagos en
+  Mercado Pago y el código (en GitHub). Los XML timbrados, logos e imágenes sí van (viven en la
+  base).
 
 **Rutina recomendada:** descargar el respaldo completo **cada semana** y antes de cualquier
 migración o cambio grande, y guardar varias copias fuera de la computadora. Un respaldo
