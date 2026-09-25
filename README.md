@@ -3333,6 +3333,9 @@ El pago se aplica por **dos caminos**, ambos terminando en `aplicarPagoMercadoPa
   venció, cuenta desde hoy. Mes de calendario (31/ene → 28/feb). Empresas con vigencia `null`
   (sin vencimiento) no pueden pagar. Cada pago aplicado deja una entrada en la bitácora de
   auditoría.
+- **Solo de contado** (`payment_methods.installments = 1`, decisión del usuario): sin opción de
+  pagar a meses, para que una promoción de meses sin intereses de la cuenta de MP nunca le cobre
+  comisión extra a BOX POS. Verificado en el checkout real del sandbox.
 - **Fuera de alcance:** reembolsos/contracargos posteriores a un pago aprobado no revierten la
   vigencia — los revisa el superadmin a mano.
 
