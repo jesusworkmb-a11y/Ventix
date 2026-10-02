@@ -202,9 +202,15 @@ function SuscripcionPage() {
           <div className="space-y-1">
             <p className="text-sm text-gray-500">Plan {resumen?.plan || 'Estándar'}</p>
             <p className="text-2xl font-bold text-gray-900">
-              {formatoMoneda(resumen?.precioMensual ?? 499)}
-              <span className="text-sm font-normal text-gray-500"> MXN / mes</span>
+              {formatoMoneda(resumen?.precioBase ?? 499)}
+              <span className="text-sm font-normal text-gray-500"> + IVA MXN / mes</span>
             </p>
+            {resumen && (
+              <p className="text-xs text-gray-500">
+                IVA (16%) {formatoMoneda(resumen.ivaMensual)} · Total a pagar{' '}
+                <span className="font-semibold text-gray-700">{formatoMoneda(resumen.precioMensual)}</span>
+              </p>
+            )}
             <div className="flex flex-wrap items-center gap-2 pt-1 text-sm text-gray-600">
               <EstadoVigencia vigenciaHasta={vigenciaHasta} />
               {vigenciaHasta && (

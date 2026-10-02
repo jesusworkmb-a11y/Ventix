@@ -4,8 +4,12 @@ const { registrarAuditoria } = require('../../../shared/services/auditoria.servi
 const mercadopago = require('../../../shared/services/mercadopago.service');
 
 // Precio público de BOX POS (ver /precios en boxpos-web): un solo plan, mes a mes, sin
-// permanencia. String, no number, porque va directo a un campo Decimal (ver shared/decimal.js).
-const PRECIO_MENSUAL = '499.00';
+// permanencia, $499 + IVA. PRECIO_MENSUAL es el total que se cobra en Mercado Pago (y el `monto`
+// del PagoSuscripcion). Strings, no number, porque van directo a un campo Decimal (ver
+// shared/decimal.js); fijos en vez de calculados para no arrastrar redondeo de punto flotante.
+const PRECIO_BASE = '499.00';
+const IVA_MENSUAL = '79.84'; // 16% de 499.00
+const PRECIO_MENSUAL = '578.84'; // PRECIO_BASE + IVA_MENSUAL
 const MESES_POR_PAGO = 1;
 
 // Suma meses de calendario sin desbordar al mes siguiente: 31/ene + 1 mes = 28/feb (o 29), no
@@ -41,7 +45,11 @@ async function obtenerResumen({ empresaId }) {
     }),
   ]);
   return {
-    ...empresa, precioMensual: PRECIO_MENSUAL, pagosEnLinea: !!process.env.MP_ACCESS_TOKEN, pagos,
+    ...empresa,
+    precioBase: PRECIO_BASE,
+    ivaMensual: IVA_MENSUAL,
+    precioMensual: PRECIO_MENSUAL,
+    pagosEnLinea: !!process.env.MP_ACCESS_TOKEN, pagos,
   };
 }
 
