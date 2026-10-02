@@ -56,7 +56,12 @@ Notas del despliegue:
   cualquier otro dominio (incluida la URL vieja de Render) queda bloqueado por el navegador.
 - Plan free: cold start tras inactividad (~30–50s la primera petición después de estar dormido).
 
-### ▶ Retomar aquí (última sesión: 2026-09-25)
+### ▶ Retomar aquí (última sesión: 2026-10-02)
+
+**Sesión 2026-10-02** (ver "Precio con IVA, RLS en Supabase y ping al sandbox" al final):
+la suscripción se cobra ahora **$499 + IVA = $578.84**, RLS activado en todas las tablas de
+`public` (cierra las advertencias del linter de Supabase) y el ping diario también cubre el
+sandbox, que se había pausado por inactividad. El sitio `boxpos-web` dice "$499 + IVA".
 
 Se completaron las **Fases 2, 3 y 4 de la hoja de ruta de lanzamiento** (Artifact "Hoja de Ruta
 BOX POS"), documentadas al final de este README:
@@ -72,7 +77,7 @@ BOX POS"), documentadas al final de este README:
   vieja: recargar con `Ctrl + Shift + R`.
 
 **Pendientes para la próxima sesión, en orden:**
-1. **Pago real de $499 en producción** (lo hace el usuario, con su tarjeta, desde
+1. **Pago real de $578.84 ($499 + IVA) en producción** (lo hace el usuario, con su tarjeta, desde
    `app.boxpos.com.mx` → Configuración → Suscripción con la empresa BOX POS Demo, vigente hasta
    24/ene/2027 → debería quedar 24/feb/2027). MP no deja pagarse a uno mismo: pagar como invitado
    con otro correo u otra cuenta. Después, Claude verifica en la base de producción (solo
@@ -3500,3 +3505,40 @@ etiqueta).
 migración o cambio grande, y guardar varias copias fuera de la computadora. Un respaldo
 automático diario (GitHub Actions + `pg_dump` cifrado) quedó como posible siguiente paso, no se
 hizo.
+
+## Precio con IVA, RLS en Supabase y ping al sandbox (2026-10-02)
+
+**Precio: $499 + IVA.** Decisión del usuario: la suscripción se cobra **$578.84** ($499.00 +
+$79.84 de IVA al 16%). En
+[`suscripcion.service.js`](backend/src/modules/core/suscripcion/suscripcion.service.js) hay
+tres constantes fijas (`PRECIO_BASE`, `IVA_MENSUAL`, `PRECIO_MENSUAL`), strings para el campo
+Decimal y sin cálculo en punto flotante. `PRECIO_MENSUAL` (el total) es lo que va a Mercado Pago
+y al `monto` del `PagoSuscripcion`, y contra lo que se valida el pago aprobado. La pantalla de
+Suscripción muestra "$499.00 + IVA MXN / mes" con el IVA y el total abajo. Los pagos anteriores
+conservan su monto de $499. El sitio `boxpos-web` (repo aparte) se actualizó a "$499 + IVA" en
+inicio, precios, alcances, multisucursal y facturación CFDI, y el precio de los datos
+estructurados (JSON-LD) pasó a 578.84. Verificado en local y en `sandbox.boxpos.com.mx` (el
+usuario confirmó el checkout).
+
+**RLS en todas las tablas.** El Security Advisor de Supabase marcaba como ERROR
+(`rls_disabled_in_public`) las 63 tablas de `public`: Supabase las expone por su Data API
+(PostgREST) y sin RLS cualquiera con la anon key del proyecto podría leerlas. La app **no** usa
+esa API (Prisma entra directo como `postgres`, dueño de las tablas, y RLS no aplica al dueño sin
+`FORCE`). La migración `20261002210000_activar_rls_tablas_publicas` recorre `pg_tables` y activa
+RLS **sin políticas**, lo que deja la Data API sin acceso y no cambia nada para el backend.
+Aplicada y verificada en el sandbox (63/63 tablas, login/dashboard/suscripción sin errores).
+**Las tablas nuevas de migraciones futuras necesitan su propio
+`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`**, si no el linter vuelve a marcarlas. Opcional:
+apagar la Data API en *Project Settings → Data API* de cada proyecto.
+
+**Pausa del sandbox.** Las advertencias **no** causaron la pausa: el proyecto de Supabase del
+sandbox se pausó por 7 días sin actividad (el ping solo cubría producción). Síntoma: el host
+`db.<ref>.supabase.co` deja de existir en el DNS y Prisma da `P1001`. El usuario lo restauró
+desde el panel de Supabase, y se agregó el job `ping-sandbox` a
+[`ping-produccion.yml`](.github/workflows/ping-produccion.yml) contra
+`ventix-backend-j33p.onrender.com/api/health`. Vive en `main` porque GitHub solo corre los
+workflows programados desde la rama por defecto.
+
+**Usuarios del sandbox:** el sandbox no tiene el usuario `jesus.rodriguez@ventixdemo.test`;
+usar los de [`seedSandbox.js`](backend/scripts/seedSandbox.js) (`admin@demo.boxpos.test`, etc.,
+contraseña en el mismo script).

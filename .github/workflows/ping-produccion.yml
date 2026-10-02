@@ -1,15 +1,18 @@
-# Ping diario a producción (ver "Ping automático contra la pausa de Supabase" en el README).
+# Ping diario a producción y al sandbox (ver "Ping automático contra la pausa de Supabase" en el
+# README).
 #
 # Dos objetivos:
 # 1. Evitar que Supabase (plan free) pause la base de producción por inactividad — pasó el
 #    2026-09-24 y dejó la app caída sin que nadie se enterara. /api/health hace un SELECT 1
-#    real, así que cuenta como actividad de la base.
-# 2. Alerta de caída gratis: si producción no responde, el job falla y GitHub le manda un
-#    correo al dueño del repo.
+#    real, así que cuenta como actividad de la base. El sandbox tiene su propio proyecto de
+#    Supabase y se pausó igual el 2026-10-02, por eso lleva su propio job.
+# 2. Alerta de caída gratis: si producción o el sandbox no responden, su job falla y GitHub le
+#    manda un correo al dueño del repo.
 #
 # Ojo: GitHub desactiva los workflows programados de un repo sin commits en 60 días (avisa por
-# correo antes); si pasa, reactivarlo desde la pestaña Actions.
-name: Ping a producción
+# correo antes); si pasa, reactivarlo desde la pestaña Actions. Los workflows programados solo
+# corren desde la rama por defecto (main), por eso el ping del sandbox vive aquí y no en `sandbox`.
+name: Ping a producción y sandbox
 
 on:
   schedule:
@@ -32,4 +35,20 @@ jobs:
             sleep 30
           done
           echo "::error::Producción no respondió con la base conectada. Revisar Render y si el proyecto de Supabase está pausado."
+          exit 1
+
+  ping-sandbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Health check del sandbox (backend + base de datos)
+        run: |
+          for intento in 1 2 3 4 5; do
+            respuesta=$(curl -s -m 90 https://ventix-backend-j33p.onrender.com/api/health || true)
+            echo "Intento $intento: $respuesta"
+            if echo "$respuesta" | grep -q '"db":"connected"'; then
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "::error::El sandbox no respondió con la base conectada. Revisar Render y si el proyecto de Supabase del sandbox está pausado."
           exit 1
