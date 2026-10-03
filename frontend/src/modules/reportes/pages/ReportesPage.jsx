@@ -385,7 +385,7 @@ function ReportesPage() {
     { clave: 'cajero', label: 'Cajero' },
     { clave: 'fondo', label: 'Fondo' },
     { clave: 'ingresos', label: 'Ingresos' },
-    { clave: 'ventas', label: 'Ventas' },
+    { clave: 'ventas', label: 'Ventas en efectivo' },
     { clave: 'retiros', label: 'Retiros' },
     { clave: 'devoluciones', label: 'Devoluciones' },
     { clave: 'esperado', label: 'Esperado' },
@@ -853,7 +853,7 @@ function ReportesPage() {
             <p className="mb-4 text-sm text-gray-500">
               Diferencia acumulada: <span className="font-semibold text-gray-900">{formatoMoneda(resultado.totalDiferencias)}</span>
             </p>
-            <Table columnas={['Caja', 'Cajero', 'Fondo', 'Ingresos', 'Ventas', 'Retiros', 'Devoluciones', 'Esperado', 'Real', 'Diferencia', 'Cerrada']}>
+            <Table columnas={['Caja', 'Cajero', 'Fondo', 'Ingresos', 'Ventas en efectivo', 'Retiros', 'Devoluciones', 'Esperado', 'Real', 'Diferencia', 'Cerrada']}>
               {resultado.sesiones.length === 0 && <TablaVacia colSpan={11} />}
               {resultado.sesiones.map((s) => (
                 <Fila key={s.id}>

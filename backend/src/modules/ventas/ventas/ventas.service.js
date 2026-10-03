@@ -1,7 +1,7 @@
 const prisma = require('../../../config/db');
 const AppError = require('../../../shared/errors/AppError');
 const { aplicarMovimiento } = require('../../../shared/services/inventario.service');
-const { registrarMovimientoCaja } = require('../../../shared/services/caja.service');
+const { registrarMovimientoCaja, validarSesionAbierta } = require('../../../shared/services/caja.service');
 const { obtenerSiguienteFolio } = require('../../../shared/services/secuencia.service');
 const { registrarAuditoria } = require('../../../shared/services/auditoria.service');
 const { enviarCorreoConAdjunto } = require('../../../shared/services/correo.service');
@@ -373,16 +373,27 @@ async function crear({
       });
     }
 
-    await registrarMovimientoCaja(tx, {
-      empresaId,
-      sesionCajaId,
-      sucursalId,
-      tipo: 'VENTA',
-      monto: total,
-      referenciaTipo: 'Venta',
-      referenciaId: venta.id,
-      usuarioId,
-    });
+    // Al cajón solo entra lo cobrado en efectivo (en un pago mixto, solo esa parte): el
+    // saldoEsperado del cierre se compara contra el efectivo contado. Antes se registraba el
+    // total sin importar el método, y una venta con tarjeta aparecía como faltante al cerrar.
+    // Tarjeta y transferencia siguen en Pago (reportes por método de pago).
+    const efectivo = redondear(
+      pagos.filter((p) => p.metodo === 'EFECTIVO').reduce((acc, p) => acc + Number(p.monto), 0),
+    );
+    if (efectivo > 0) {
+      await registrarMovimientoCaja(tx, {
+        empresaId,
+        sesionCajaId,
+        sucursalId,
+        tipo: 'VENTA',
+        monto: efectivo,
+        referenciaTipo: 'Venta',
+        referenciaId: venta.id,
+        usuarioId,
+      });
+    } else {
+      await validarSesionAbierta(tx, { empresaId, sesionCajaId, sucursalId });
+    }
 
     await registrarAuditoria(tx, {
       empresaId,

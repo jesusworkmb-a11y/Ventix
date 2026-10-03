@@ -17,18 +17,11 @@ const { aDecimalString } = require('../decimal');
 // más que la empresa, así que se podía vender en una sucursal y cobrar contra la caja de otra
 // (pendiente detectado en QA de Ventas, 2026-08-03). Caja/INGRESO-RETIRO no manda sucursalId:
 // ahí la sucursal de la caja ES la sucursal de la operación, no hay nada que cruzar.
-async function registrarMovimientoCaja(tx, {
-  empresaId,
-  sesionCajaId,
-  sucursalId = null,
-  tipo,
-  monto,
-  motivo = null,
-  referenciaTipo = null,
-  referenciaId = null,
-  usuarioId,
-  autorizadoPorId = null,
-}) {
+//
+// Valida y bloquea (FOR UPDATE) la sesión sin escribir movimiento. Ventas la usa sola cuando la
+// venta no trae efectivo (tarjeta/transferencia): esa venta no mueve el cajón, pero igual exige
+// una sesión abierta, de una caja activa y de la misma sucursal.
+async function validarSesionAbierta(tx, { empresaId, sesionCajaId, sucursalId = null }) {
   // id es TEXT, no uuid nativo (uuid() de Prisma es un default generado en cliente) — sin cast.
   const [sesion] = await tx.$queryRaw`
     SELECT id, caja_id AS "cajaId", fondo_inicial AS "fondoInicial", cerrada_en AS "cerradaEn"
@@ -52,6 +45,23 @@ async function registrarMovimientoCaja(tx, {
   // ronda de QA pre-lanzamiento).
   if (!caja.activa) throw new AppError(400, 'Esta caja fue desactivada; no se pueden registrar movimientos.');
 
+  return { sesion, caja };
+}
+
+async function registrarMovimientoCaja(tx, {
+  empresaId,
+  sesionCajaId,
+  sucursalId = null,
+  tipo,
+  monto,
+  motivo = null,
+  referenciaTipo = null,
+  referenciaId = null,
+  usuarioId,
+  autorizadoPorId = null,
+}) {
+  const { sesion, caja } = await validarSesionAbierta(tx, { empresaId, sesionCajaId, sucursalId });
+
   const movimiento = await tx.movimientoCaja.create({
     data: { sesionCajaId, tipo, monto: aDecimalString(monto), motivo, referenciaTipo, referenciaId, usuarioId, autorizadoPorId },
   });
@@ -59,4 +69,4 @@ async function registrarMovimientoCaja(tx, {
   return { sesion, caja, movimiento };
 }
 
-module.exports = { registrarMovimientoCaja };
+module.exports = { registrarMovimientoCaja, validarSesionAbierta };
