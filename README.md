@@ -65,9 +65,13 @@ Aviso de Privacidad y casilla de aceptación" al final):
   sandbox, que se había pausado por inactividad.
 - Términos y Aviso de Privacidad reescritos contra lo que hace la app y publicados como páginas
   `/terminos` y `/privacidad` del sitio (repo `boxpos-web`; el sitio sigue privado hasta lanzar).
-- El registro exige la casilla de aceptación: en `sandbox` (`49e7e18`), todavía no en `main`. El
-  usuario confirmó que **puede pasar a producción con el siguiente merge sin problema**, aunque
-  las ligas de la casilla no abran mientras el sitio siga privado.
+- El registro exige la casilla de aceptación (en producción desde `6c71b6c`; las ligas no abren
+  mientras el sitio siga privado).
+- **Manual de usuario, guía 1 "Inicio rápido"** en `boxpos.com.mx/ayuda/inicio-rapido` (repo
+  `boxpos-web`), y tres arreglos encontrados al escribirlo, en producción desde `00ef489`: el
+  **cierre de caja ahora cuenta solo el efectivo** (antes las ventas con tarjeta salían como
+  faltante), las empresas nuevas nacen con unidades, impuestos y "Caja Principal", y los textos
+  de la app pasaron de voseo a tuteo. Ver "Manual de usuario y arreglos de arranque" al final.
 
 Hoja de ruta de lanzamiento (Artifact "Hoja de Ruta BOX POS"): **Fases 0, 2, 3 y 4 completas** —
 sandbox (`https://sandbox.boxpos.com.mx`, backend `ventix-backend-j33p`, rama `sandbox`, base
@@ -101,8 +105,10 @@ vieja: recargar con `Ctrl + Shift + R`.
 **Otros pendientes:**
 5. Seguridad: **rotar la API key de Resend y la contraseña de Facturama** (quedaron visibles en una
    captura de pantalla compartida el 2026-09-24; son las mismas en producción y sandbox).
-6. Fase 1: **manual de usuario** (incluir el modo kiosco de Chrome para la impresión automática
-   del ticket) y **manual de programador** (Markdown en este repo).
+6. Fase 1: **siguientes guías del manual de usuario** (facturación, usuarios y permisos,
+   reportes; el inicio rápido ya existe e incluye el modo kiosco), una **liga a "Ayuda" desde la
+   app** y el **manual de programador** (Markdown en este repo). Decidir si se agrega la opción de
+   capturar el **precio con IVA incluido** (hoy el precio del artículo es sin IVA).
 7. WhatsApp Business para ventas y soporte (el sitio hoy solo muestra correo).
 8. Opcional: suspender desde `/superadmin` la empresa de prueba **BOX-0006 "Test Trial QA"** (en
    la base figura ACTIVA, vencida).
@@ -3590,3 +3596,41 @@ texto de los documentos, actualizar `TERMINOS_VERSION`** en
 **Para la revisión legal:** "sin reembolsos" puede no aplicar si el cliente califica como
 consumidor ante PROFECO (por ejemplo, un micronegocio); confirmar que los plazos ARCO (20 y 15 días
 hábiles) siguen iguales con la ley de 2025.
+
+## Manual de usuario y arreglos de arranque (2026-10-03)
+
+**Manual de usuario** (repo `boxpos-web`, commit `d671658`): decisiones del usuario — páginas en
+el sitio (`/ayuda`), empezar por un inicio rápido y capturas del sandbox. La guía
+`/ayuda/inicio-rapido` cubre en 8 pasos del registro al corte de caja, incluido el modo kiosco
+de Chrome para imprimir el ticket sin diálogo (con el aviso de cerrar Chrome por completo antes
+de abrir el acceso directo). Las 13 capturas (`boxpos-web/src/assets/ayuda/`) se tomaron con
+puppeteer-core + Edge headless contra la app local con el backend en la base del sandbox, con la
+empresa de prueba "Mi Tienda" (`mitienda.manual@demo.boxpos.test`). Si cambia una pantalla,
+actualizar el texto y la captura.
+
+Al escribir el manual contra la app real aparecieron tres problemas, corregidos y en producción:
+
+1. **Cierre de caja** (`80670ca`): el movimiento de caja de una venta registraba el **total**
+   sin importar el método de pago, así que el saldo esperado del cierre incluía cobros con
+   tarjeta y transferencia que nunca entraron al cajón. Ahora
+   [`ventas.service.js`](backend/src/modules/ventas/ventas/ventas.service.js) registra solo la
+   parte en efectivo (en mixto, solo esa parte); una venta sin efectivo sigue exigiendo sesión
+   abierta mediante `validarSesionAbierta`
+   ([`caja.service.js`](backend/src/shared/services/caja.service.js)). El reporte de cortes
+   llama a la columna "Ventas en efectivo". Las devoluciones siguen restando de la caja (el
+   reembolso siempre se da en efectivo). Probado en local (efectivo + tarjeta + mixto, diferencia
+   $0) y por el usuario en el sandbox.
+2. **Datos iniciales** (`356f498`): una empresa nueva nacía sin unidades (no se podía dar de
+   alta ningún artículo), sin impuestos y sin caja. `registrarEmpresa` crea ahora 8 unidades con
+   clave SAT (Pieza H87, Kilogramo KGM, Gramo GRM, Litro LTR, Metro MTR, Caja XBX, Paquete XPK,
+   Servicio E48; todas existen en el catálogo SAT cargado), IVA 16%, IVA 0% y Exento (solo si el
+   país es MX) y "Caja Principal" en Matriz. `seedSandbox.js` reutiliza esos registros.
+3. **Tuteo** (`00ef489`): ~85 textos de la app, mensajes del backend y el correo de recuperación
+   de contraseña estaban en voseo ("Abrí", "Capturá", "tenés"); se pasaron a tuteo, como el sitio.
+
+**Hallazgos sin resolver:** el precio del artículo se captura **sin IVA** (BOX POS lo suma al
+cobrar; el manual lo advierte), y no se puede vender un artículo sin existencia (por eso el
+manual incluye el paso de inventario inicial vía Inventario → Ajustes).
+
+**Gotcha de Astro (boxpos-web):** un salto de línea entre texto y una etiqueta en línea
+(`<strong>`, `<kbd>`, `<a>`) al inicio de la siguiente línea se come el espacio; poner `{" "}`.
