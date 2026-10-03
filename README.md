@@ -56,42 +56,58 @@ Notas del despliegue:
   cualquier otro dominio (incluida la URL vieja de Render) queda bloqueado por el navegador.
 - Plan free: cold start tras inactividad (~30–50s la primera petición después de estar dormido).
 
-### ▶ Retomar aquí (última sesión: 2026-10-02)
+### ▶ Retomar aquí (última sesión: 2026-10-03)
 
-**Sesión 2026-10-02** (ver "Precio con IVA, RLS en Supabase y ping al sandbox" al final):
-la suscripción se cobra ahora **$499 + IVA = $578.84**, RLS activado en todas las tablas de
-`public` (cierra las advertencias del linter de Supabase) y el ping diario también cubre el
-sandbox, que se había pausado por inactividad. El sitio `boxpos-web` dice "$499 + IVA".
+**Sesión 2026-10-02/03** (ver "Precio con IVA, RLS en Supabase y ping al sandbox" y "Términos,
+Aviso de Privacidad y casilla de aceptación" al final):
+- La suscripción se cobra **$499 + IVA = $578.84** (en producción).
+- RLS activado en todas las tablas de `public` (en producción) y el ping diario también cubre el
+  sandbox, que se había pausado por inactividad.
+- Términos y Aviso de Privacidad reescritos contra lo que hace la app y publicados como páginas
+  `/terminos` y `/privacidad` del sitio (repo `boxpos-web`; el sitio sigue privado hasta lanzar).
+- El registro exige la casilla de aceptación: en `sandbox` (`49e7e18`), todavía no en `main`. El
+  usuario confirmó que **puede pasar a producción con el siguiente merge sin problema**, aunque
+  las ligas de la casilla no abran mientras el sitio siga privado.
 
-Se completaron las **Fases 2, 3 y 4 de la hoja de ruta de lanzamiento** (Artifact "Hoja de Ruta
-BOX POS"), documentadas al final de este README:
-- **Fase 2 — Entorno sandbox:** `https://sandbox.boxpos.com.mx` (backend
-  `ventix-backend-j33p`, rama `sandbox`, base Supabase propia). Ver "Entorno sandbox".
-- **Fase 3 — Pago de suscripción con Mercado Pago:** en producción desde `930cc8b` (credenciales
-  de producción ya cargadas en `ventix-backend-yjgv`). Ver "Pago de suscripción con Mercado Pago".
-- Incidente del día: Supabase pausó la base de producción por inactividad → ping diario con
-  GitHub Actions. Ver "Caída de producción por pausa de Supabase".
-- **Fase 4 — Respaldo y restauración:** en producción desde `97e4188`. Primer respaldo real de
-  producción descargado y validado el 2026-09-25 (58,080 filas, íntegro). Ver "Respaldo y
-  restauración". Tras un deploy del frontend, el navegador puede seguir mostrando la versión
-  vieja: recargar con `Ctrl + Shift + R`.
+Hoja de ruta de lanzamiento (Artifact "Hoja de Ruta BOX POS"): **Fases 0, 2, 3 y 4 completas** —
+sandbox (`https://sandbox.boxpos.com.mx`, backend `ventix-backend-j33p`, rama `sandbox`, base
+Supabase propia; ver "Entorno sandbox"), pago con Mercado Pago (en producción desde `930cc8b`) y
+respaldo y restauración (en producción desde `97e4188`, primer respaldo real validado el
+2026-09-25). **Fase 1** (alcances y manuales) en curso: ya existen la página de Alcances y los
+documentos legales. Tras un deploy del frontend, el navegador puede seguir mostrando la versión
+vieja: recargar con `Ctrl + Shift + R`.
 
-**Pendientes para la próxima sesión, en orden:**
-1. **Pago real de $578.84 ($499 + IVA) en producción** (lo hace el usuario, con su tarjeta, desde
-   `app.boxpos.com.mx` → Configuración → Suscripción con la empresa BOX POS Demo, vigente hasta
-   24/ene/2027 → debería quedar 24/feb/2027). MP no deja pagarse a uno mismo: pagar como invitado
-   con otro correo u otra cuenta. Después, Claude verifica en la base de producción (solo
-   lectura) que el `PagoSuscripcion` quedó APROBADO una vez y buscar `[MP]` en los logs de Render.
-   Si el usuario lo devuelve desde MP, la vigencia **no** se revierte sola (ajustar en `/superadmin`).
-2. Seguridad: **rotar la API key de Resend y la contraseña de Facturama** (quedaron visibles en una
+**Bloquean el lanzamiento** (el usuario no lanza hasta tener sus sellos CSD actualizados):
+1. **Sellos (CSD)**: trámite del usuario con el SAT.
+2. **PAC de producción**: el usuario busca un proveedor más barato que Facturama; si es otro, hay
+   que integrarlo. Mientras tanto el sitio promete "timbrado incluido", que en producción aún no
+   es cierto. Al activarlo: `TIMBRADO_EN_PRODUCCION = true` en
+   `boxpos-web/src/pages/alcances.astro` y quitar el aviso de `facturacion-cfdi.astro`.
+3. **Legales**: revisión de un abogado (puntos en la sección de legales al final); decidir
+   `soporte@` vs `contacto@` (los Términos dicen `soporte@`, Alcances `contacto@`; el usuario va a
+   revisar en ImprovMX si `soporte@` existe); definir cómo se emite el CFDI de cada pago (los
+   Términos lo prometen y hoy no hay proceso) y cuándo se considera terminado un cliente que deja
+   de pagar. Con la revisión hecha: `BORRADOR = false` en `boxpos-web/src/pages/terminos.astro` y
+   `privacidad.astro`.
+4. **Al final, justo antes de lanzar**: pago real de $578.84 en producción. Lo hace el usuario
+   desde `app.boxpos.com.mx` → Configuración → Suscripción con la empresa BOX POS Demo (vigente
+   hasta 24/ene/2027 → debería quedar 24/feb/2027); MP no deja pagarse a uno mismo, pagar como
+   invitado con otro correo. Claude verifica en la base de producción (solo lectura) que el
+   `PagoSuscripcion` quedó APROBADO una vez y busca `[MP]` en los logs de Render. Si se devuelve
+   desde MP, la vigencia **no** se revierte sola (ajustar en `/superadmin`). Después: quitar la
+   protección de Netlify y verificar el sitio en vivo (Alcances, avisos de facturación, legales,
+   sitemap).
+
+**Otros pendientes:**
+5. Seguridad: **rotar la API key de Resend y la contraseña de Facturama** (quedaron visibles en una
    captura de pantalla compartida el 2026-09-24; son las mismas en producción y sandbox).
-3. Opcional: suspender desde `/superadmin` la empresa de prueba **BOX-0006 "Test Trial QA"** — en
-   la base figura ACTIVA (vencida), no suspendida como decía la sección de registro self-service.
-4. Rutina: **descargar el respaldo completo cada semana** y antes de cambios grandes, y guardarlo
+6. Fase 1: **manual de usuario** (incluir el modo kiosco de Chrome para la impresión automática
+   del ticket) y **manual de programador** (Markdown en este repo).
+7. WhatsApp Business para ventas y soporte (el sitio hoy solo muestra correo).
+8. Opcional: suspender desde `/superadmin` la empresa de prueba **BOX-0006 "Test Trial QA"** (en
+   la base figura ACTIVA, vencida).
+9. Rutina: **descargar el respaldo completo cada semana** y antes de cambios grandes, y guardarlo
    fuera de la computadora (Drive/USB). Opcional a futuro: respaldo automático diario.
-5. Siguiente fase del roadmap: **Fase 1 — alcances y manuales**. Base ya disponible para el
-   documento de alcances: la lista de alcances/limitaciones del respaldo (sección "Respaldo y
-   restauración").
 
 **Superadmin de producción:** `jesusworkmb@gmail.com` (contraseña no documentada). "¿Olvidaste tu
 contraseña?" **no** le sirve (pide número de empresa y el superadmin no tiene); si se pierde, hay
@@ -99,7 +115,9 @@ que restablecerla con un script contra la base, donde el usuario teclee la contr
 
 **Datos de prueba en el sandbox (2026-09-25):** venta `VTA-NTE-000001`, una subcategoría "Sub
 prueba respaldo…" y una sesión de caja abierta en "Caja Norte", creadas para probar la
-restauración. Se pueden dejar o borrar.
+restauración. Se pueden dejar o borrar. También del 2026-10-02/03: empresas "QA Terminos" (n.º 2)
+y "QA" (n.º 3, creada sin aceptación de Términos por una prueba lanzada antes de terminar el
+deploy); el usuario decidió dejarlas.
 
 **Flujo de trabajo desde ahora:** cambios nuevos → rama `sandbox` → probar en
 `sandbox.boxpos.com.mx` → merge a `main`. Commit y push siempre con confirmación explícita del
@@ -3542,3 +3560,33 @@ workflows programados desde la rama por defecto.
 **Usuarios del sandbox:** el sandbox no tiene el usuario `jesus.rodriguez@ventixdemo.test`;
 usar los de [`seedSandbox.js`](backend/scripts/seedSandbox.js) (`admin@demo.boxpos.test`, etc.,
 contraseña en el mismo script).
+
+## Términos, Aviso de Privacidad y casilla de aceptación (2026-10-02/03)
+
+**Documentos legales** (repo `boxpos-web`, carpeta `legal/`, commit `c35fba9`): los borradores de
+agosto estaban desactualizados (decían "sin pasarela de pagos", "renovación automática" y $499 sin
+IVA). Se reescribieron contra lo que hace la app hoy y contra la página de Alcances. Decisiones
+del usuario: **sin reembolsos** (salvo cobros indebidos o duplicados), **CFDI por cada pago** de
+suscripción, **100 CFDI timbrados al mes** incluidos (más se cotiza aparte). Otros cambios: pago
+con Mercado Pago sin cargo automático, prueba de 7 días, vencimiento con acceso solo para pagar,
+requisitos técnicos (internet y arranque en frío). El Aviso cita la **LFPDPPP de 2025** y a la
+**Secretaría Anticorrupción y Buen Gobierno** (el INAI se extinguió), aclara que el CSD va directo
+al PAC y no se guarda, y separa remisiones a encargados (PAC, Resend, Supabase, Render, Netlify,
+ImprovMX) de transferencias (SAT, autoridades). Los `.docx` anteriores estaban empacados con rutas
+`\` (por `Compress-Archive`) y se re-empacaron con `/`.
+
+**Páginas `/terminos` y `/privacidad`** del sitio: se generan desde los `.docx` con `npm run legal`
+(`scripts/legal-a-json.mjs` → `src/data/legal/*.json` → `DocumentoLegal.astro`). El `.docx` es la
+fuente única; no editar el JSON. Cada página tiene `BORRADOR = true` (aviso de revisión legal).
+
+**Casilla en el registro** (este repo, `49e7e18`, rama `sandbox`): sin `aceptaTerminos: true` el
+backend responde 400 ("Debes aceptar los Términos y Condiciones y el Aviso de Privacidad."). Al
+registrar, el administrador queda con `terminosAceptadosEn` y `terminosVersion` (migración
+`20261003000000_agregar_aceptacion_terminos`, ya aplicada en la base del sandbox). **Al cambiar el
+texto de los documentos, actualizar `TERMINOS_VERSION`** en
+[`auth.service.js`](backend/src/modules/core/auth/auth.service.js). Las ligas de la casilla apuntan a
+`https://boxpos.com.mx/terminos/` y `/privacidad/`. Verificado en local y en vivo en el sandbox.
+
+**Para la revisión legal:** "sin reembolsos" puede no aplicar si el cliente califica como
+consumidor ante PROFECO (por ejemplo, un micronegocio); confirmar que los plazos ARCO (20 y 15 días
+hábiles) siguen iguales con la ley de 2025.
