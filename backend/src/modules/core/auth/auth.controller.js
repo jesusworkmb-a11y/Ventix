@@ -48,7 +48,7 @@ async function restablecer(req, res) {
   if (!parsed.success) throw new AppError(400, 'La contraseña nueva debe tener al menos 8 caracteres.');
 
   await authService.restablecerPassword(parsed.data);
-  res.json({ mensaje: 'Contraseña actualizada. Ya podés iniciar sesión.' });
+  res.json({ mensaje: 'Contraseña actualizada. Ya puedes iniciar sesión.' });
 }
 
 module.exports = {

@@ -193,7 +193,7 @@ function ExistenciasPage() {
       <Card title="Establecer existencia inicial">
         <p className="mb-4 text-sm text-gray-500">
           Solo para un artículo que todavía no tiene existencia registrada en esa sucursal.
-          Para corregir una existencia ya en uso, hacé un ajuste.
+          Para corregir una existencia ya en uso, haz un ajuste.
         </p>
         <form onSubmit={agregar} className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Select id="sucursalExistencia" label="Sucursal" value={form.sucursalId} onChange={(e) => actualizarCampo('sucursalId', e.target.value)} required>

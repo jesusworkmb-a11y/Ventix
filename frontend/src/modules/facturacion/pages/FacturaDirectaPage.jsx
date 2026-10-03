@@ -271,7 +271,7 @@ function FacturaDirectaPage() {
     e.preventDefault();
     setGuardarPlantillaError('');
     if (!guardarPlantillaNombre.trim()) { setGuardarPlantillaError('Ponele un nombre a la plantilla.'); return; }
-    if (conceptosGuardables.length === 0) { setGuardarPlantillaError('Agregá al menos un concepto desde el catálogo (los manuales no se pueden guardar).'); return; }
+    if (conceptosGuardables.length === 0) { setGuardarPlantillaError('Agrega al menos un concepto desde el catálogo (los manuales no se pueden guardar).'); return; }
 
     setGuardandoPlantilla(true);
     try {
@@ -330,11 +330,11 @@ function FacturaDirectaPage() {
   function agregarConcepto(e) {
     e.preventDefault();
     if (!conceptoForm.claveProdServSat || !conceptoForm.claveUnidadSat) {
-      setError('Elegí la clave de producto/servicio y la clave de unidad SAT.');
+      setError('Elige la clave de producto/servicio y la clave de unidad SAT.');
       return;
     }
     if (!conceptoForm.descripcion || !conceptoForm.valorUnitario) {
-      setError('Completá descripción y valor unitario.');
+      setError('Completa descripción y valor unitario.');
       return;
     }
     setError('');
@@ -390,9 +390,9 @@ function FacturaDirectaPage() {
 
   async function crearFactura() {
     setError('');
-    if (!sucursalId) { setError('Elegí la sucursal de expedición.'); return; }
-    if (conceptos.length === 0) { setError('Agregá al menos un concepto.'); return; }
-    if (!formaPago) { setError('Elegí la forma de pago.'); return; }
+    if (!sucursalId) { setError('Elige la sucursal de expedición.'); return; }
+    if (conceptos.length === 0) { setError('Agrega al menos un concepto.'); return; }
+    if (!formaPago) { setError('Elige la forma de pago.'); return; }
     if (guardando) return;
 
     setGuardando(true);
@@ -505,7 +505,7 @@ function FacturaDirectaPage() {
             {timbrada && <p className="font-mono text-xs text-gray-400">UUID {facturaCreada.uuid}</p>}
             {conError && (
               <p className="text-sm text-danger-700">
-                No se pudo timbrar: {facturaCreada.errorTimbrado || 'error desconocido'}. Podés reintentarlo desde Facturación.
+                No se pudo timbrar: {facturaCreada.errorTimbrado || 'error desconocido'}. Puedes reintentarlo desde Facturación.
               </p>
             )}
             {!timbrada && !conError && (
@@ -592,7 +592,7 @@ function FacturaDirectaPage() {
           {haySugerenciaVisible && sugerencia.origen === 'PLANTILLA' && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
               <p className="text-sm text-primary-900">
-                <Star size={13} className="mb-0.5 inline text-primary-600" /> Tenés la plantilla{' '}
+                <Star size={13} className="mb-0.5 inline text-primary-600" /> Tienes la plantilla{' '}
                 <strong>&quot;{sugerencia.plantilla.nombre}&quot;</strong> guardada para este cliente en esta sucursal
                 ({sugerencia.plantilla.conceptos.length} artículo(s)). ¿Usar como base?
               </p>

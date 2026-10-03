@@ -279,11 +279,11 @@ async function emitirTokenRecuperacionYEnviar(usuario) {
     destinatario: usuario.correo,
     asunto: 'Recuperar acceso a BOX POS',
     mensaje: `Hola ${usuario.nombre},\n\nRecibimos una solicitud para restablecer tu contraseña `
-      + `de BOX POS. Este enlace es válido por 1 hora:\n\n${link}\n\nSi no fuiste vos, ignorá `
+      + `de BOX POS. Este enlace es válido por 1 hora:\n\n${link}\n\nSi no fuiste tú, ignora `
       + 'este correo.',
     html: `<p>Hola ${usuario.nombre},</p><p>Recibimos una solicitud para restablecer tu `
       + `contraseña de BOX POS. Este enlace es válido por 1 hora:</p><p><a href="${link}">${link}`
-      + '</a></p><p>Si no fuiste vos, ignorá este correo.</p>',
+      + '</a></p><p>Si no fuiste tú, ignora este correo.</p>',
   });
 }
 
@@ -324,7 +324,7 @@ async function solicitarRecuperacion({ correo, numeroEmpresa }) {
 
 async function restablecerPassword({ token, passwordNueva }) {
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-  const MENSAJE_INVALIDO = 'El enlace no es válido o ya expiró. Solicitá uno nuevo.';
+  const MENSAJE_INVALIDO = 'El enlace no es válido o ya expiró. Solicita uno nuevo.';
 
   const registro = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
   if (!registro || registro.usadoEn || registro.expiraEn < new Date()) {

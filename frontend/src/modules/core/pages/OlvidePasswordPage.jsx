@@ -39,7 +39,7 @@ function OlvidePasswordPage() {
         <Card>
           <h1 className="mb-1 text-lg font-semibold text-gray-900">Recuperar acceso</h1>
           <p className="mb-5 text-sm text-gray-500">
-            Ingresá tu correo y el número de empresa (lo encontrás en Administración → Empresa,
+            Ingresa tu correo y el número de empresa (lo encuentras en Administración → Empresa,
             o pedíselo a quien dio de alta tu cuenta). Si coinciden, te mandamos un enlace para
             poner una contraseña nueva.
           </p>
@@ -47,7 +47,7 @@ function OlvidePasswordPage() {
           {enviado ? (
             <p className="rounded-lg bg-success-50 px-3 py-2.5 text-sm text-success-700">
               Si los datos coinciden con una cuenta, te llegará un correo con instrucciones en
-              unos minutos. Revisá también la carpeta de spam.
+              unos minutos. Revisa también la carpeta de spam.
             </p>
           ) : (
             <form onSubmit={enviar} className="flex flex-col gap-4">

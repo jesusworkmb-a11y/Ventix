@@ -272,7 +272,7 @@ function ClientesPage() {
                 onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
                 className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
               />
-              Activo (desmarcá para dejar de poderle vender)
+              Activo (desmarca para dejar de poderle vender)
             </label>
           )}
           {errorEdit && <p className="sm:col-span-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}

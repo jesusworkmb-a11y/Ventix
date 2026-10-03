@@ -420,7 +420,7 @@ function ArticulosPage() {
 
       {unidades.length === 0 && (
         <p className="rounded-lg bg-warning-50 px-4 py-2.5 text-sm text-warning-700">
-          Primero creá al menos una <Link to="/catalogo/configuracion" className="font-medium underline">unidad</Link> para poder dar de alta artículos.
+          Primero crea al menos una <Link to="/catalogo/configuracion" className="font-medium underline">unidad</Link> para poder dar de alta artículos.
         </p>
       )}
 
@@ -570,7 +570,7 @@ function ArticulosPage() {
               onChange={(e) => setEditForm((f) => ({ ...f, activo: e.target.checked }))}
               className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
             />
-            Activo (desmarcá para descontinuarlo — deja de poderse vender)
+            Activo (desmarca para descontinuarlo — deja de poderse vender)
           </label>
           {errorEdit && <p className="sm:col-span-2 rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{errorEdit}</p>}
           <div className="sm:col-span-2 flex justify-end gap-2">
@@ -609,7 +609,7 @@ function ArticulosPage() {
         <form onSubmit={guardarUnidades} className="flex flex-col gap-3">
           <p className="text-sm text-gray-500">
             Unidad base: <span className="font-medium text-gray-700">{articuloEnUnidades?.unidadBase?.nombre}</span>.
-            Definí cuántas unidades base equivalen a cada unidad alterna (ej. Caja = 12 si la base es Pieza).
+            Define cuántas unidades base equivalen a cada unidad alterna (ej. Caja = 12 si la base es Pieza).
             Se usan al capturar una compra en esa unidad.
           </p>
           {unidades
@@ -643,7 +643,7 @@ function ArticulosPage() {
           <div className="flex flex-col gap-4">
             <form onSubmit={handleGenerarVariantes} className="flex flex-col gap-3">
               <p className="text-sm text-gray-500">
-                Elegí los valores a combinar — cada combinación nueva genera una variante (artículo
+                Elige los valores a combinar — cada combinación nueva genera una variante (artículo
                 propio, con su propio SKU/precio/stock). Las combinaciones ya generadas no se tocan.
               </p>
               {atributos.map((atr) => (
@@ -667,7 +667,7 @@ function ArticulosPage() {
               ))}
               {atributos.length === 0 && (
                 <p className="text-sm text-gray-400">
-                  No hay atributos configurados todavía — creá alguno en Configuración de catálogo.
+                  No hay atributos configurados todavía — crea alguno en Configuración de catálogo.
                 </p>
               )}
               {variantesError && <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{variantesError}</p>}
@@ -718,7 +718,7 @@ function ArticulosPage() {
         {!kitCargando && (
           <form onSubmit={guardarKit} className="flex flex-col gap-3">
             <p className="text-sm text-gray-500">
-              Elegí qué artículos integran este kit y en qué cantidad (en su unidad base). Al
+              Elige qué artículos integran este kit y en qué cantidad (en su unidad base). Al
               vender el kit se descuenta stock de cada componente automáticamente.
             </p>
             <div className="relative">

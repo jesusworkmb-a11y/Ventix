@@ -370,7 +370,7 @@ function ComprasPage() {
                   id="buscarArticuloCompra"
                   type="text"
                   autoComplete="off"
-                  placeholder="Escaneá un código de barras o escribí para buscar..."
+                  placeholder="Escanea un código de barras o escribe para buscar..."
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                   onKeyDown={handleBusquedaKeyDown}
@@ -548,7 +548,7 @@ function ComprasPage() {
           <Card title="Tip">
             <p className="text-xs text-gray-500">
               Al confirmar se genera el folio de la recepción y se actualiza el inventario de inmediato.
-              Después podés descargarla en PDF, enviarla por correo o cancelarla desde
+              Después puedes descargarla en PDF, enviarla por correo o cancelarla desde
               &quot;Recepciones recientes&quot;.
             </p>
           </Card>

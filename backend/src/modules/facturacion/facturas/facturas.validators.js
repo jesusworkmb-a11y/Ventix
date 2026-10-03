@@ -31,7 +31,7 @@ const conceptoDirectaSchema = z.object({
 const crearDirectaSchema = z.object({
   sucursalId: z.string().min(1),
   receptor: receptorSchema,
-  conceptos: z.array(conceptoDirectaSchema).min(1, 'Agregá al menos un concepto.'),
+  conceptos: z.array(conceptoDirectaSchema).min(1, 'Agrega al menos un concepto.'),
   formaPago: z.string().min(1),
   metodoPago: z.enum(['PUE', 'PPD']).default('PUE'),
   moneda: z.string().min(1).default('MXN'),
@@ -53,7 +53,7 @@ const crearAgrupadaSchema = z
   .object({
     tipo: z.enum(['GLOBAL', 'CONSOLIDADA_CLIENTE']),
     sucursalId: z.string().min(1),
-    ventaIds: z.array(z.string().min(1)).min(1, 'Seleccioná al menos una venta.'),
+    ventaIds: z.array(z.string().min(1)).min(1, 'Selecciona al menos una venta.'),
     receptor: receptorSchema,
     informacionGlobal: informacionGlobalSchema.optional(),
   })

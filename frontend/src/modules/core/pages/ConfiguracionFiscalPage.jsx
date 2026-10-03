@@ -75,7 +75,7 @@ function ConfiguracionFiscalPage() {
     e.preventDefault();
     setErrorCsd('');
     if (!rfcCsd || !archivoCer || !archivoKey || !contrasenaCsd) {
-      setErrorCsd('Elegí el emisor, cargá ambos archivos (.cer y .key) y la contraseña.');
+      setErrorCsd('Elige el emisor, carga ambos archivos (.cer y .key) y la contraseña.');
       return;
     }
     setGuardandoCsd(true);
@@ -233,7 +233,7 @@ function ConfiguracionFiscalPage() {
 
       <Card title="Sucursales — override de facturación">
         <p className="mb-3 text-sm text-gray-500">
-          Dejá los campos vacíos para que la sucursal facture con el RFC/régimen de la empresa.
+          Deja los campos vacíos para que la sucursal facture con el RFC/régimen de la empresa.
           Completalos solo si esta sucursal emite bajo una razón social propia.
         </p>
         {errorSucursal && (
@@ -335,7 +335,7 @@ function ConfiguracionFiscalPage() {
         )}
         {opcionesEmisor.length === 0 ? (
           <p className="mt-4 text-sm text-gray-500">
-            Todavía no hay ningún RFC cargado. Completá el RFC de la empresa (arriba) o de alguna
+            Todavía no hay ningún RFC cargado. Completa el RFC de la empresa (arriba) o de alguna
             sucursal antes de poder registrar un CSD.
           </p>
         ) : (

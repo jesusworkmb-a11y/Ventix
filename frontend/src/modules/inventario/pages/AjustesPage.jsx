@@ -136,7 +136,7 @@ function AjustesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Ajustes de inventario</h1>
-        <p className="text-sm text-gray-500">Corregí existencias por caducidad, daño, robo u otro motivo.</p>
+        <p className="text-sm text-gray-500">Corrige existencias por caducidad, daño, robo u otro motivo.</p>
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}

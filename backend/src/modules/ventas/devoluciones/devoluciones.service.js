@@ -51,7 +51,7 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
   // venta cuya Factura seguía TIMBRADA ante el SAT con el monto/cantidad original, sin ningún
   // reflejo del reembolso en el CFDI.
   if (venta.facturaId) {
-    throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de procesar una devolución.');
+    throw new AppError(400, 'Esta venta ya fue facturada. Cancela primero la factura (Facturación) antes de procesar una devolución.');
   }
 
   const autorizador = await prisma.usuarioEmpresa.findUnique({
@@ -107,7 +107,7 @@ async function crear({ empresaId, usuarioId, ventaId, motivo, autorizadoPorId, s
       throw new AppError(400, 'Solo se pueden procesar devoluciones sobre ventas confirmadas.');
     }
     if (ventaLock.facturaId) {
-      throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de procesar una devolución.');
+      throw new AppError(400, 'Esta venta ya fue facturada. Cancela primero la factura (Facturación) antes de procesar una devolución.');
     }
 
     const folio = await obtenerSiguienteFolio(tx, { empresaId, sucursalId: venta.sucursalId, tipoDocumento: 'DEV' });

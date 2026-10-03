@@ -139,7 +139,7 @@ function CajaPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Caja</h1>
-        <p className="text-sm text-gray-500">Abrí y cerrá sesiones de caja, y registrá ingresos y retiros.</p>
+        <p className="text-sm text-gray-500">Abre y cierra sesiones de caja, y registra ingresos y retiros.</p>
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
@@ -169,7 +169,7 @@ function CajaPage() {
       <Modal abierto={modalCajaAbierto} onCerrar={() => setModalCajaAbierto(false)} titulo="Nueva caja" ancho="max-w-sm">
         {sucursales.length === 0 ? (
           <p className="text-sm text-gray-500">
-            Primero necesitás al menos una sucursal (Configuración → Sucursales).
+            Primero necesitas al menos una sucursal (Configuración → Sucursales).
           </p>
         ) : (
           <form onSubmit={handleCrearCaja} className="flex flex-col gap-4">

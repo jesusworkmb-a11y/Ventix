@@ -535,7 +535,7 @@ function VentasHistorialPage() {
             {folioFacturaCreada.estado === 'ERROR' && (
               <p className="text-sm text-danger-700">
                 Factura <strong>{folioFacturaCreada.folio}</strong> creada, pero no se pudo timbrar:{' '}
-                {folioFacturaCreada.errorTimbrado || 'error desconocido'}. Podés reintentarlo desde Facturación.
+                {folioFacturaCreada.errorTimbrado || 'error desconocido'}. Puedes reintentarlo desde Facturación.
               </p>
             )}
             {folioFacturaCreada.estado !== 'TIMBRADA' && folioFacturaCreada.estado !== 'ERROR' && (

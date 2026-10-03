@@ -26,7 +26,7 @@ const limitarPortalPublico = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Demasiados intentos. Probá de nuevo en unos minutos.' },
+  message: { error: 'Demasiados intentos. Prueba de nuevo en unos minutos.' },
 });
 router.use('/portal-publico', limitarPortalPublico, portalPublicoRoutes);
 

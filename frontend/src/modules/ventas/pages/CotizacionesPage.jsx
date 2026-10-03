@@ -322,7 +322,7 @@ function CotizacionesPage() {
                   id="buscarArticuloCot"
                   type="text"
                   autoComplete="off"
-                  placeholder="Escaneá un código de barras o escribí para buscar..."
+                  placeholder="Escanea un código de barras o escribe para buscar..."
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                   onKeyDown={handleBusquedaKeyDown}
@@ -486,7 +486,7 @@ function CotizacionesPage() {
 
           <Card title="Tip">
             <p className="text-xs text-gray-500">
-              Al confirmar se genera el folio de la cotización. Después podés descargarla en PDF, enviarla
+              Al confirmar se genera el folio de la cotización. Después puedes descargarla en PDF, enviarla
               por correo o convertirla en venta desde "Cotizaciones recientes".
             </p>
           </Card>

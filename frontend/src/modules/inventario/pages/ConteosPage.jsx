@@ -168,7 +168,7 @@ function ConteosPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Conteos físicos</h1>
-        <p className="text-sm text-gray-500">Capturá el conteo, pasalo a revisión y autorizalo para aplicar el ajuste.</p>
+        <p className="text-sm text-gray-500">Captura el conteo, pásalo a revisión y autorízalo para aplicar el ajuste.</p>
       </div>
 
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}

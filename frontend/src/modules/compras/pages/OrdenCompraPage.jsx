@@ -153,7 +153,7 @@ function OrdenCompraPage() {
       {error && <p className="rounded-lg bg-danger-50 px-4 py-2.5 text-sm text-danger-700">{error}</p>}
       {creada && (
         <p className="rounded-lg bg-success-50 px-4 py-2.5 text-sm text-success-700">
-          Orden {creada.folio} creada — envíasela al proveedor o recibí la mercancía cuando llegue
+          Orden {creada.folio} creada — envíasela al proveedor o recibe la mercancía cuando llegue
           desde{' '}
           <Link to="/compras/ordenes/recientes" className="font-medium underline">Órdenes recientes</Link>.
         </p>
@@ -191,7 +191,7 @@ function OrdenCompraPage() {
               id="buscarArticuloOrden"
               type="text"
               autoComplete="off"
-              placeholder="Escaneá un código de barras o escribí para buscar..."
+              placeholder="Escanea un código de barras o escribe para buscar..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               onKeyDown={handleBusquedaKeyDown}
@@ -297,7 +297,7 @@ function OrdenCompraPage() {
         <p className="text-xs text-gray-500">
           Una orden de compra no mueve inventario ni dinero — es solo la solicitud al proveedor.
           El costo estimado es opcional, únicamente para negociar; el costo real se captura al
-          recibir la mercancía. Podés recibirla en varias entregas parciales hasta completarla.
+          recibir la mercancía. Puedes recibirla en varias entregas parciales hasta completarla.
         </p>
       </Card>
     </form>

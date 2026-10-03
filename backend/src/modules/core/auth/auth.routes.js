@@ -16,7 +16,7 @@ const limitarAuth = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Demasiados intentos. Probá de nuevo en unos minutos.' },
+  message: { error: 'Demasiados intentos. Prueba de nuevo en unos minutos.' },
 });
 
 router.post('/registro', limitarAuth, asyncHandler(controller.registro));

@@ -370,7 +370,7 @@ async function intentarTimbrar(factura) {
     );
     throw new AppError(
       500,
-      'La factura se timbró ante el SAT pero no se pudo guardar en el sistema. NO reintentes -- contactá soporte con este folio.',
+      'La factura se timbró ante el SAT pero no se pudo guardar en el sistema. NO reintentes -- contacta soporte con este folio.',
     );
   }
 }

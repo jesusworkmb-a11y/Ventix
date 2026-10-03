@@ -12,7 +12,7 @@ const USUARIO_PORTAL_PUBLICO = 'portal-publico';
 // Mismo mensaje genérico para folio inexistente, monto que no coincide, o venta de otra empresa
 // -- no distinguir el motivo evita que alguien use el monto como oráculo para ir adivinando
 // folios ajenos por fuerza bruta.
-const VENTA_NO_ENCONTRADA = 'No encontramos ese ticket. Revisá el folio y el monto exactos.';
+const VENTA_NO_ENCONTRADA = 'No encontramos ese ticket. Revisa el folio y el monto exactos.';
 
 async function resolverEmpresaPorSlug(slug) {
   const empresa = await prisma.empresa.findFirst({ where: { slugPublico: slug, estado: 'ACTIVA' } });

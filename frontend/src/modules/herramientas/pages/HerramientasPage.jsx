@@ -105,7 +105,7 @@ function HerramientasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Herramientas</h1>
-        <p className="text-sm text-gray-500">Exportá tus datos o importá en lote desde CSV.</p>
+        <p className="text-sm text-gray-500">Exporta tus datos o importa en lote desde CSV.</p>
       </div>
 
       <Card title="Exportar">

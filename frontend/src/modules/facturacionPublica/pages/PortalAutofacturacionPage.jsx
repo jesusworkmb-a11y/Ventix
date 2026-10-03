@@ -40,7 +40,7 @@ function PortalAutofacturacionPage() {
     e.preventDefault();
     setError('');
     if (!folio.trim() || !total || !rfcEmisor.trim()) {
-      setError('Completá el folio, el monto y el RFC del ticket.');
+      setError('Completa el folio, el monto y el RFC del ticket.');
       return;
     }
     setBuscando(true);
@@ -72,7 +72,7 @@ function PortalAutofacturacionPage() {
     return (
       <PortalLayout>
         <p className="text-center text-sm text-gray-500">
-          Este portal de autofacturación no está disponible. Verificá el link con el negocio.
+          Este portal de autofacturación no está disponible. Verifica el link con el negocio.
         </p>
       </PortalLayout>
     );
@@ -87,18 +87,18 @@ function PortalAutofacturacionPage() {
           </h1>
           {folioCreado.estado === 'TIMBRADA' && (
             <p className="text-sm text-gray-500">
-              Tu factura ya fue timbrada ante el SAT. Guardá este folio como comprobante.
+              Tu factura ya fue timbrada ante el SAT. Guarda este folio como comprobante.
             </p>
           )}
           {folioCreado.estado === 'ERROR' && (
             <p className="text-sm text-danger-700">
-              Registramos tu factura pero no pudimos timbrarla automáticamente. Guardá este folio y contactá al negocio para que la revisen.
+              Registramos tu factura pero no pudimos timbrarla automáticamente. Guarda este folio y contacta al negocio para que la revisen.
             </p>
           )}
           {folioCreado.estado !== 'TIMBRADA' && folioCreado.estado !== 'ERROR' && (
             <p className="text-sm text-gray-500">
               Tu factura quedó registrada y queda en estado Pendiente hasta que se timbre ante el SAT.
-              Guardá este folio como comprobante.
+              Guarda este folio como comprobante.
             </p>
           )}
         </div>
@@ -112,7 +112,7 @@ function PortalAutofacturacionPage() {
 
       {!venta && (
         <form onSubmit={buscarTicket} className="space-y-4">
-          <p className="text-sm text-gray-500">Ingresá el folio y el monto total de tu ticket para facturarlo.</p>
+          <p className="text-sm text-gray-500">Ingresa el folio y el monto total de tu ticket para facturarlo.</p>
           <Input id="folio" label="Folio del ticket" value={folio} onChange={(e) => setFolio(e.target.value)} placeholder="VTA-MAT-000123" required autoFocus />
           <Input id="total" label="Monto total" type="number" step="0.01" min="0" value={total} onChange={(e) => setTotal(e.target.value)} required />
           <Input id="rfcEmisor" label="RFC de la empresa (impreso en tu ticket)" value={rfcEmisor} onChange={(e) => setRfcEmisor(e.target.value)} placeholder="XAXX010101000" required />

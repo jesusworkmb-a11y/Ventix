@@ -665,7 +665,7 @@ function VentasPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Ventas</h1>
-          <p className="text-sm text-gray-500">Capturá ventas rápido — escaneá, cobrá y listo.</p>
+          <p className="text-sm text-gray-500">Captura ventas rápido — escanea, cobra y listo.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -1153,7 +1153,7 @@ function VentasPage() {
         onEnviar={enviarCorreoTicket}
       />
 
-      <Modal abierto={varianteArticuloId !== null} onCerrar={() => setVarianteArticuloId(null)} titulo="Elegí la variante">
+      <Modal abierto={varianteArticuloId !== null} onCerrar={() => setVarianteArticuloId(null)} titulo="Elige la variante">
         <ul className="flex flex-col gap-2">
           {articulos
             .filter((v) => v.articuloPadreId === varianteArticuloId && v.activo)

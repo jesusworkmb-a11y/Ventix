@@ -17,7 +17,7 @@ const crearSchema = z.object({
   esPredeterminada: z.boolean().default(false),
   formaPago: z.string().min(1).optional(),
   metodoPago: z.enum(['PUE', 'PPD']).optional(),
-  conceptos: z.array(conceptoPlantillaSchema).min(1, 'Agregá al menos un concepto.'),
+  conceptos: z.array(conceptoPlantillaSchema).min(1, 'Agrega al menos un concepto.'),
 });
 
 const actualizarSchema = z.object({

@@ -40,7 +40,7 @@ function LoginPage() {
 
         <Card>
           <h1 className="mb-1 text-lg font-semibold text-gray-900">Iniciar sesión</h1>
-          <p className="mb-5 text-sm text-gray-500">Ingresá tus credenciales para continuar.</p>
+          <p className="mb-5 text-sm text-gray-500">Ingresa tus credenciales para continuar.</p>
 
           <form onSubmit={enviar} className="flex flex-col gap-4">
             <Input
@@ -90,7 +90,7 @@ function LoginPage() {
         </Card>
 
         <p className="mt-5 text-center text-sm text-gray-500">
-          ¿No tenés cuenta?{' '}
+          ¿No tienes cuenta?{' '}
           <Link to="/registro" className="font-medium text-primary-600 hover:text-primary-700">
             Regístrate
           </Link>

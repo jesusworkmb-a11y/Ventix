@@ -191,7 +191,7 @@ function ReportesPage() {
     setError('');
     setResultado(null);
     if (config.usaArticulo && !articuloId) {
-      setError('Elegí un artículo para ver su Kardex.');
+      setError('Elige un artículo para ver su Kardex.');
       return;
     }
     try {
@@ -398,7 +398,7 @@ function ReportesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
-        <p className="text-sm text-gray-500">Generá reportes de ventas, inventario, compras y caja.</p>
+        <p className="text-sm text-gray-500">Genera reportes de ventas, inventario, compras y caja.</p>
       </div>
 
       <Card>
@@ -461,7 +461,7 @@ function ReportesPage() {
           )}
           {config.usaArticulo && (
             <Select id="articuloReporte" label="Artículo" value={articuloId} onChange={(e) => setArticuloId(e.target.value)} className="min-w-[220px]">
-              <option value="">Elegí un artículo…</option>
+              <option value="">Elige un artículo…</option>
               {articulos.map((a) => (
                 <option key={a.id} value={a.id}>{a.sku ? `${a.sku} — ${a.nombre}` : a.nombre}</option>
               ))}

@@ -99,7 +99,7 @@ function RolesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Roles y permisos</h1>
-        <p className="text-sm text-gray-500">Definí qué puede hacer cada rol dentro del sistema.</p>
+        <p className="text-sm text-gray-500">Define qué puede hacer cada rol dentro del sistema.</p>
       </div>
 
       <div className="space-y-4">

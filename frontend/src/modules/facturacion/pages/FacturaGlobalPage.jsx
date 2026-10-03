@@ -71,8 +71,8 @@ function FacturaGlobalPage() {
   async function buscarVentas(e) {
     e.preventDefault();
     setError('');
-    if (!sucursalId) { setError('Elegí la sucursal.'); return; }
-    if (modo === 'CONSOLIDADA_CLIENTE' && !clienteId) { setError('Elegí el cliente.'); return; }
+    if (!sucursalId) { setError('Elige la sucursal.'); return; }
+    if (modo === 'CONSOLIDADA_CLIENTE' && !clienteId) { setError('Elige el cliente.'); return; }
 
     setBuscando(true);
     try {
@@ -117,7 +117,7 @@ function FacturaGlobalPage() {
   async function confirmar(e) {
     e.preventDefault();
     setError('');
-    if (seleccionadas.size === 0) { setError('Seleccioná al menos una venta.'); return; }
+    if (seleccionadas.size === 0) { setError('Selecciona al menos una venta.'); return; }
 
     setGuardando(true);
     try {
@@ -149,7 +149,7 @@ function FacturaGlobalPage() {
           {timbrada && <p className="font-mono text-xs text-gray-400">UUID {folioCreado.uuid}</p>}
           {conError && (
             <p className="text-sm text-danger-700">
-              No se pudo timbrar: {folioCreado.errorTimbrado || 'error desconocido'}. Podés reintentarlo desde Facturación.
+              No se pudo timbrar: {folioCreado.errorTimbrado || 'error desconocido'}. Puedes reintentarlo desde Facturación.
             </p>
           )}
           {!timbrada && !conError && (

@@ -52,7 +52,7 @@ function RestablecerPasswordPage() {
 
           {!token ? (
             <p className="rounded-lg bg-danger-50 px-3 py-2.5 text-sm text-danger-700">
-              Este enlace no es válido. Solicitá uno nuevo desde{' '}
+              Este enlace no es válido. Solicita uno nuevo desde{' '}
               <Link to="/olvide-password" className="font-medium underline">
                 Recuperar acceso
               </Link>.

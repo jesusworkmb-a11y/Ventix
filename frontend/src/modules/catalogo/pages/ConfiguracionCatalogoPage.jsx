@@ -360,7 +360,7 @@ function SeccionListasPrecio() {
   return (
     <Card title="Listas de precio">
       <p className="mb-4 text-sm text-gray-500">
-        Asigná precios por artículo a cada lista en <em>Artículos</em>, y una lista a cada cliente en{' '}
+        Asigna precios por artículo a cada lista en <em>Artículos</em>, y una lista a cada cliente en{' '}
         <em>Clientes</em> — al vender, se cobra el precio de la lista del cliente si existe uno definido
         ahí para ese artículo; si no, el precio base del catálogo. Una lista inactiva deja de ofrecerse
         para asignar a clientes o importar precios, pero conserva los precios y clientes que ya tenía.
@@ -528,7 +528,7 @@ function SeccionAtributos() {
   return (
     <Card title="Atributos de variante">
       <p className="mb-4 text-sm text-gray-500">
-        Definí atributos reusables (ej. Color, Talla) con sus valores posibles — se usan en{' '}
+        Define atributos reusables (ej. Color, Talla) con sus valores posibles — se usan en{' '}
         <em>Artículos</em> para generar automáticamente todas las combinaciones como variantes,
         cada una con su propio SKU, precio y stock.
       </p>

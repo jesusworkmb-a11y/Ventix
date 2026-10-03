@@ -421,7 +421,7 @@ async function cancelar({ empresaId, usuarioId, ventaId }) {
   // ocurrió — verificado en vivo (2026-08-18, tercera ronda de QA). facturas.cancelar() ya libera
   // Venta.facturaId al cancelar el CFDI, así que ese es el orden correcto a seguir.
   if (venta.facturaId) {
-    throw new AppError(400, 'Esta venta ya fue facturada. Cancelá primero la factura (Facturación) antes de cancelar la venta.');
+    throw new AppError(400, 'Esta venta ya fue facturada. Cancela primero la factura (Facturación) antes de cancelar la venta.');
   }
   // Encontrado en vivo en la ronda de QA pre-lanzamiento, verificando el fix de la carrera
   // devolución-vs-cancelar de más abajo: cancelar() nunca chequeaba si la venta ya tenía una

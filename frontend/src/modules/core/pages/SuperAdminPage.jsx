@@ -194,7 +194,7 @@ function SuperAdminPage() {
           <div>
             <h2 className="text-xl font-bold text-gray-900">Empresas</h2>
             <p className="text-sm text-gray-500">
-              Suspender corta el acceso de inmediato, incluidas sesiones abiertas — dejá la
+              Suspender corta el acceso de inmediato, incluidas sesiones abiertas — deja la
               vigencia vacía para que no tenga vencimiento. Clic en un encabezado para ordenar.
             </p>
           </div>

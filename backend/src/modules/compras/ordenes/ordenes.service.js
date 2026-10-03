@@ -100,7 +100,7 @@ async function crear({
   // Mismo criterio que compras.service.js#crear: un Kit no se recibe de un proveedor como
   // unidad — lo que se pide/recibe son sus componentes por separado.
   if (articulos.some((a) => a.tipo === 'KIT')) {
-    throw new AppError(400, 'Un artículo tipo Kit no se puede solicitar directamente — pedí sus componentes por separado.');
+    throw new AppError(400, 'Un artículo tipo Kit no se puede solicitar directamente — pide sus componentes por separado.');
   }
   const articuloPorId = new Map(articulos.map((a) => [a.id, a]));
 
