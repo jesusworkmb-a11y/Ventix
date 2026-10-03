@@ -72,6 +72,9 @@ Aviso de Privacidad y casilla de aceptación" al final):
   **cierre de caja ahora cuenta solo el efectivo** (antes las ventas con tarjeta salían como
   faltante), las empresas nuevas nacen con unidades, impuestos y "Caja Principal", y los textos
   de la app pasaron de voseo a tuteo. Ver "Manual de usuario y arreglos de arranque" al final.
+- **Liga a "Ayuda"** (`4e3d33a`, en producción): ícono **?** en la barra superior, junto a la
+  campanita, visible para todos los roles; abre `https://boxpos.com.mx/ayuda/` en otra pestaña
+  (mientras el sitio siga privado pide la contraseña de Netlify).
 
 Hoja de ruta de lanzamiento (Artifact "Hoja de Ruta BOX POS"): **Fases 0, 2, 3 y 4 completas** —
 sandbox (`https://sandbox.boxpos.com.mx`, backend `ventix-backend-j33p`, rama `sandbox`, base
@@ -106,8 +109,9 @@ vieja: recargar con `Ctrl + Shift + R`.
 5. Seguridad: **rotar la API key de Resend y la contraseña de Facturama** (quedaron visibles en una
    captura de pantalla compartida el 2026-09-24; son las mismas en producción y sandbox).
 6. Fase 1: **siguientes guías del manual de usuario** (facturación, usuarios y permisos,
-   reportes; el inicio rápido ya existe e incluye el modo kiosco), una **liga a "Ayuda" desde la
-   app** y el **manual de programador** (Markdown en este repo). Decidir si se agrega la opción de
+   reportes; el inicio rápido ya existe e incluye el modo kiosco; la liga a "Ayuda" desde la app
+   ya está en producción desde `4e3d33a`) y el **manual de programador** (Markdown en este
+   repo). Decidir si se agrega la opción de
    capturar el **precio con IVA incluido** (hoy el precio del artículo es sin IVA).
 7. WhatsApp Business para ventas y soporte (el sitio hoy solo muestra correo).
 8. Opcional: suspender desde `/superadmin` la empresa de prueba **BOX-0006 "Test Trial QA"** (en
