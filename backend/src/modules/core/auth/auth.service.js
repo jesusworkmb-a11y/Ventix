@@ -17,6 +17,27 @@ const PRUEBA_DIAS = 7; // periodo de prueba gratis al registrarse (§registrarEm
 // Fecha de la versión vigente de Términos y Aviso de Privacidad (boxpos-web/legal y las páginas
 // /terminos y /privacidad). Actualizarla cada vez que cambie su texto.
 const TERMINOS_VERSION = '2026-10-02';
+
+// Datos con los que nace una empresa para poder vender sin configurar nada antes (sin unidad no
+// se puede dar de alta un artículo, y sin caja no se puede vender). Son editables y borrables
+// como cualquier otro registro. Los impuestos solo para México: son IVA y llevan claves SAT.
+const UNIDADES_INICIALES = [
+  { nombre: 'Pieza', abreviatura: 'pza', claveUnidadSat: 'H87' },
+  { nombre: 'Kilogramo', abreviatura: 'kg', claveUnidadSat: 'KGM' },
+  { nombre: 'Gramo', abreviatura: 'g', claveUnidadSat: 'GRM' },
+  { nombre: 'Litro', abreviatura: 'l', claveUnidadSat: 'LTR' },
+  { nombre: 'Metro', abreviatura: 'm', claveUnidadSat: 'MTR' },
+  { nombre: 'Caja', abreviatura: 'caja', claveUnidadSat: 'XBX' },
+  { nombre: 'Paquete', abreviatura: 'paq', claveUnidadSat: 'XPK' },
+  { nombre: 'Servicio', abreviatura: 'serv', claveUnidadSat: 'E48' },
+];
+// tasa como string: va directo a un campo Decimal (ver shared/decimal.js).
+const IMPUESTOS_INICIALES_MX = [
+  { nombre: 'IVA 16%', tasa: '0.16', claveImpuestoSat: '002', tipoFactorSat: 'Tasa' },
+  { nombre: 'IVA 0%', tasa: '0', claveImpuestoSat: '002', tipoFactorSat: 'Tasa' },
+  { nombre: 'Exento', tasa: '0', claveImpuestoSat: '002', tipoFactorSat: 'Exento' },
+];
+const CAJA_INICIAL = 'Caja Principal';
 const MENSAJE_RECUPERACION_GENERICO = 'Si los datos coinciden con una cuenta, te enviamos un '
   + 'correo con instrucciones para recuperar el acceso.';
 
@@ -66,6 +87,18 @@ async function registrarEmpresa({ empresa, admin }) {
       }
       await tx.rolPermiso.createMany({ data: filasRolPermiso });
       await tx.secuencia.createMany({ data: buildSecuenciasIniciales(nuevaEmpresa.id, sucursal) });
+
+      await tx.unidad.createMany({
+        data: UNIDADES_INICIALES.map((u) => ({ ...u, empresaId: nuevaEmpresa.id })),
+      });
+      if (nuevaEmpresa.pais === 'MX') {
+        await tx.impuesto.createMany({
+          data: IMPUESTOS_INICIALES_MX.map((i) => ({ ...i, empresaId: nuevaEmpresa.id })),
+        });
+      }
+      await tx.caja.create({
+        data: { empresaId: nuevaEmpresa.id, sucursalId: sucursal.id, nombre: CAJA_INICIAL },
+      });
 
       const passwordHash = await bcrypt.hash(admin.password, 10);
       const usuario = await tx.usuario.create({

@@ -698,7 +698,9 @@ function VentasPage() {
 
       {cajas.length === 0 && (
         <Card>
-          <p className="text-sm text-gray-500">No hay cajas registradas todavía (créalas vía la API).</p>
+          <p className="text-sm text-gray-500">
+            No hay cajas registradas todavía. <Link to="/caja" className="font-medium underline">Crea una en Caja</Link> para empezar a vender.
+          </p>
         </Card>
       )}
 

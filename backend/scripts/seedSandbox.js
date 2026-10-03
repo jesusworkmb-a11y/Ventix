@@ -34,8 +34,6 @@ const sucursales = require('../src/modules/core/sucursales/sucursales.service');
 const usuarios = require('../src/modules/core/usuarios/usuarios.service');
 const categorias = require('../src/modules/catalogo/categorias/categorias.service');
 const marcas = require('../src/modules/catalogo/marcas/marcas.service');
-const unidades = require('../src/modules/catalogo/unidades/unidades.service');
-const impuestos = require('../src/modules/catalogo/impuestos/impuestos.service');
 const listasPrecio = require('../src/modules/catalogo/listasPrecio/listasPrecio.service');
 const articulos = require('../src/modules/catalogo/articulos/articulos.service');
 const clientes = require('../src/modules/clientes/clientes.service');
@@ -112,15 +110,14 @@ async function main() {
   for (const nombre of ['Genérica', 'La Demo', 'Refrescos del Valle']) {
     marca[nombre] = await marcas.crear({ ...ctx, nombre });
   }
-  const pieza = await unidades.crear({ ...ctx, datos: { nombre: 'Pieza', abreviatura: 'pza', claveUnidadSat: 'H87' } });
-  const kilo = await unidades.crear({ ...ctx, datos: { nombre: 'Kilogramo', abreviatura: 'kg', claveUnidadSat: 'KGM' } });
-  const servicioU = await unidades.crear({ ...ctx, datos: { nombre: 'Servicio', abreviatura: 'serv', claveUnidadSat: 'E48' } });
-  const iva16 = await impuestos.crear({
-    ...ctx, datos: { nombre: 'IVA 16%', tasa: 0.16, claveImpuestoSat: '002', tipoFactorSat: 'Tasa' },
-  });
-  const iva0 = await impuestos.crear({
-    ...ctx, datos: { nombre: 'IVA 0%', tasa: 0, claveImpuestoSat: '002', tipoFactorSat: 'Tasa' },
-  });
+  // Unidades, impuestos y "Caja Principal" ya los crea registrarEmpresa (datos iniciales).
+  const unidad = (nombre) => prisma.unidad.findFirstOrThrow({ where: { empresaId, nombre } });
+  const impuesto = (nombre) => prisma.impuesto.findFirstOrThrow({ where: { empresaId, nombre } });
+  const pieza = await unidad('Pieza');
+  const kilo = await unidad('Kilogramo');
+  const servicioU = await unidad('Servicio');
+  const iva16 = await impuesto('IVA 16%');
+  const iva0 = await impuesto('IVA 0%');
   const mayoreo = await listasPrecio.crear({ ...ctx, datos: { nombre: 'Mayoreo' } });
 
   // [nombre, sku, categoría, marca, unidad, impuesto, costo, precio, claveProdServSat, stockMin]
@@ -210,7 +207,6 @@ async function main() {
   await proveedores.crear({ ...ctx, datos: { nombre: 'Refrescos del Valle (proveedor)', telefono: '5544444444' } });
 
   // --- Cajas y stock inicial (compra real, para que el kardex quede consistente) ---
-  await cajas.crear({ ...ctx, sucursalId: matriz.id, nombre: 'Caja Principal' });
   await cajas.crear({ ...ctx, sucursalId: norte.id, nombre: 'Caja Norte' });
 
   for (const sucursal of [matriz, norte]) {
