@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Menu, Search, ChevronDown, LogOut, Package, Users, Truck, Receipt, Loader2,
-  Bell, ArrowDownCircle, ArrowUpCircle, CalendarClock,
+  Bell, ArrowDownCircle, ArrowUpCircle, CalendarClock, CircleHelp,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { buscarGlobal } from '../../modules/busqueda/api/busqueda.api';
@@ -13,6 +13,9 @@ import { diasParaVencerVigencia, vigenciaProximaAVencer } from '../vigencia';
 // Refresco periódico, no realtime — alcanza para un ícono de campana en la barra superior sin
 // sumar websockets ni polling agresivo.
 const INTERVALO_ALERTAS_MS = 60000;
+
+// Manual de usuario: vive en el sitio (repo boxpos-web), no en la app.
+const URL_AYUDA = 'https://boxpos.com.mx/ayuda/';
 
 function iniciales(nombre) {
   if (!nombre) return '?';
@@ -209,6 +212,17 @@ function TopBar({ onAbrirMenu }) {
       </div>
 
       <div className="ml-auto flex items-center gap-3">
+        <a
+          href={URL_AYUDA}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+          aria-label="Ayuda"
+          title="Ayuda"
+        >
+          <CircleHelp size={20} />
+        </a>
+
         {(puedeVerInventario || avisoVigencia) && (
           <div ref={alertasRef} className="relative">
             <button
