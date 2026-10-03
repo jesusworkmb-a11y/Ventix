@@ -16,6 +16,8 @@ const registroSchema = z.object({
     correo: z.string().email(),
     password: z.string().min(8),
   }),
+  // Casilla "Acepto los Términos y el Aviso de Privacidad": sin ella no hay registro.
+  aceptaTerminos: z.literal(true),
 });
 
 const loginSchema = z.object({

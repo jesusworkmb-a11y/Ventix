@@ -171,6 +171,11 @@ model Usuario {
   // Dueño de la plataforma Ventix (yo), no de una empresa cliente — administra el panel de
   // tenants en /core/superadmin sin pasar por UsuarioEmpresa/Rol de ninguna empresa.
   esSuperAdmin     Boolean       @default(false) @map("es_super_admin")
+  // Constancia de la aceptación electrónica de Términos y Aviso de Privacidad al registrar la
+  // empresa (cláusula 15 de los Términos). Solo la tiene el administrador que registró; null en
+  // usuarios creados después dentro de la empresa y en los registrados antes de existir la casilla.
+  terminosAceptadosEn DateTime? @map("terminos_aceptados_en")
+  terminosVersion     String?   @map("terminos_version")
   creadoEn         DateTime      @default(now()) @map("creado_en")
 
   empresas          UsuarioEmpresa[]

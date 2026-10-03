@@ -14,6 +14,9 @@ const { enviarCorreo } = require('../../../shared/services/correo.service');
 
 const RECUPERACION_VIGENCIA_MS = 60 * 60 * 1000; // 1 hora
 const PRUEBA_DIAS = 7; // periodo de prueba gratis al registrarse (§registrarEmpresa)
+// Fecha de la versión vigente de Términos y Aviso de Privacidad (boxpos-web/legal y las páginas
+// /terminos y /privacidad). Actualizarla cada vez que cambie su texto.
+const TERMINOS_VERSION = '2026-10-02';
 const MENSAJE_RECUPERACION_GENERICO = 'Si los datos coinciden con una cuenta, te enviamos un '
   + 'correo con instrucciones para recuperar el acceso.';
 
@@ -66,7 +69,14 @@ async function registrarEmpresa({ empresa, admin }) {
 
       const passwordHash = await bcrypt.hash(admin.password, 10);
       const usuario = await tx.usuario.create({
-        data: { nombre: admin.nombre, correo: admin.correo, passwordHash },
+        data: {
+          nombre: admin.nombre,
+          correo: admin.correo,
+          passwordHash,
+          // registroSchema exige aceptaTerminos === true, así que llegar aquí implica aceptación.
+          terminosAceptadosEn: new Date(),
+          terminosVersion: TERMINOS_VERSION,
+        },
       });
       await tx.usuarioEmpresa.create({
         data: { usuarioId: usuario.id, empresaId: nuevaEmpresa.id, rolId: roles.Administrador.id },

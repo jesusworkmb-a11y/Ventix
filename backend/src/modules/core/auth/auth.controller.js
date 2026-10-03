@@ -6,7 +6,12 @@ const {
 
 async function registro(req, res) {
   const parsed = registroSchema.safeParse(req.body);
-  if (!parsed.success) throw new AppError(400, 'Datos de registro inválidos.');
+  if (!parsed.success) {
+    if (req.body?.aceptaTerminos !== true) {
+      throw new AppError(400, 'Debes aceptar los Términos y Condiciones y el Aviso de Privacidad.');
+    }
+    throw new AppError(400, 'Datos de registro inválidos.');
+  }
 
   const resultado = await authService.registrarEmpresa(parsed.data);
   res.status(201).json({

@@ -10,6 +10,9 @@ import iconoBoxPos from '../../../assets/brand/icono-boxpos.png';
 
 const PAISES = ['MX', 'US', 'CO', 'AR', 'CL', 'PE'];
 const MONEDAS = ['MXN', 'USD', 'COP', 'ARS', 'CLP', 'PEN'];
+// Viven en el sitio público (repo boxpos-web), no en la app.
+const URL_TERMINOS = 'https://boxpos.com.mx/terminos/';
+const URL_PRIVACIDAD = 'https://boxpos.com.mx/privacidad/';
 
 function RegistroPage() {
   const navigate = useNavigate();
@@ -23,6 +26,7 @@ function RegistroPage() {
     nombreAdmin: '',
     correoAdmin: '',
     password: '',
+    aceptaTerminos: false,
   });
   const [error, setError] = useState('');
   const [cargando, setCargando] = useState(false);
@@ -45,6 +49,7 @@ function RegistroPage() {
           zonaHoraria: form.zonaHoraria,
         },
         admin: { nombre: form.nombreAdmin, correo: form.correoAdmin, password: form.password },
+        aceptaTerminos: form.aceptaTerminos,
       });
       setSesion(data);
       navigate('/dashboard');
@@ -65,7 +70,7 @@ function RegistroPage() {
 
         <Card>
           <h1 className="mb-1 text-lg font-semibold text-gray-900">Registrar empresa</h1>
-          <p className="mb-5 text-sm text-gray-500">Creá tu empresa y tu usuario administrador.</p>
+          <p className="mb-5 text-sm text-gray-500">Crea tu empresa y tu usuario administrador.</p>
 
           <form onSubmit={enviar} className="flex flex-col gap-4">
             <Input
@@ -128,6 +133,28 @@ function RegistroPage() {
               required
             />
 
+            <label className="flex items-start gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={form.aceptaTerminos}
+                onChange={(e) => actualizar('aceptaTerminos', e.target.checked)}
+                required
+                aria-labelledby="textoTerminos"
+                className="mt-0.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span id="textoTerminos">
+                Acepto los{' '}
+                <a href={URL_TERMINOS} target="_blank" rel="noreferrer" className="font-medium text-primary-600 hover:text-primary-700">
+                  Términos y Condiciones
+                </a>{' '}
+                y el{' '}
+                <a href={URL_PRIVACIDAD} target="_blank" rel="noreferrer" className="font-medium text-primary-600 hover:text-primary-700">
+                  Aviso de Privacidad
+                </a>
+                .
+              </span>
+            </label>
+
             {error && (
               <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">{error}</p>
             )}
@@ -138,7 +165,7 @@ function RegistroPage() {
         </Card>
 
         <p className="mt-5 text-center text-sm text-gray-500">
-          ¿Ya tenés cuenta?{' '}
+          ¿Ya tienes cuenta?{' '}
           <Link to="/login" className="font-medium text-primary-600 hover:text-primary-700">
             Inicia sesión
           </Link>
